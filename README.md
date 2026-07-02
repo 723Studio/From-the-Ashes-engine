@@ -8,9 +8,19 @@ This repository contains the open-source engine component used by From the Ashes
 
 This repository is a **generated source mirror**, not the canonical development repository.
 
-Canonical development happens in the private `723Studio/From-the-Ashes-monorepo`. During the release process, the `engine/` subtree from that monorepo is exported, checked for forbidden/private files, committed here, and tagged with the same release tag used by the public binary release.
+Canonical development happens in the private `723Studio/From-the-Ashes-monorepo`. During the release process, the `engine/` subtree from that monorepo is exported into this public repository, checked for forbidden/private files, committed, and tagged with the same release tag used by the public binary release.
 
 Direct development in this repository is intentionally limited. Pull requests and issues may still be useful as source suggestions or bug reports, but accepted code changes are applied to the private monorepo first and then mirrored back here during a release.
+
+## Repository layout
+
+The generated engine source is published under:
+
+```text
+engine/
+```
+
+The root-level README documents the mirror policy and release relationship.
 
 ## What is included
 
