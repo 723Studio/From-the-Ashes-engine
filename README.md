@@ -1,72 +1,252 @@
-# From the Ashes Engine
+# OpenXCom: From the Ashes [![Workflow Status][workflow-badge]][actions-url]
 
-Public GPL engine source mirror for **X-Com: From the Ashes**.
+[workflow-badge]: https://github.com/OpenXcom/OpenXcom/workflows/ci/badge.svg
+[actions-url]: https://github.com/OpenXcom/OpenXcom/actions
 
-This repository contains the open-source engine component used by From the Ashes releases. It is generated from the private development monorepo and published so that users can inspect, build, modify, and redistribute the corresponding engine source for released binaries under the applicable GPL terms.
+[![OpenXcom FTA issues](https://img.shields.io/github/issues-raw/723Studio/OpenXcom_FTA?color=1182c3&logo=GitHub&labelColor=282828)](https://github.com/openapoc/openapoc/issues)
+[![OpenXcom FTA Discord](https://img.shields.io/discord/699764481105854542?label=Discord&logo=discord&logoColor=ffffff&labelColor=7289DA&color=2c2f33)](https://discord.gg/epmtzH9) 
+[![OpenXcom FTA Vkontakte](https://img.shields.io/static/v1?label=VK&logo=vk&logoColor=ffffff&message=Vstupaj%20|%2097&color=282828&labelColor=2787f5)](https://vk.com/xcomfta)
+[![OpenXcom FTA Support](https://img.shields.io/static/v1?label=Support&logo=paypal&logoColor=ffffff&message=Me&color=282828&labelColor=2787f5)](http://x-comfromtheashes.tilda.ws/)
+<a href="https://www.youtube.com/channel/UCt5SsOdMgRJuFK65Z1xdkhw" target="_blank" rel="nofollow">
+<img alt="OpenXcom FTA YouTube Channel Subscribers" src="https://img.shields.io/youtube/channel/subscribers/UCt5SsOdMgRJuFK65Z1xdkhw?label=Youtube&style=social">
+</a>
+<a href="https://www.twitch.tv/finnik723studio" target="_blank" rel="nofollow">
+<img alt="OpenXcom FTA Twitch Status" src="https://img.shields.io/twitch/status/finnik723studio?style=social">
+</a>
 
-## Repository status
+<p align="center"><a href="https://x-comfromtheashes.tilda.ws" target="_blank" rel="nofollow"><img src="https://i.imgur.com/KPawjTn.png"/></a></p>
 
-This repository is a **generated source mirror**, not the canonical development repository.
+> This is a fork of [OpenXcom project](https://openxcom.org) - an open-source clone of the popular "UFO: Enemy Unknown" ("X-COM:
+UFO Defense" in the USA release) and "X-COM: Terror From the Deep" videogames
+by Microprose, that requires the original files to run, licensed under the GPL and written in C++ / SDL. It was founded by Finnik in June 2019.
 
-Canonical development happens in the private `723Studio/From-the-Ashes-monorepo`. During the release process, the `engine/` subtree from that monorepo is exported into this public repository, checked for forbidden/private files, committed, and tagged with the same release tag used by the public binary release.
+> Current fork of the game engine inherits all features from OXC and OXCE ongoing development and 
+provides several exclusive game mechanics. See [project's wiki](https://github.com/723Studio/OpenXcom_FTA/wiki) for more details.
 
-Direct development in this repository is intentionally limited. Pull requests and issues may still be useful as source suggestions or bug reports, but accepted code changes are applied to the private monorepo first and then mirrored back here during a release.
 
-## Repository layout
 
-The generated engine source is published under:
+## Table of Contents
 
-```text
-engine/
-```
+* [Copyright](#copyright)
+* [Overview and Features](#overview-and-features)
+* [FAQ](#faq)
+* [Installation](#installation)
+* [Mods](#mods)
+* [Directory Locations](#directory-locations)
+  * [Windows](#windows)
+  * [Mac OS X](#mac-os-x)
+  * [Linux](#linux)
+* [Configuration](#configuration)
+* [Development](#development)
 
-The root-level README documents the mirror policy and release relationship.
 
-## What is included
+## Copyright
+All rights for the original game and its resources belong to their respective owners. We do not encourage and do not support any form of illegal usage of the original game. We strongly advise to purchase the original game on GOG or other platforms. Pirate ISOs are not supported and will cause issues such as crashes and map problems with OpenXcom FTA.
 
-This repository is intended to contain only the GPL-compatible engine source tree and closely related engine files.
+## Overview and Features 
+The X-Com initiative failed, with alien agents infiltrating the ranks of the governments of most major powers. The agency's base is in poor condition due to lack of funding. Most of the personnel were dismissed or killed. To win, the player will have to revive X-Com literally from the ashes ...
 
-It should not contain:
+The mod adding new content, missions and mechanics. Its expand the gaming experience while maintaining the original setting and spirit of the game. Here some features:
 
-- proprietary From the Ashes content;
-- encrypted official `.oxc` packages;
-- private release configuration;
-- encryption keys or other secrets;
-- generated release artifacts;
-- local Visual Studio user files such as `.vcxproj.user`.
+- The game has an alternative start. 
+- Loyalty system of your troops and stuff.For instance, mission results, events, and research affect it every time, but the alien activity count only it was detected.
+- Custom Geoscape dialogue system that will spawn events depending on the player's choice.
+- Faction Diplomacy. It represents dynamic factions for the player to interact that replace the Council of Funding Nations and its Countries.
+  - Factions live their own life with custom geoscape AI system - they have resources, like funds, power and vigilance, as well as stash of items a personnel, and they manage those resources to keep growing and balance things.
+  - Geoscape Events and Covert Operations can affect reputation scores directly.
+  - There can be hidden factions and can be discovered for diplomacy.
+  - Negotiations system with full dialogue to interact with faction.
+  - Interfaction relations. When the player rises reputation score with one faction, another goes down.
+  - ...
+- A covert operations system. The operation can be launched from each base and can involve soldiers, scientists, and engineers. 
+  - Once operation launched, some events can occur in its process, and once finished operation the game would decide its results.
+  - All covert operations can end with success, failure, or critical failure.
+  - Each covert operation can have its own geoscape entities to be added to the game on success or failure - score, funds, research, faction reputation, items, spawn events, and alien missions.
+  - It can even push the battlescape game with defined alien deployment!
+- BattleScripts a special command that is processing in the battlescape layer after the end of each player's turn. 
+- New handy animated cutscene system.
+- The game now process ongoing researchers not every day, but every hour. 
+- Hide alien base from every vanilla way to discover alien bases, but not for special ways introduced in FtA
+- ...
 
-## Releases and corresponding source
+## FAQ
+Q: At what stage is the development of the game?
+> the mod is in pre-alpha stage.
 
-Public binary releases are published separately at:
+Q: Where can I join the community and chat or participate in development?
+> [join to our Discord channel](https://discord.gg/epmtzH9) where you can find more then 180 fans. (Its can be opened in browser and does not require registration)
 
-https://github.com/723Studio/From-the-Ashes-releases
+Q: How and where can I translate the game into my language?
+> we must achieve the implementation of most ideas and mechanics after which it will be possible to start translating into languages
 
-For every public binary release, the release page should provide both:
+Q: I am an artist, how can I help the project?
+> [join to our Discord channel](https://discord.gg/epmtzH9) and we will discuss specifically your case
 
-- a source archive attached to the binary release;
-- a tag in this repository pointing to the corresponding public engine source snapshot.
+Q: I can help the development if I test the game, where can I post bug reports?
+> You can post bugreports [here](https://github.com/723Studio/OpenXcom_FTA/issues)
 
-Example release tag format:
+Q: I have some great ideas where can I share them?
+> [join to our Discord channel](https://discord.gg/epmtzH9) (Its can be opened in browser and does not require registration)
 
-- `v1.6.0-rc.1` for release candidate builds;
-- `v1.6.0` for stable builds.
+## Installation
 
-## Proprietary game content
+OpenXcom requires a vanilla copy of the X-COM resources -- from either or both
+of the original games.  If you own the games on Steam, the Windows installer
+will automatically detect it and copy the resources over for you.
 
-From the Ashes is distributed as a standalone game product with proprietary official content. That content is not part of this source mirror.
+If you want to copy things over manually, you can find the Steam game folders
+at:
 
-Official From the Ashes content is distributed through encrypted `.oxc` packages in the public release artifacts. The presence of this engine source mirror does not make proprietary game content open-source.
+    UFO: "Steam\SteamApps\common\XCom UFO Defense\XCOM"
+    TFTD: "Steam\SteamApps\common\X-COM Terror from the Deep\TFD"
 
-## Relationship to OpenXcom / OpenXcom Extended
+Do not use modded versions (e.g. with XcomUtil) as they may cause bugs and
+crashes.  Copy the UFO subfolders to the UFO subdirectory in OpenXcom's data
+or user folder and/or the TFTD subfolders to the TFTD subdirectory in OpenXcom's
+data or user folder (see below for folder locations).
 
-From the Ashes is based on a fork of OpenXcom Extended. This repository exists to publish the engine-side source corresponding to From the Ashes public binaries.
+## Mods
 
-OpenXcom and OpenXcom Extended remain separate upstream projects.
+Current engine version is designed to be used together with [X-COM: From the Ashes
+mod](https://github.com/723Studio/X-Com-From-the-Ashes). Still, currently it is fully compatible 
+with all OXC an OXCE mods, and does not have any game breaking changes. If you
+face any bug with mod, please, let us know with created issue in this repository.
+All major changes in this code, compared to OpenXcom or OpenXcom Extended are
+locked behind `ftaGame` property (see [project's wiki](https://github.com/723Studio/OpenXcom_FTA/wiki) for more info.)
 
-## Reporting issues
+## Directory Locations
 
-For release testing, crashes, missing resources, packaging problems, and gameplay feedback, use the public release repository or Discord:
+OpenXcom has three directory locations that it searches for user and game files:
 
-https://github.com/723Studio/From-the-Ashes-releases
+<table>
+  <tr>
+    <th>Folder Type</th>
+    <th>Folder Contents</th>
+  </tr>
+  <tr>
+    <td>user</td>
+    <td>mods, savegames, screenshots</td>
+  </tr>
+  <tr>
+    <td>config</td>
+    <td>game configuration</td>
+  </tr>
+  <tr>
+    <td>data</td>
+    <td>UFO and TFTD data files, standard mods, common resources</td>
+  </tr>
+</table>
 
-https://discord.gg/PpyQ3NpYKf
+Each of these default to different paths on different operating systems (shown
+below).  For the user and config directories, OpenXcom will search a list of
+directories and use the first one that already exists.  If none exist, it will
+create a directory and use that.  When searching for files in the data
+directory, OpenXcom will search through all of the named directories, so some
+files can be installed in one directory and others in another.  This gives
+you some flexibility in case you can't copy UFO or TFTD resource files to some
+system locations.  You can also specify your own path for each of these by
+passing a commandline argument when running OpenXcom.  For example:
+
+    openxcom -data "$HOME/bin/OpenXcom/usr/share/openxcom"
+
+or, if you have a fully self-contained installation:
+
+    openxcom -data "$HOME/games/openxcom/data" -user "$HOME/games/openxcom/user" -config "$HOME/games/openxcom/config"
+
+### Windows
+
+User and Config folder:
+- C:\Documents and Settings\\\<user\>\My Documents\OpenXcom (Windows 2000/XP)
+- C:\Users\\\<user\>\Documents\OpenXcom (Windows Vista/7)
+- \<game directory\>\user
+- .\user
+
+Data folders:
+- C:\Documents and Settings\\\<user\>\My Documents\OpenXcom\data (Windows 2000/XP)
+- DATADIR build flag
+- C:\Users\\\<user\>\Documents\OpenXcom\data (Windows Vista/7/8)
+- \<game directory\>
+- . (the current directory)
+
+### Mac OS X
+
+User and Config folder:
+- $XDG\_DATA\_HOME/openxcom (if $XDG\_DATA\_HOME is defined)
+- $HOME/Library/Application Support/OpenXcom
+- $HOME/.openxcom
+- ./user
+
+Data folders:
+- $XDG\_DATA\_HOME/openxcom (if $XDG\_DATA\_HOME is defined)
+- $HOME/Library/Application Support/OpenXcom (if $XDG\_DATA\_HOME is not defined)
+- DATADIR build flag
+- $XDG\_DATA\_DIRS/openxcom (for each directory in $XDG\_DATA\_DIRS if $XDG\_DATA\_DIRS is defined)
+- /Users/Shared/OpenXcom (if $XDG\_DATA\_DIRS is not defined or is empty)
+- . (the current directory)
+
+### Linux
+
+User folder:
+- $XDG\_DATA\_HOME/openxcom (if $XDG\_DATA\_HOME is defined)
+- $HOME/.local/share/openxcom (if $XDG\_DATA\_HOME is not defined)
+- $HOME/.openxcom
+- ./user
+
+Config folder:
+- $XDG\_CONFIG\_HOME/openxcom (if $XDG\_CONFIG\_HOME is defined)
+- $HOME/.config/openxcom (if $XDG\_CONFIG\_HOME is not defined)
+
+Data folders:
+- $XDG\_DATA\_HOME/openxcom (if $XDG\_DATA\_HOME is defined)
+- $HOME/.local/share/openxcom (if $XDG\_DATA\_HOME is not defined)
+- DATADIR build flag
+- $XDG\_DATA\_DIRS/openxcom (for each directory in $XDG\_DATA\_DIRS if $XDG\_DATA\_DIRS is defined)
+- /usr/local/share/openxcom (if $XDG\_DATA\_DIRS is not defined or is empty)
+- /usr/share/openxcom (if $XDG\_DATA\_DIRS is not defined or is empty)
+- the directory data files were installed to
+- . (the current directory)
+
+## Configuration
+
+OpenXcom has a variety of game settings and extras that can be customized, both
+in-game and out-game. These options are global and affect any old or new
+savegame.
+
+For more details please check the [wiki](https://ufopaedia.org/index.php/Options_(OpenXcom)).
+
+### Encrypted Content Containers
+
+OpenXcom FTA supports loading encrypted `.oxc` container files to protect game content from unauthorized modification and redistribution. This feature uses AES-256-CBC encryption with HMAC-SHA256 authentication.
+
+To use encrypted containers:
+
+1. **Create an encrypted container** using [rpk-builder](https://github.com/723Studio/rpk-builder)
+2. **Set the encryption key** via the `OXC_CONTENT_KEY` environment variable before launching the game
+3. **Place the container** file (e.g., `common.oxc`, `standard.oxc`) in your data folders
+
+The game will automatically detect and load `.oxc` files alongside regular ZIP archives and directories.
+
+## Development
+
+OpenXcom requires the following developer libraries:
+
+- [SDL](https://www.libsdl.org) (libsdl1.2)
+- [SDL\_mixer](https://www.libsdl.org/projects/SDL_mixer/) (libsdl-mixer1.2)
+- [SDL\_gfx](https://www.ferzkopp.net/wordpress/2016/01/02/sdl_gfx-sdl2_gfx/) (libsdl-gfx1.2), version 2.0.22 or later
+- [SDL\_image](https://www.libsdl.org/projects/SDL_image/) (libsdl-image1.2)
+
+- [tiny-AES-c](https://github.com/kokke/tiny-AES-c) — Embedded AES-256-CBC implementation adapted from the tiny-AES-c project (MIT license). The adapted source files are included in `src/Engine/tiny_aes.c` and `src/Engine/tiny_aes.h`.
+
+  The original tiny-AES-c project: https://github.com/kokke/tiny-AES-c (MIT). We include a minimal, adapted subset for decrypting `.oxc` containers; see those source files for attribution and implementation details.
+
+The source code includes files for the following build tools:
+
+- Microsoft Visual C++ 2010 or newer
+- Xcode
+- Make (see Makefile.simple)
+- CMake
+
+It's also been tested on a variety of other tools on Windows/Mac/Linux. More
+detailed compiling instructions are available at the
+[wiki](https://ufopaedia.org/index.php/Compiling_(OpenXcom)), along with
+pre-compiled dependency packages.

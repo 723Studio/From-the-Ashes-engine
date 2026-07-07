@@ -1,0 +1,10 @@
+This repository is an automated public mirror of the GPL-covered engine subtree from:
+
+  723Studio/From-the-Ashes-monorepo
+
+Mirrored source branch: main
+Mirrored source commit: 73e18690c203c9ec9ec992d6d208501b99b385a9
+Release tag: v1.6.0-rc.3
+
+Only engine/ source is mirrored here. Proprietary FTA content, encrypted packages,
+release artifacts, original UFO/X-COM data, private assets, and secrets are not part of this repository.
