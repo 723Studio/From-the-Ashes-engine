@@ -28,10 +28,8 @@
 #include "../Interface/TextList.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/CovertOperation.h"
-#include "../Basescape/CovertOperationStartState.h"
 #include "../Basescape/CovertOperationInfoState.h"
 #include "../Basescape/CovertOperationsListState.h"
-#include "../Engine/Logger.h"
 
 
 namespace OpenXcom
@@ -79,8 +77,6 @@ CovertOperationState::CovertOperationState(Base* base) : _base(base)
 
 	_btnNew->setText(tr("STR_NEW_OPERATION"));
 	_btnNew->onMouseClick((ActionHandler)&CovertOperationState::btnNewClick);
-	_btnNew->onKeyboardPress((ActionHandler)&CovertOperationState::btnNewClick, Options::keyToggleQuickSearch);
-	_btnNew->onKeyboardPress((ActionHandler)&CovertOperationState::onCurrentGlobalResearchClick, Options::keyGeoGlobalResearch);
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&CovertOperationState::btnOkClick);
@@ -143,15 +139,6 @@ void CovertOperationState::onSelectOperation(Action*)
 	_game->pushState(new CovertOperationInfoState(selectedTopic));
 }
 
-/**
-* Opens the Current Global Research UI.
-* @param action Pointer to an action.
-*/
-void CovertOperationState::onCurrentGlobalResearchClick(Action*)
-{
-	return; //#FINNIKTODO
-	//_game->pushState(new GlobalResearchState(true));
-}
 /**
 * Updates the research list
 * after going to other screens.

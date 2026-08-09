@@ -12,6 +12,7 @@
 
 #include "OpenGL.h"
 #include <SDL.h>
+#include <exception>
 #include "../Engine/Yaml.h"
 
 #include "Logger.h"
@@ -247,13 +248,24 @@ bool OpenGL::set_shader(const char *source_yaml_filename)
 {
 	if (!shader_support) return false;
 
-	if (glprogram)
+	auto deleteProgram = [this]()
 	{
-		glDeleteProgram(glprogram);
-		glprogram = 0;
+		if (glprogram)
+		{
+			glDeleteProgram(glprogram);
+			glErrorCheck();
+			glprogram = 0;
+		}
+	};
+
+	deleteProgram();
+
+	if (!source_yaml_filename || source_yaml_filename[0] == '\0')
+	{
+		return false;
 	}
 
-	if (source_yaml_filename && source_yaml_filename[0] != '\0')
+	try
 	{
 		glprogram = glCreateProgram();
 		if (glprogram == 0)
@@ -261,28 +273,26 @@ bool OpenGL::set_shader(const char *source_yaml_filename)
 			Log(LOG_ERROR) << "Failed to create GLSL shader program";
 			return false;
 		}
+
+		auto reader = FileMap::getYAML(source_yaml_filename);
+
+		std::string language = reader["language"].readVal<std::string>();
+		bool is_glsl = (language == "GLSL");
+
+		linear = reader["linear"].readVal(false); // some shaders want texture linear interpolation and some don't
+		std::string fragment_source = reader["fragment"].readVal<std::string>("");
+		std::string vertex_source = reader["vertex"].readVal<std::string>("");
+
+		if (is_glsl)
 		{
-			auto reader = FileMap::getYAML(source_yaml_filename);
-
-			bool is_glsl;
-			std::string language = reader["language"].readVal<std::string>();
-			is_glsl = (language == "GLSL");
-
-
-			linear = reader["linear"].readVal(false); // some shaders want texture linear interpolation and some don't
-			std::string fragment_source = reader["fragment"].readVal<std::string>("");
-			std::string vertex_source = reader["vertex"].readVal<std::string>("");
-
-			if (is_glsl)
-			{
-				if (!fragment_source.empty()) set_fragment_shader(fragment_source.c_str());
-				if (!vertex_source.empty()) set_vertex_shader(vertex_source.c_str());
-			}
-			else
-			{
-				Log(LOG_ERROR) << "Unexpected shader language \"" << language << "\"";
-			}
+			if (!fragment_source.empty()) set_fragment_shader(fragment_source.c_str());
+			if (!vertex_source.empty()) set_vertex_shader(vertex_source.c_str());
 		}
+		else
+		{
+			Log(LOG_ERROR) << "Unexpected shader language \"" << language << "\"";
+		}
+
 		glLinkProgram(glprogram);
 		glErrorCheck();
 		GLint linkStatus;
@@ -307,11 +317,22 @@ bool OpenGL::set_shader(const char *source_yaml_filename)
 
 				delete[] infoLog;
 			}
-			glDeleteProgram(glprogram);
-			glErrorCheck();
-			glprogram = 0;
+			deleteProgram();
 		}
 	}
+	catch (const std::exception &e)
+	{
+		Log(LOG_ERROR) << "Failed to load OpenGL shader '" << source_yaml_filename << "': " << e.what();
+		deleteProgram();
+		return false;
+	}
+	catch (...)
+	{
+		Log(LOG_ERROR) << "Failed to load OpenGL shader '" << source_yaml_filename << "': unknown error";
+		deleteProgram();
+		return false;
+	}
+
 	return glprogram != 0;
 }
 

@@ -181,13 +181,14 @@ private:
 	ArmorMoveCost _moveCostBaseNormal = { 0, 0 };
 	std::vector<std::pair<Uint8, Uint8> > _recolor;
 	bool _capturable;
-	bool _vip;
 	bool _bannedInNextStage;
 	bool _skillMenuCheck;
 	ScriptValues<BattleUnit> _scriptValues;
 
 	/// Calculate stat improvement.
 	//int improveStat(int exp) const;
+	/// Whether this geoscape personnel entity may accumulate experience.
+	bool canGainExperience() const;
 	/// Helper function initializing recolor vector.
 	void setRecolor(int basicLook, int utileLook, int rankLook);
 	/// Helper function preparing Time Units recovery at beginning of turn.
@@ -201,7 +202,7 @@ private:
 	/// Helper function preparing Stun recovery at beginning of turn.
 	void prepareStun(int strun);
 	/// Helper function preparing Morale recovery at beginning of turn.
-	void prepareMorale(int morale);
+	void prepareMorale(int morale, int loyaltyPerformance);
 	/// Helper function preparing unit sounds.
 	void prepareUnitSounds();
 	/// Helper function preparing unit response sounds.
@@ -286,7 +287,7 @@ public:
 	/// Gets the unit's warned status.
 	bool getUnitWarned() const { return _warned; }
 	/// Check if unit's desguise still valid.
-	bool tryUncover();
+	bool tryUncover() const;
 	/// Sets if the unit was under direct friendly fire.
 	void setFrienlyFired(bool wasFriendlyFired) { _wasFriendlyFired = wasFriendlyFired; }
 	/// Gets if the unit was under direct friendly fire.
@@ -423,9 +424,9 @@ public:
 	/// Get the current reaction score.
 	double getReactionScore() const;
 	/// Prepare for a new turn.
-	void prepareNewTurn(bool fullProcess = true);
+	void prepareNewTurn(bool fullProcess = true, int loyaltyPerformance = 100);
 	/// Calculate change in unit stats.
-	void updateUnitStats(bool tuAndEnergy, bool rest);
+	void updateUnitStats(bool tuAndEnergy, bool rest, int loyaltyPerformance = 100);
 	/// Morale change
 	void moraleChange(int change);
 	/// Calculate value of morale change based on bravery.
@@ -450,7 +451,7 @@ public:
 	/// Fit item into inventory slot.
 	bool fitItemToInventory(const RuleInventory *slot, BattleItem *item);
 	/// Add item to unit.
-	bool addItem(BattleItem *item, const Mod *mod, bool allowSecondClip = false, bool allowAutoLoadout = false, bool allowUnloadedWeapons = false);
+	bool addItem(BattleItem *item, const Mod *mod, bool allowSecondClip = false, bool allowPlayerEquipment = false, bool allowUnloadedWeapons = false);
 
 	/// Let AI do their thing.
 	void think(BattleAction *action);
@@ -555,7 +556,7 @@ public:
 	///Adds one the phisics exp counter.
 	void addPhysicsExp();
 	/// Did the unit gain any experience yet?
-	bool hasGainedAnyExperience();
+	bool hasGainedAnyExperience() const;
 	/// Updates the stats of a Geoscape soldier.
 	void updateGeoscapeStats(Soldier *soldier) const;
 	/// Check if unit eligible for squaddie promotion.
@@ -745,11 +746,11 @@ public:
 	/// Set if the unit is covered (used for stealth infiltration missions mechanics)
 	void setUndercover(bool undercover) { _undercover = undercover; }
 	/// Get if this unit counts as covered
-	bool getUndercover() { return _undercover; }
+	bool getUndercover() const { return _undercover; }
 
 	/// Set BattleUnit's revealed status (used for stealth infiltration missions mechanics)
 	void setRevealed(bool revealed) { _revealed = revealed; }
-	bool getRevealed() { return _revealed; }
+	bool getRevealed() const { return _revealed; }
 
 	/// Get this unit's original faction
 	UnitFaction getOriginalFaction() const;
@@ -767,7 +768,7 @@ public:
 	/// get the rank unified integer
 	int getRankIntUnified() const { return _rankIntUnified; };
 	/// derive a rank integer based on rank string (for xcom soldiers ONLY)
-	void deriveSoldierRank();
+	void deriveTacticalRankFromSoldierRole();
 	/// derive a rank integer based on rank string (for Alien)
 	void deriveHostileRank();
 	/// derive a rank integer based on rank string (for Civilians)
@@ -902,14 +903,14 @@ public:
 	bool isCosmetic() const;
 	/// Should this AI unit (alien or civilian) be ignored by other AI units?
 	bool isIgnoredByAI() const;
+	/// Should this unit currently participate in treatedByAI hostility?
+	bool isTreatedByAI() const;
+	/// Does treatedByAI make this unit and the other unit hostile to each other?
+	bool hasTreatedByAIHostility(const BattleUnit *unit) const;
 	/// Marks this unit as resummoned fake civilian and therefore won't count for civilian scoring in the Debriefing.
 	void markAsResummonedFakeCivilian() { _resummonedFakeCivilian = true; _status = STATUS_IGNORE_ME; }
 	/// Is this unit a resummoned fake civilian?
 	bool isResummonedFakeCivilian() const { return _resummonedFakeCivilian; }
-	/// Marks this unit as VIP.
-	void markAsVIP() { _vip = true; }
-	/// Is this a VIP unit?
-	bool isVIP() const { return _vip; }
 	/// Is this unit banned in the next stage?
 	bool isBannedInNextStage() const { return _bannedInNextStage; }
 	/// Is at least one soldier skill usable? (i.e. shown in the skill menu)
@@ -943,4 +944,3 @@ public:
 };
 
 } //namespace OpenXcom
-

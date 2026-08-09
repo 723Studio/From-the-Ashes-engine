@@ -28,7 +28,7 @@ namespace OpenXcom
 class Mod;
 class RuleItem;
 
-enum CraftWeaponCategory { CWC_WEAPON, CWC_TRACTOR_BEAM, CWC_EQUIPMENT };
+enum CraftWeaponCategory { CWC_WEAPON, CWC_EQUIPMENT };
 
 
 /**
@@ -50,7 +50,6 @@ private:
 	const RuleItem* _clip;
 	RuleCraftStats _stats;
 	bool _underwaterOnly;
-	int _tractorBeamPower;
 	bool _hidePediaInfo;
 	bool _statisticalBulletSaving;
 	bool _unifiedDamageFormula;
@@ -112,8 +111,6 @@ public:
 	const RuleCraftStats& getBonusStats() const;
 	/// Is this item restricted to use underwater?
 	bool isWaterOnly() const;
-	/// Get the craft weapon's tractor beam power
-	int getTractorBeamPower() const;
 };
 
 }

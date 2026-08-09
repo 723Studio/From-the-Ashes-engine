@@ -18,6 +18,9 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "../Engine/State.h"
+#include "../Savegame/Promotion.h"
+#include <string>
+#include <vector>
 
 namespace OpenXcom
 {
@@ -28,7 +31,6 @@ class TextButton;
 class Text;
 class Base;
 class RuleResearch;
-class Soldier;
 
 /**
  * Window which inform the player that a research project is finished.
@@ -39,11 +41,17 @@ class ResearchCompleteState : public State
 	Window *_window;
 	Text *_txtTitle, *_txtResearch, *_txtBase;
 	TextButton *_btnReport, *_btnOk, *_btnPromotions;
-	std::vector<Soldier*> _promotedSoldiers;
-	const RuleResearch * _research, * _bonus;
+	PromotionBatch _promotions;
+	Base* _base;
+	std::vector<std::string> _articleIds;
+	std::vector<std::string> _newResearchNotifications;
+	bool _containedAlienStudiesUnblocked;
 public:
 	/// Creates the EndResearch state.
-	ResearchCompleteState(const RuleResearch *newResearch, const RuleResearch *bonus, const RuleResearch *research, const Base* base, std::vector<Soldier*> promotedSoldiers);
+	ResearchCompleteState(const RuleResearch* research, Base* base, const PromotionBatch& promotions,
+		std::vector<std::string> articleIds,
+		std::vector<std::string> newResearchNotifications = {},
+		bool containedAlienStudiesUnblocked = false);
 	/// Handler for clicking the OK button.
 	void btnOkClick(Action *action);
 	/// Handler for clicking the Report button.

@@ -34,6 +34,7 @@ class MapDataSet;
 class Node;
 class BattlescapeState;
 class BattlescapeGame;
+class MapEditorState;
 class Position;
 class Pathfinding;
 class TileEngine;
@@ -76,6 +77,7 @@ private:
 	Craft* _craftForPreview;
 	std::vector<Position> _craftTiles;
 	BattlescapeState *_battleState;
+	MapEditorState *_mapEditorState;
 	Mod *_rule;
 	int _mapsize_x, _mapsize_y, _mapsize_z;
 	std::vector<MapDataSet*> _mapDataSets;
@@ -88,13 +90,10 @@ private:
 	int _itemObjectivesNumber;
 	Pathfinding *_pathfinding;
 	TileEngine *_tileEngine;
-	std::string _missionType, _strTarget, _strCraftOrBase, _alienCustomDeploy, _alienCustomMission;
+	std::string _missionType, _strTarget, _strCraftOrBase, _alienCustomDeploy, _alienCustomMission, _activeDeployment;
 	std::string _lastUsedMapScript;
 	int _alienItemLevel = 0;
-	std::string _reinforcementsDeployment, _reinforcementsRace;
-	int _reinforcementsItemLevel;
-	std::map<std::string, int> _reinforcementsMemory;
-	std::vector< std::vector<int> > _reinforcementsBlocks;
+	std::vector< std::vector<int> > _scriptSpawnBlocks;
 	std::vector< std::vector<std::string> > _flattenedMapTerrainNames;
 	std::vector< std::vector<std::string> > _flattenedMapBlockNames;
 	const RuleStartingCondition *_startingCondition;
@@ -111,8 +110,6 @@ private:
 	bool _hackingObjective;
 	bool _baseCraftInventory = false;
 	int _itemId;
-	EscapeType _vipEscapeType;
-	int _vipSurvivalPercentage, _vipsSaved, _vipsLost, _vipsWaitingOutside, _vipsSavedScore, _vipsLostScore, _vipsWaitingOutsideScore;
 	int _objectiveType, _objectivesDestroyed, _objectivesNeeded;
 	std::vector<BattleUnit*> _exposedUnits;
 	std::list<BattleUnit*> _fallingUnits;
@@ -132,9 +129,9 @@ private:
 	ChronoTrigger _chronoTrigger;
 	int _alarmLvl;
 	bool _beforeGame;
-	bool _togglePersonalLight, _toggleNightVision;
+	bool _toggleNightVision;
 	int _toggleBrightness;
-	bool _togglePersonalLightTemp = false, _toggleNightVisionTemp = false;
+	bool _toggleNightVisionTemp = false;
 	int _toggleBrightnessTemp = 0, _toggleNightVisionColorTemp = 0;
 	std::string _hiddenMovementBackground;
 	std::map<std::string, int> _battleScriptVars;
@@ -146,6 +143,10 @@ private:
 	void newTurnUpdateScripts();
 	/// Updates alarm level on the battlescape.
 	void updateAlarm();
+	/// Gets the unresolved deployment used by legacy saves.
+	AlienDeployment *getLegacyDeployment() const;
+	/// Resolves the researched alternative-deployment chain.
+	const AlienDeployment *resolveDeployment(const AlienDeployment *deployment, const SavedGame *campaign) const;
 public:
 	/// Creates a new battle save, based on the current generic save.
 	SavedBattleGame(Mod *rule, Language *lang, bool isPreview = false);
@@ -175,8 +176,10 @@ public:
 	void setMissionCraftOrBase(const std::string& missionCraftOrBase) { _strCraftOrBase = missionCraftOrBase; }
 	/// Gets the mission craft/base.
 	const std::string& getMissionCraftOrBase() const { return _strCraftOrBase; }
-	/// Gets the deployment rules.
-	AlienDeployment* getAlienDeploymet();
+	/// Resolves and stores the deployment actually used by this tactical stage.
+	const AlienDeployment *selectActiveDeployment(const AlienDeployment *deployment, const SavedGame *campaign);
+	/// Gets the deployment actually used by this tactical stage.
+	AlienDeployment *getActiveDeployment();
 	/// Gets the base's items BEFORE the mission.
 	ItemContainer *getBaseStorageItems();
 	/// Gets the alarm level of the battle game.
@@ -211,22 +214,8 @@ public:
 	/// Gets the alien item level.
 	int getAlienItemLevel() const { return _alienItemLevel; }
 
-	/// Sets the alien deployment to use for reinforcements.
-	void setReinforcementsDeployment(const std::string &reinforcementsDeployment) { _reinforcementsDeployment = reinforcementsDeployment; }
-	/// Gets the alien deployment to use for reinforcements.
-	const std::string &getReinforcementsDeployment() const { return _reinforcementsDeployment; }
-	/// Sets the alien race to use for reinforcements.
-	void setReinforcementsRace(const std::string &reinforcementsRace) { _reinforcementsRace = reinforcementsRace; }
-	/// Gets the alien race to use for reinforcements.
-	const std::string &getReinforcementsRace() const { return _reinforcementsRace; }
-	/// Sets the alien item level to use for reinforcements.
-	void setReinforcementsItemLevel(int reinforcementsItemLevel) { _reinforcementsItemLevel = reinforcementsItemLevel; }
-	/// Gets the alien item level to use for reinforcements.
-	int getReinforcementsItemLevel() const { return _reinforcementsItemLevel; }
-	/// Gets the memory used for reinforcements.
-	std::map<std::string, int> &getReinforcementsMemory() { return _reinforcementsMemory; }
-	/// Gets the map blocks used for reinforcements.
-	std::vector< std::vector<int> > &getReinforcementsBlocks() { return _reinforcementsBlocks; }
+	/// Gets map blocks marked for scripted spawns.
+	std::vector< std::vector<int> > &getScriptSpawnBlocks() { return _scriptSpawnBlocks; }
 
 	/// Gets the flattened map block terrain names (or craft/ufo names) generated by the BattlescapeGenerator.
 	std::vector< std::vector<std::string> > &getFlattenedMapTerrainNames() { return _flattenedMapTerrainNames; }
@@ -609,6 +598,10 @@ public:
 	bool isStealthMission() const { return _stealthMission; }
 	/// Defines this battle as a stealth mission.
 	void defineStealth();
+	/// Re-evaluates a player's base disguise eligibility for the current deployment.
+	void applyUndercoverStatus(BattleUnit *unit);
+	/// Returns whether a unit's disguise is currently effective.
+	bool isUndercoverActive(const BattleUnit *unit) const;
 	/// Gets if the mission objective gained with hacking special BattleObject.
 	bool isHackingObjectiveGained() const { return _hackingObjective; }
 	/// Sets if the mission objective gained with hacking special BattleObject.
@@ -623,31 +616,6 @@ public:
 	const std::string &getMusic() const;
 	/// Set the name of the music track.
 	void setMusic(const std::string &track);
-
-	/// Sets the VIP escape type.
-	void setVIPEscapeType(EscapeType vipEscapeType);
-	/// Gets the VIP escape type.
-	EscapeType getVIPEscapeType() const;
-	/// Sets the percentage of VIPs that must survive in order to accomplish the mission.
-	void setVIPSurvivalPercentage(int vipSurvivalPercentage);
-	/// Gets the percentage of VIPs that must survive in order to accomplish the mission.
-	int getVIPSurvivalPercentage() const;
-	/// Increase the saved VIPs counter.
-	void addSavedVIP(int score);
-	/// Gets the saved VIPs counter.
-	int getSavedVIPs() const;
-	/// Gets the saved VIPs total score.
-	int getSavedVIPsScore() const;
-	/// Increase the lost VIPs counter.
-	void addLostVIP(int score);
-	/// Gets the lost VIPs counter.
-	int getLostVIPs() const;
-	/// Gets the lost VIPs total score.
-	int getLostVIPsScore() const;
-	/// Increase the waiting outside VIPs counter.
-	void addWaitingOutsideVIP(int score);
-	/// Corrects the VIP stats based on the final mission outcome.
-	void correctVIPStats(bool success, bool retreated);
 
 	/// Sets the objective type for this mission.
 	void setObjectiveType(int type);
@@ -670,10 +638,6 @@ public:
 	/// Check whether the battle has actually commenced or not.
 	bool isBeforeGame() const;
 
-	/// gets personal light toggle
-	bool getTogglePersonalLight() const { return _togglePersonalLight; }
-	/// sets personal light toggle
-	void setTogglePersonalLight(bool togglePersonalLight) { _togglePersonalLight = togglePersonalLight; }
 	/// gets night vision toggle
 	bool getToggleNightVision() const { return _toggleNightVision; }
 	/// sets night vision toggle
@@ -683,8 +647,6 @@ public:
 	/// sets brightness toggle
 	void setToggleBrightness(int toggleBrightness) { _toggleBrightness = toggleBrightness; }
 
-	/// sets final value for personal light toggle (for scripts)
-	void setTogglePersonalLightTemp(bool togglePersonalLight) { _togglePersonalLightTemp = togglePersonalLight; }
 	/// sets final value for night vision toggle (for scripts)
 	void setToggleNightVisionTemp(bool toggleNightVision) { _toggleNightVisionTemp = toggleNightVision; }
 	/// sets final value for night vision color toggle (for scripts)
@@ -703,6 +665,11 @@ public:
 	const HitLog *getHitLog() const;
 	/// Reset all the unit hit state flags.
 	void resetUnitHitStates();
+
+	/// Sets the pointer to the MapEditorState.
+	void setMapEditorState(MapEditorState *mapEditorState);
+	/// Gets the pointer to the MapEditorState.
+	MapEditorState *getMapEditorState();
 };
 
 }

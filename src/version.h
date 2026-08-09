@@ -18,8 +18,13 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define OPENXCOM_FTA_VERSION_ENGINE "FtA"
-#define OPENXCOM_FTA_VERSION_NUMBER 1,6,0,0
-#define OPENXCOM_FTA_VERSION_SHORT "FtA 1.6.0"
-#define OPENXCOM_FTA_VERSION_LONG "1.6.0.0"
-#define OPENXCOM_FTA_VERSION_GIT " (v2026-07-01)"
+// FTA_PRODUCT_* identifies the standalone game delivered to players.
+#define FTA_PRODUCT_NAME "X-Com: From the Ashes"
+#define FTA_PRODUCT_VERSION_NUMBER 0,2,0,0
+#define FTA_PRODUCT_VERSION_SHORT "0.2.0"
+#define FTA_PRODUCT_VERSION_LONG "0.2.0.0"
+#define FTA_PRODUCT_MILESTONE "Alpha 2"
+#define FTA_PRODUCT_MILESTONE_ID "alpha2"
+#define FTA_PRODUCT_STAGE "alpha"
+#define FTA_PRODUCT_VERSION_DISPLAY FTA_PRODUCT_MILESTONE " - " FTA_PRODUCT_VERSION_SHORT
+#define FTA_PRODUCT_WINDOW_TITLE FTA_PRODUCT_NAME " - " FTA_PRODUCT_MILESTONE " (" FTA_PRODUCT_VERSION_SHORT ")"

@@ -36,6 +36,7 @@ enum AlienMissionOperationType {
 };
 
 class WeightedOptions;
+class Mod;
 
 /**
  * @brief Information about a mission wave.
@@ -112,7 +113,7 @@ struct MissionWave
 	int interruptPercentage;
 };
 
-enum MissionObjective { OBJECTIVE_SCORE, OBJECTIVE_INFILTRATION, OBJECTIVE_BASE, OBJECTIVE_SITE, OBJECTIVE_RETALIATION, OBJECTIVE_SUPPLY, OBJECTIVE_INSTANT_RETALIATION };
+enum MissionObjective { OBJECTIVE_SCORE = 0, OBJECTIVE_BASE = 2, OBJECTIVE_SITE = 3, OBJECTIVE_RETALIATION = 4, OBJECTIVE_SUPPLY = 5, OBJECTIVE_INSTANT_RETALIATION = 6 };
 
 /**
  * Stores fixed information about a mission type.
@@ -133,6 +134,10 @@ public:
 	std::string generateRace(const size_t monthsPassed) const;
 	/// Loads alien mission data from YAML.
 	void load(const YAML::YamlNodeReader& reader);
+	/// Validates linked race rules after all ruleset merges are complete.
+	void afterLoad(const Mod* mod);
+	/// Validates that this mission can select its own race when spawned directly.
+	void validateDirectSpawn() const;
 	/// Gets the number of waves.
 	size_t getWaveCount() const { return _waves.size(); }
 	/// Gets the full wave information.
@@ -151,8 +156,6 @@ public:
 	int getWeight(const size_t monthsPassed) const;
 	/// Gets the inherent odds of this mission spawning a retaliation mission.
 	int getRetaliationOdds() const;
-	/// Should the infiltration end after first cycle or continue indefinitely?
-	bool isEndlessInfiltration() const;
 	/// Should the retaliation mission end after the first base defense or continue until all already spawned UFOs disappear?
 	bool isMultiUfoRetaliation() const { return _multiUfoRetaliation; }
 	/// Should the retaliation mission continue generating UFOs even after the first base defense?
@@ -204,8 +207,6 @@ private:
 	int _spawnZone;
 	/// The odds that this mission will result in retaliation
 	int _retaliationOdds;
-	/// Should the infiltration end after first cycle or continue indefinitely?
-	bool _endlessInfiltration;
 	/// Should the retaliation mission end after the first base defense or continue until all already spawned UFOs disappear?
 	bool _multiUfoRetaliation;
 	/// Should the retaliation mission continue generating UFOs even after the first base defense?

@@ -41,7 +41,6 @@ private:
 	Globe *_globe;
 	BaseView *_view;
 	Text *_txtTitle;
-	bool _first;
 	RuleBaseFacility *_lift;
 
 	std::vector<RuleBaseFacility*> _accessLifts;
@@ -50,7 +49,7 @@ private:
 	TextList *_lstAccessLifts;
 public:
 	/// Creates the Place Lift state.
-	PlaceLiftState(Base *base, Globe *globe, bool first);
+	PlaceLiftState(Base *base, Globe *globe);
 	/// Cleans up the Place Lift state.
 	~PlaceLiftState();
 	/// Handler for clicking the base view.

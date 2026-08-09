@@ -29,7 +29,6 @@
 #include "SavedGame.h"
 #include "ItemContainer.h"
 #include "Soldier.h"
-#include "EquipmentLayoutItem.h"
 #include "Transfer.h"
 #include "../Mod/RuleSoldier.h"
 #include "../Mod/RuleSoldierBonus.h"
@@ -60,15 +59,12 @@ Craft::Craft(const RuleCraft *rules, Base *base, int id) : MovingTarget(),
 	_rules(rules), _base(base), _fuel(0), _excessFuel(0), _damage(0), _shield(0),
 	_interceptionOrder(0), _takeoff(0), _weapons(),
 	_status("STR_READY"), _lowFuel(false), _mission(false),
-	_inBattlescape(false), _inDogfight(false), _stats(),
+	_inBattlescape(false), _inDogfight(false), _pendingBattleReport(false), _stats(),
 	_isAutoPatrolling(false), _lonAuto(0.0), _latAuto(0.0),
-	_scientists(0), _engineers(0),
 	_skinIndex(0)
 {
 	_stats = rules->getStats();
 	_items = new ItemContainer();
-	_tempSoldierItems = new ItemContainer();
-	_tempExtraItems = new ItemContainer();
 	if (id != 0)
 	{
 		_id = id;
@@ -102,8 +98,6 @@ Craft::~Craft()
 		delete cw;
 	}
 	delete _items;
-	delete _tempSoldierItems;
-	delete _tempExtraItems;
 	for (auto* vehicle : _vehicles)
 	{
 		delete vehicle;
@@ -254,12 +248,11 @@ void Craft::load(const YAML::YamlNodeReader& node, const ScriptGlobal *shared, c
 	}
 	reader.tryRead("takeoff", _takeoff);
 	reader.tryRead("inBattlescape", _inBattlescape);
+	reader.tryRead("pendingBattleReport", _pendingBattleReport);
 	reader.tryRead("isAutoPatrolling", _isAutoPatrolling);
 	reader.tryRead("lonAuto", _lonAuto);
 	reader.tryRead("latAuto", _latAuto);
 	reader.tryRead("pilots", _pilots);
-	reader.tryRead("scientists", _scientists); // #FINNIKTODO - check if still needed after soldiers roles overhaul
-	reader.tryRead("engineers", _engineers);
 	reader.tryRead("customSoldierDeployment", _customSoldierDeployment);
 	reader.tryRead("customVehicleDeployment", _customVehicleDeployment);
 	reader.tryRead("skinIndex", _skinIndex);
@@ -370,6 +363,8 @@ void Craft::save(YAML::YamlNodeWriter writer, const ScriptGlobal *shared) const
 		writer.write("mission", _mission);
 	if (_inBattlescape)
 		writer.write("inBattlescape", _inBattlescape);
+	if (_pendingBattleReport)
+		writer.write("pendingBattleReport", _pendingBattleReport);
 	if (_interceptionOrder != 0)
 		writer.write("interceptionOrder", _interceptionOrder);
 	if (_takeoff != 0)
@@ -380,10 +375,6 @@ void Craft::save(YAML::YamlNodeWriter writer, const ScriptGlobal *shared) const
 	writer.write("latAuto", serializeDouble(_latAuto));
 	if (_pilots.size())
 		writer.write("pilots", _pilots);
-	if  (_scientists != 0)
-		writer.write("scientists", _scientists);
-	if  (_engineers != 0)
-		writer.write("engineers", _engineers);
 	if (!_customSoldierDeployment.empty())
 		writer.write("customSoldierDeployment", _customSoldierDeployment);
 	if (!_customVehicleDeployment.empty())
@@ -628,24 +619,6 @@ ItemContainer *Craft::getItems()
 }
 
 /**
- * Returns the list of items in the craft equipped by the soldiers.
- * @return Pointer to the item list.
- */
-ItemContainer* Craft::getSoldierItems()
-{
-	return _tempSoldierItems;
-}
-
-/**
- * Returns the list of items in the craft not equipped by the soldiers.
- * @return Pointer to the item list.
- */
-ItemContainer* Craft::getExtraItems()
-{
-	return _tempExtraItems;
-}
-
-/**
  * Returns the list of vehicles currently equipped
  * in the craft.
  * @return Pointer to vehicle list.
@@ -653,38 +626,6 @@ ItemContainer* Craft::getExtraItems()
 std::vector<Vehicle*> *Craft::getVehicles()
 {
 	return &_vehicles;
-}
-
-/**
- * Calculates (and stores) the sum of all equipment of all soldiers on the craft.
- */
-void Craft::calculateTotalSoldierEquipment()
-{
-	_tempSoldierItems->clear();
-
-	for (auto* soldier : *_base->getSoldiers())
-	{
-		if (soldier->getCraft() == this)
-		{
-			for (auto* invItem : *soldier->getEquipmentLayout())
-			{
-				// ignore fixed weapons...
-				if (!invItem->isFixed())
-				{
-					_tempSoldierItems->addItem(invItem->getItemType());
-				}
-				// ...but not their ammo
-				for (int slot = 0; slot < RuleItem::AmmoSlotMax; ++slot)
-				{
-					const auto* invItemAmmo = invItem->getAmmoItemForSlot(slot);
-					if (invItemAmmo != nullptr)
-					{
-						_tempSoldierItems->addItem(invItemAmmo);
-					}
-				}
-			}
-		}
-	}
 }
 
 /**
@@ -1094,23 +1035,13 @@ void Craft::evacuateCrew(const Mod *mod)
 			++iter; // next
 		}
 	}
-	// care scientists and engineers that might be onboard
-	Transfer *ts = new Transfer(mod->getPersonnelTime());
-	ts->setScientists(_scientists);
-	_base->getTransfers()->push_back(ts);
-	_scientists = 0;
-	Transfer *te = new Transfer(mod->getPersonnelTime());
-	te->setEngineers(_engineers);
-	_base->getTransfers()->push_back(te);
-	_engineers = 0;
-
 	removeAllPilots(); // just in case
 }
 
 /**
  * Moves the craft to its destination.
  */
-bool Craft::think(std::string &pushState)
+bool Craft::think()
 {
 	if (_takeoff == 0)
 	{
@@ -1119,15 +1050,11 @@ bool Craft::think(std::string &pushState)
 	else
 	{
 		_takeoff--;
-		resetMeetPoint();
 	}
 	if (reachedDestination() && _dest == (Target*)_base)
 	{
 		setInterceptionOrder(0); // just to be sure
-		if (checkup())
-		{
-			pushState = "PromotionsState";
-		}
+		checkup();
 		setDestination(0);
 		setSpeed(0);
 		_lowFuel = false;
@@ -1150,7 +1077,7 @@ bool Craft::isTakingOff() const
  * Checks the condition of all the craft's systems
  * to define its new status (eg. when arriving at base).
  */
-bool Craft::checkup()
+void Craft::checkup()
 {
 	int available = 0, full = 0;
 	for (auto* cw : _weapons)
@@ -1185,17 +1112,7 @@ bool Craft::checkup()
 		_status = "STR_READY";
 	}
 
-	if (_scientists > 0)
-	{
-		_base->setScientists(_base->getScientists() + _scientists);
-	}
-	if (_engineers > 0)
-	{
-		_base->setEngineers(_base->getEngineers() + _engineers);
-	}
-
 	// lets perform logic with soldiers checkup
-	bool promote = false;
 	for (std::vector<Soldier *>::iterator i = _base->getSoldiers()->begin(); i != _base->getSoldiers()->end(); ++i)
 	{
 		//remove just saved soldiers from craft
@@ -1213,19 +1130,7 @@ bool Craft::checkup()
 			(*i)->setCraft(0); 
 		}
 
-		//promote returned pilots
-		if ((*i)->getRoleRank(ROLE_PILOT) > 0 && (*i)->getCraft() == this)
-		{
-			auto stats = (*i)->getDogfightExperience();
-			(*i)->improvePrimaryStats(stats, ROLE_PILOT);
-			(*i)->clearDogfightExperience();
-			if ((*i)->rolePromoteSoldier(ROLE_PILOT))
-			{
-				promote = true;
-			}
-		}
 	}
-	return promote;
 }
 
 /**
@@ -1515,22 +1420,6 @@ int Craft::getSpaceUsed() const
 }
 
 /**
- * Checks if the commander is onboard.
- * @return True if the commander is onboard.
- */
-bool Craft::isCommanderOnboard() const
-{
-	for (const auto* soldier : *_base->getSoldiers())
-	{
-		if (soldier->getCraft() == this && soldier->getRank() == RANK_COMMANDER)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-/**
  * Checks if there are only permitted soldier types onboard.
  * @return True if all soldiers onboard are permitted.
  */
@@ -1746,53 +1635,16 @@ const std::vector<Soldier*> Craft::getPilotList(bool autoAdd, const Mod* mod)
 	return result;
 }
 
-/**
-* Calculates the accuracy bonus based on pilot skills.
-* @return Accuracy bonus.
-*/
-int Craft::getPilotAccuracyBonus(const std::vector<Soldier*> &pilots, const Mod *mod) const
-{
-	if (pilots.empty())
-		return 0;
-
-	int firingAccuracy = 0;
-	for (const auto* soldier : pilots)
-	{
-		firingAccuracy += soldier->getStatsWithSoldierBonusesOnly()->firing;
-	}
-	firingAccuracy = firingAccuracy / pilots.size(); // average firing accuracy of all pilots
-
-	return ((firingAccuracy - mod->getPilotAccuracyZeroPoint()) * mod->getPilotAccuracyRange()) / 100;
-}
-
-/**
-* Calculates the dodge bonus based on pilot skills.
-* @return Dodge bonus.
-*/
-int Craft::getPilotDodgeBonus(const std::vector<Soldier*> &pilots, const Mod *mod) const
-{
-	if (pilots.empty())
-		return 0;
-
-	int reactions = 0;
-	for (const auto* soldier : pilots)
-	{
-		reactions += soldier->getStatsWithSoldierBonusesOnly()->reactions;
-	}
-	reactions = reactions / pilots.size(); // average reactions of all pilots
-
-	return ((reactions - mod->getPilotReactionsZeroPoint()) * mod->getPilotReactionsRange()) / 100;
-}
-
 int Craft::getPilotTrackingBonus(const std::vector<Soldier *> &pilots, const Mod *mod) const
 {
 	if (pilots.empty())
 		return 0;
 
 	int tracking = 0;
-	for (std::vector<Soldier *>::const_iterator i = pilots.begin(); i != pilots.end(); ++i)
+	for (auto* soldier : pilots)
 	{
-		tracking += (*i)->getCurrentStats()->tracking;
+		soldier->prepareStatsWithBonuses(mod);
+		tracking += soldier->getStatsWithAllBonuses()->tracking;
 	}
 	tracking = tracking / pilots.size(); // average tracking of all pilots
 
@@ -1809,9 +1661,10 @@ int Craft::getPilotCoordinationBonus(const std::vector<Soldier *> &pilots, const
 		return 0;
 
 	int cooperation = 0;
-	for (std::vector<Soldier *>::const_iterator i = pilots.begin(); i != pilots.end(); ++i)
+	for (auto* soldier : pilots)
 	{
-		cooperation += (*i)->getCurrentStats()->cooperation;
+		soldier->prepareStatsWithBonuses(mod);
+		cooperation += soldier->getStatsWithAllBonuses()->cooperation;
 	}
 	cooperation = cooperation / pilots.size(); // average cooperation of all pilots
 
@@ -2270,6 +2123,21 @@ CraftPlacementErrors Craft::validateAddingSoldier(int space, const Soldier* s) c
 	if (s->hasPendingTransformation())
 	{
 		return CPE_SoldierPendingTransformation;
+	}
+	if (s->hasOnlyOneRole(ROLE_ROBOT))
+	{
+		int robotsAssigned = 0;
+		for (const auto* assigned : *_base->getSoldiers())
+		{
+			if (assigned->getCraft() == this && assigned->hasOnlyOneRole(ROLE_ROBOT))
+			{
+				++robotsAssigned;
+			}
+		}
+		if (robotsAssigned >= getCraftStats().relay)
+		{
+			return CPE_NotEnoughRelayPower;
+		}
 	}
 	if (s->getArmor()->getSize() == 1)
 	{

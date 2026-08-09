@@ -21,7 +21,6 @@
 #include "ArticleStateVehicle.h"
 #include <sstream>
 #include "../Engine/Game.h"
-#include "../Engine/LocalizedText.h"
 #include "../Engine/Palette.h"
 #include "../Engine/Surface.h"
 #include "../Mod/Mod.h"

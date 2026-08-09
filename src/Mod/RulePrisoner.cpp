@@ -75,22 +75,21 @@ void PrisonerRecruitingRules::afterLoad(const Mod* mod)
 {
 	mod->linkRule(_requiredResearch, _requiredResearchName);
 
-	//remove not needed data
+	//remove linked temporary data; the soldier rule name is still used at recruitment time
 	Collections::removeAll(_requiredResearchName);
-	Collections::removeAll(_spawnedSoldierRuleName);
 }
 
-PrisonerTortureRules::PrisonerTortureRules() : _difficulty(100), _loyaltyChange(0), _moraleChange(-5), _cooperationChange(-30),
+PrisonerTortureRules::PrisonerTortureRules() : _difficulty(100), _loyaltyChange(0), _moraleChange(5), _cooperationChange(30),
 	_eventChance(100), _isMultipleEventsPossible(false)
 {
 }
 
 PrisonerTortureRules::~PrisonerTortureRules()
 {
-	//for (std::vector<std::pair<size_t, WeightedOptions*> >::iterator i = _eventWeights.begin(); i != _eventWeights.end(); ++i)
-	//{
-	//	delete i->second;
-	//}
+	for (auto& eventWeight : _eventWeights)
+	{
+		delete eventWeight.second;
+	}
 }
 
 void PrisonerTortureRules::load(const YAML::YamlNodeReader& reader)
@@ -117,14 +116,14 @@ void PrisonerTortureRules::load(const YAML::YamlNodeReader& reader)
 
 std::string PrisonerTortureRules::getWeightedEvent(const size_t monthsPassed) const
 {
-	if (_eventWeights.empty())
-		return std::string();
-
-	std::vector<std::pair<size_t, WeightedOptions*> >::const_reverse_iterator rw;
-	rw = _eventWeights.rbegin();
-	while (monthsPassed < rw->first)
-		++rw;
-	return rw->second->choose();
+	for (auto it = _eventWeights.rbegin(); it != _eventWeights.rend(); ++it)
+	{
+		if (monthsPassed >= it->first)
+		{
+			return it->second->choose();
+		}
+	}
+	return std::string();
 }
 
 PrisonerContainingRules::PrisonerContainingRules() : _funds(-100), _cooperationChange(0)
@@ -161,6 +160,10 @@ RulePrisoner::RulePrisoner(const std::string &type) : _type(type), _startingCoop
 
 RulePrisoner::~RulePrisoner()
 {
+	delete _interrogationRules;
+	delete _recruitingRules;
+	delete _tortureRules;
+	delete _containingRules;
 }
 
 /**
@@ -182,24 +185,28 @@ void RulePrisoner::load(const YAML::YamlNodeReader& node)
 	{
 		PrisonerInterrogationRules *rules = new PrisonerInterrogationRules();
 		rules->load(reader["interrogation"]);
+		delete _interrogationRules;
 		_interrogationRules = rules;
 	}
 	if (reader["recruiting"])
 	{
 		PrisonerRecruitingRules* rules = new PrisonerRecruitingRules();
 		rules->load(reader["recruiting"]);
+		delete _recruitingRules;
 		_recruitingRules = rules;
 	}
 	if (reader["torture"])
 	{
 		PrisonerTortureRules* rules = new PrisonerTortureRules();
 		rules->load(reader["torture"]);
+		delete _tortureRules;
 		_tortureRules = rules;
 	}
 	if (reader["contain"])
 	{
 		PrisonerContainingRules* rules = new PrisonerContainingRules();
 		rules->load(reader["contain"]);
+		delete _containingRules;
 		_containingRules = rules;
 	}
 }

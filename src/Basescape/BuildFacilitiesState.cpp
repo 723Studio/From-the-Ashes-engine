@@ -145,7 +145,7 @@ void BuildFacilitiesState::populateBuildList()
 				continue;
 			}
 		}
-		// but we can still check at least the inherent base funcs (of the base country/region)
+		// but we can still check at least the inherent base funcs of the base region
 		else
 		{
 			if ((_base->getInherentForbiddenBaseFunc() & prov).any())

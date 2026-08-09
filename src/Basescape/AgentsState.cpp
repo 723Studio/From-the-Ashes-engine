@@ -21,7 +21,6 @@
 #include "../Engine/Game.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Options.h"
-#include "../Engine/Screen.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/TextList.h"
@@ -33,7 +32,6 @@
 #include "../Savegame/Soldier.h"
 #include "SoldierInfoStateFtA.h"
 #include "../Mod/RuleIntelProject.h"
-#include "../Mod/RuleManufacture.h"
 #include "../Savegame/BasePrisoner.h"
 #include "../Savegame/IntelProject.h"
 
@@ -164,7 +162,7 @@ void AgentsState::initList(size_t scrl)
 					{
 						ss << tr("STR_RECRUITING") << ": ";
 					}
-					ss << prisoner->getNameAndId(_game->getLanguage());
+					ss << prisoner->getNameAndDesignation(_game->getLanguage());
 				}
 				_lstAgents->addRow(2, (*i)->getName(true).c_str(), ss.str().c_str());
 				color = _lstAgents->getColor();

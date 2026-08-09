@@ -6,7 +6,6 @@ set ( root_src
 )
 set ( basescape_src
   Basescape/AgentsState.cpp
-  Basescape/BaseInfoState.cpp
   Basescape/BaseInfoStateFtA.cpp
   Basescape/BasescapeState.cpp
   Basescape/BaseView.cpp
@@ -23,25 +22,22 @@ set ( basescape_src
   Basescape/CraftEquipmentSaveState.cpp
   Basescape/CraftEquipmentState.cpp
   Basescape/CraftInfoState.cpp
-  Basescape/CraftPilotSelectState.cpp
-  Basescape/CraftPilotsState.cpp
   Basescape/CraftSoldiersState.cpp
   Basescape/CraftsState.cpp
   Basescape/CraftWeaponsState.cpp
   Basescape/DismantleFacilityState.cpp
   Basescape/DisposeState.cpp
+  Basescape/DiplomacyHirePersonnelState.cpp
+  Basescape/DiplomacyPurchaseState.cpp
+  Basescape/DiplomacySellState.cpp
+  Basescape/DiplomacyStartState.cpp
   Basescape/EngineersState.cpp
-  Basescape/GlobalAlienContainmentState.cpp
-  Basescape/GlobalManufactureState.cpp
-  Basescape/GlobalResearchState.cpp
   Basescape/IntelAllocateAgentsState.cpp
   Basescape/IntelState.cpp
   Basescape/IntelligenceProjectDetailsState.cpp
   Basescape/ItemLocationsState.cpp
-  Basescape/ManageAlienContainmentState.cpp
   Basescape/ManufactureAllocateEngineersState.cpp
   Basescape/ManufactureDependenciesTreeState.cpp
-  Basescape/ManufactureInfoState.cpp
   Basescape/ManufactureInfoStateFtA.cpp
   Basescape/ManufactureProductDetailsState.cpp
   Basescape/ManufactureStartState.cpp
@@ -54,32 +50,28 @@ set ( basescape_src
   Basescape/PilotsState.cpp
   Basescape/PlaceFacilityState.cpp
   Basescape/PlaceLiftState.cpp
-  Basescape/PlaceStartFacilityState.cpp
   Basescape/PrisonerAllocateAgentsState.cpp
   Basescape/PrisonerInfoState.cpp
   Basescape/PrisonManagementState.cpp
-  Basescape/PurchaseState.cpp
+  Basescape/ContainedAlienManagementState.cpp
+  Basescape/ContainedAlienInfoState.cpp
+  Basescape/ContainedAlienAllocateScientistsState.cpp
+  Basescape/ContainedMonsterManagementState.cpp
+  Basescape/ContainedMonsterInfoState.cpp
+  Basescape/ContainedMonsterAllocateScientistsState.cpp
   Basescape/ResearchAllocateScientistsState.cpp
-  Basescape/ResearchInfoState.cpp
   Basescape/ResearchInfoStateFtA.cpp
   Basescape/ResearchProjectDetailsState.cpp
   Basescape/ResearchState.cpp
-  Basescape/SackSoldierState.cpp
   Basescape/ScientistsState.cpp
-  Basescape/SelectStartFacilityState.cpp
-  Basescape/SellState.cpp
   Basescape/SoldierArmorState.cpp
-  Basescape/SoldierAvatarState.cpp
   Basescape/SoldierExperienceState.cpp
   Basescape/SoldierBonusState.cpp
-  Basescape/SoldierDiaryLightState.cpp
   Basescape/SoldierDiaryMissionState.cpp
   Basescape/SoldierDiaryOverviewState.cpp
   Basescape/SoldierDiaryPerformanceState.cpp
-  Basescape/SoldierInfoState.cpp
   Basescape/SoldierInfoStateFtA.cpp
   Basescape/SoldierMemorialState.cpp
-  Basescape/SoldierRankState.cpp
   Basescape/SoldierSortUtil.cpp
   Basescape/SoldiersState.cpp
   Basescape/SoldierTransformationState.cpp
@@ -87,8 +79,6 @@ set ( basescape_src
   Basescape/SoldierTransformationStatsState.cpp
   Basescape/SoldierTransformState.cpp
   Basescape/StoresState.cpp
-  Basescape/TechTreeSelectState.cpp
-  Basescape/TechTreeViewerState.cpp
   Basescape/TransferBaseState.cpp
   Basescape/TransferConfirmState.cpp
   Basescape/TransferItemsState.cpp
@@ -114,7 +104,6 @@ set ( battlescape_src
   Battlescape/CannotReequipState.cpp
   Battlescape/CommendationLateState.cpp
   Battlescape/CommendationState.cpp
-  Battlescape/ConfirmEndMissionState.cpp
   Battlescape/CustomBattleMessageState.cpp
   Battlescape/DebriefingState.cpp
   Battlescape/ExperienceOverviewState.cpp
@@ -129,11 +118,12 @@ set ( battlescape_src
   Battlescape/InfoboxState.cpp
   Battlescape/Inventory.cpp
   Battlescape/InventoryLoadState.cpp
-  Battlescape/InventoryPersonalState.cpp
   Battlescape/InventorySaveState.cpp
   Battlescape/InventoryState.cpp
   Battlescape/ItemSprite.cpp
   Battlescape/Map.cpp
+  Battlescape/MapEditor.cpp
+  Battlescape/MapEditorState.cpp
   Battlescape/MedikitState.cpp
   Battlescape/MedikitView.cpp
   Battlescape/MeleeAttackBState.cpp
@@ -153,6 +143,7 @@ set ( battlescape_src
   Battlescape/ScannerState.cpp
   Battlescape/ScannerView.cpp
   Battlescape/SkillMenuState.cpp
+  Battlescape/SpawnLocationResolver.cpp
   Battlescape/TileEngine.cpp
   Battlescape/TurnDiaryState.cpp
   Battlescape/UnitDieBState.cpp
@@ -213,14 +204,6 @@ set ( engine_src
   Engine/Zoom.cpp
 )
 
-set ( fta_src
-  FTA/DiplomacyHirePersonnelState.cpp
-  FTA/DiplomacyPurchaseState.cpp
-  FTA/DiplomacySellState.cpp
-  FTA/DiplomacyStartState.cpp
-  FTA/MasterMind.cpp
-)
-
 set ( geoscape_src
   Geoscape/AlienBaseState.cpp
   Geoscape/AllocatePsiTrainingState.cpp
@@ -237,45 +220,39 @@ set ( geoscape_src
   Geoscape/CraftErrorState.cpp
   Geoscape/CraftNotEnoughPilotsState.cpp
   Geoscape/CraftPatrolState.cpp
+  Geoscape/CraftReturnReportState.cpp
   Geoscape/DogfightErrorState.cpp
-  Geoscape/DogfightExperienceState.cpp
   Geoscape/DogfightState.cpp
   Geoscape/FinishedCoverOperationDetailsState.cpp
   Geoscape/FinishedCoverOperationState.cpp
-  Geoscape/ExtendedGeoscapeLinksState.cpp
-  Geoscape/FundingState.cpp
   Geoscape/GeoscapeCraftState.cpp
   Geoscape/GeoscapeEventState.cpp
   Geoscape/GeoscapeState.cpp
   Geoscape/Globe.cpp
   Geoscape/GraphsState.cpp
   Geoscape/IntelAvailableState.cpp
-  Geoscape/IntelCompleteState.cpp
+  Geoscape/IntelReportState.cpp
   Geoscape/InterceptState.cpp
   Geoscape/ItemsArrivingState.cpp
   Geoscape/LowFuelState.cpp
   Geoscape/MissionDetectedState.cpp
-  Geoscape/MonthlyReportState.cpp
   Geoscape/MultipleTargetsState.cpp
-  Geoscape/NewPossibleCraftState.cpp
   Geoscape/NewPossibleFacilityState.cpp
   Geoscape/NewPossibleManufactureState.cpp
-  Geoscape/NewPossiblePurchaseState.cpp
   Geoscape/NewPossibleResearchState.cpp
+  Geoscape/ContainedAlienReportState.cpp
+  Geoscape/ContainedMonsterReportState.cpp
   Geoscape/PrisonReportState.cpp
   Geoscape/ProductionCompleteState.cpp
-  Geoscape/PsiTrainingState.cpp
   Geoscape/ResearchCompleteState.cpp
   Geoscape/ResearchRequiredState.cpp
   Geoscape/SelectDestinationState.cpp
-  Geoscape/SelectMusicTrackState.cpp
   Geoscape/TargetInfoState.cpp
   Geoscape/TrainingFinishedState.cpp
   Geoscape/TransformationFinishedState.cpp
   Geoscape/TrainingState.cpp
   Geoscape/UfoDetectedState.cpp
   Geoscape/UfoLostState.cpp
-  Geoscape/UfoTrackerState.cpp
 )
 
 set ( interface_src
@@ -304,16 +281,21 @@ set ( menu_src
   Menu/ConfirmLoadState.cpp
   Menu/CutsceneState.cpp
   Menu/DeleteGameState.cpp
+  Menu/DevelopmentToolsState.cpp
   Menu/ErrorMessageState.cpp
   Menu/ListGamesState.cpp
-  Menu/ListLoadOriginalState.cpp
   Menu/ListLoadState.cpp
   Menu/ListSaveState.cpp
   Menu/LoadGameState.cpp
   Menu/MainMenuState.cpp
+  Menu/MapEditorFindNodeState.cpp
+  Menu/MapEditorFindTileState.cpp
+  Menu/MapEditorInfoState.cpp
+  Menu/MapEditorMenuState.cpp
+  Menu/MapEditorOptionsState.cpp
+  Menu/MapEditorSetSizeState.cpp
   Menu/NewBattleState.cpp
   Menu/NewGameState.cpp
-  Menu/NotesState.cpp
   Menu/OptionsAdvancedState.cpp
   Menu/OptionsAudioState.cpp
   Menu/OptionsBaseState.cpp
@@ -321,10 +303,9 @@ set ( menu_src
   Menu/OptionsConfirmState.cpp
   Menu/OptionsControlsState.cpp
   Menu/OptionsDefaultsState.cpp
-  Menu/OptionsFoldersState.cpp
   Menu/OptionsGeoscapeState.cpp
+  Menu/OptionsModsState.cpp
   Menu/ModConfirmExtendedState.cpp
-  Menu/ModListState.cpp
   Menu/OptionsNoAudioState.cpp
   Menu/OptionsVideoState.cpp
   Menu/PauseState.cpp
@@ -356,13 +337,10 @@ set ( mod_src
   Mod/MCDPatch.cpp
   Mod/Mod.cpp
   Mod/Polygon.cpp
-  Mod/Polyline.cpp
   Mod/RuleAlienMission.cpp
   Mod/RuleArcScript.cpp
   Mod/RuleBaseFacility.cpp
   Mod/RuleCommendations.cpp
-  Mod/RuleConverter.cpp
-  Mod/RuleCountry.cpp
   Mod/RuleCovertOperation.cpp
   Mod/RuleCraft.cpp
   Mod/RuleCraftWeapon.cpp
@@ -374,12 +352,14 @@ set ( mod_src
   Mod/RuleEventScript.cpp
   Mod/RuleGlobe.cpp
   Mod/RuleIntelProject.cpp
+  Mod/RuleContainedAlien.cpp
+  Mod/RuleContainedMonster.cpp
+  Mod/RuleXenoSpecies.cpp
   Mod/RuleInterface.cpp
   Mod/RuleInventory.cpp
   Mod/RuleItem.cpp
   Mod/RuleItemCategory.cpp
   Mod/RuleManufacture.cpp
-  Mod/RuleManufactureShortcut.cpp
   Mod/RuleMissionScript.cpp
   Mod/RuleMusic.cpp
   Mod/RuleObject.cpp
@@ -412,30 +392,31 @@ set ( savegame_src
   Savegame/Base.cpp
   Savegame/BaseFacility.cpp
   Savegame/BasePrisoner.cpp
+  Savegame/BaseContainedAlien.cpp
+  Savegame/BaseContainedMonster.cpp
+  Savegame/ContainedAlienStudy.cpp
+  Savegame/XenoSpecies.cpp
   Savegame/BattleItem.cpp
   Savegame/BattleObject.cpp
   Savegame/BattleUnit.cpp
-  Savegame/Country.cpp
   Savegame/CovertOperation.cpp
   Savegame/Craft.cpp
   Savegame/CraftWeapon.cpp
   Savegame/CraftWeaponProjectile.cpp
   Savegame/DiplomacyFaction.cpp
   Savegame/EquipmentLayoutItem.cpp
-  Savegame/FactionalResearch.cpp
   Savegame/GameTime.cpp
   Savegame/GeoscapeEvent.cpp
   Savegame/HitLog.cpp
   Savegame/IntelProject.cpp
   Savegame/ItemContainer.cpp
   Savegame/MissionSite.cpp
+  Savegame/MapEditorSave.cpp
   Savegame/MovingTarget.cpp
   Savegame/Node.cpp
   Savegame/Production.cpp
-  Savegame/RankCount.cpp
   Savegame/Region.cpp
   Savegame/ResearchProject.cpp
-  Savegame/SaveConverter.cpp
   Savegame/SavedBattleGame.cpp
   Savegame/SavedGame.cpp
   Savegame/SerializationHelper.cpp
@@ -504,7 +485,6 @@ set ( cxx_src
     ${basescape_src}
     ${battlescape_src}
     ${engine_src}
-    ${fta_src}
     ${geoscape_src}
     ${interface_src}
     ${menu_src}
@@ -663,6 +643,7 @@ endif ()
 
 add_executable ( openxcom  ${application_type} ${openxcom_src} ${openxcom_icon} )
 target_include_directories ( openxcom PRIVATE "${CMAKE_BINARY_DIR}/generated" )
+add_dependencies ( openxcom fta_build_info )
 
 # Ensure MSVC uses /bigobj to avoid "number of sections exceeded" (C1128)
 target_compile_options(openxcom PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/bigobj>)
@@ -727,7 +708,7 @@ endif ()
 
 if ( NOT EMBED_ASSETS )
     if ( FTA_PRODUCT_BUILD )
-      set ( bin_data_dirs common standard )
+      set ( bin_data_dirs UFO common standard )
     else ()
       set ( bin_data_dirs TFTD UFO common standard )
     endif ()
@@ -768,7 +749,6 @@ if ( MSVC OR "${CMAKE_GENERATOR}" STREQUAL "Xcode" )
   source_group ( "Basescape" FILES ${basescape_src} )
   source_group ( "Battlescape" FILES ${battlescape_src} )
   source_group ( "Engine" FILES ${engine_src} )
-  source_group ( "FTA" FILES ${fta_src} )
   source_group ( "Geoscape" FILES ${geoscape_src} )
   source_group ( "Interface" FILES ${interface_src} )
   source_group ( "Menu" FILES ${menu_src} )

@@ -156,7 +156,7 @@ RuleItem::RuleItem(const std::string &type, int listOrder) :
 	_meleeAnimation(0), _meleeAnimFrames(-1), _meleeMissAnimation(-1), _meleeMissAnimFrames(-1),
 	_psiAnimation(-1), _psiAnimFrames(-1), _psiMissAnimation(-1), _psiMissAnimFrames(-1),
 	_power(0), _powerForAnimation(0), _hidePower(false), _canBeEquippedInBattle(true), _ignoreAmmoPower(false), _powerRangeReduction(0), _powerRangeThreshold(0),
-	_coneSize(0), _noiseValue(1), _damageTypeSet(false), _meleeTypeSet(false),
+	_coneSize(0), _noiseValue(15), _damageTypeSet(false), _meleeTypeSet(false),
 	_accuracyUse(0), _accuracyMind(0), _accuracyPanic(20), _accuracyThrow(100), _accuracyCloseQuarters(-1),
 	_noLOSAccuracyPenalty(-1),
 	_explodeInventory(-1),
@@ -175,8 +175,8 @@ RuleItem::RuleItem(const std::string &type, int listOrder) :
 	_woundRecovery(0), _healthRecovery(0), _stunRecovery(0), _energyRecovery(0), _manaRecovery(0), _moraleRecovery(0), _painKillerRecovery(1.0f),
 	_recoveryPoints(0), _armor(20), _turretType(-1),
 	_aiUseDelay(-1), _aiMeleeHitCount(25),
-	_recover(true), _recoverCorpse(true), _ignoreInBaseDefense(false), _ignoreInCraftEquip(true), _liveAlien(false), _missionObjective(false), _alienArtifact(false),
-	_liveAlienPrisonType(0), _attraction(0), _flatUse(0, 1), _flatThrow(0, 1), _flatPrime(0, 1), _flatUnprime(0, 1), _arcingShot(false),
+	_recover(true), _recoverCorpse(true), _ignoreInBaseDefense(false), _ignoreInCraftEquip(true), _missionObjective(false), _alienArtifact(false),
+	_attraction(0), _flatUse(0, 1), _flatThrow(0, 1), _flatPrime(0, 1), _flatUnprime(0, 1), _arcingShot(false),
 	_experienceTrainingMode(ETM_DEFAULT), _manaExperience(0), _loadOrder(0), _listOrder(listOrder),
 	_maxRange(200), _minRange(0), _dropoff(2), _bulletSpeed(0), _explosionSpeed(0), _shotgunPellets(0), _shotgunBehaviorType(0), _shotgunSpread(100), _shotgunChoke(100),
 	_spawnUnitFaction(FACTION_NONE), _zombieUnitFaction(FACTION_HOSTILE),
@@ -323,7 +323,6 @@ void RuleItem::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScript&
 	reader.tryRead("nameAsAmmo", _nameAsAmmo);
 
 	//requires
-	reader.tryRead("requiresBuyCountry", _requiresBuyCountry);
 	mod->loadUnorderedNames(_type, _requiresName, reader["requires"]);
 	mod->loadUnorderedNames(_type, _requiresBuyName, reader["requiresBuy"]);
 	mod->loadBaseFunction(_type, _requiresBuyBaseFunc, reader["requiresBuyBaseFunc"]);
@@ -613,8 +612,6 @@ void RuleItem::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScript&
 	reader.tryRead("recoverCorpse", _recoverCorpse);
 	reader.tryRead("ignoreInBaseDefense", _ignoreInBaseDefense);
 	reader.tryRead("ignoreInCraftEquip", _ignoreInCraftEquip);
-	reader.tryRead("liveAlien", _liveAlien);
-	reader.tryRead("prisonType", _liveAlienPrisonType);
 	reader.tryRead("attraction", _attraction);
 	reader.tryRead("arcingShot", _arcingShot);
 	reader.tryRead("experienceTrainingMode", _experienceTrainingMode);
@@ -700,6 +697,33 @@ void RuleItem::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScript&
  */
 void RuleItem::afterLoad(const Mod* mod)
 {
+	if (_battleType == BT_HACKING)
+	{
+		if (_hackingHp <= 0)
+		{
+			throw Exception("Hacking item '" + _type + "': hackingHp must be greater than 0.");
+		}
+		if (_hackingTu <= 0)
+		{
+			throw Exception("Hacking item '" + _type + "': hackingTu must be greater than 0.");
+		}
+		if (getCostUse().Time <= 0)
+		{
+			throw Exception("Hacking item '" + _type + "': costUse.time must be greater than 0.");
+		}
+	}
+	else if (_battleType == BT_SAMPLING)
+	{
+		if (_samplingPower <= 0)
+		{
+			throw Exception("Sampling item '" + _type + "': samplingPower must be greater than 0.");
+		}
+		if (getCostUse().Time <= 0)
+		{
+			throw Exception("Sampling item '" + _type + "': costUse.time must be greater than 0.");
+		}
+	}
+
 	if ((_battleType == BT_MELEE || _battleType == BT_FIREARM) && _clipSize == 0)
 	{
 		for (RuleItemAction* conf : { &_confAimed, &_confAuto, &_confSnap, &_confMelee, })
@@ -758,23 +782,13 @@ void RuleItem::afterLoad(const Mod* mod)
 	for (auto& pair : _recoveryTransformationsName)
 	{
 		auto* item = mod->getItem(pair.first, true);
-		if (!item->isAlien())
+		if (!pair.second.empty())
 		{
-			if (!pair.second.empty())
-			{
-				_recoveryTransformations[item] = pair.second;
-			}
-			else
-			{
-				throw Exception("Right-hand value of recovery transformations definition cannot be empty!");
-			}
+			_recoveryTransformations[item] = pair.second;
 		}
 		else
 		{
-			if (!mod->isFTAGame())
-			{
-				throw Exception("Sorry modders, cannot recover live aliens from random inorganic junk '" + pair.first + "'!");
-			}
+			throw Exception("Right-hand value of recovery transformations definition cannot be empty!");
 		}
 	}
 
@@ -2172,24 +2186,6 @@ int RuleItem::getAIMeleeHitCount() const
 }
 
 /**
- * Returns if this is a live alien.
- * @return True if this is a live alien.
- */
-bool RuleItem::isAlien() const
-{
-	return _liveAlien;
-}
-
-/**
-* Returns to which type of prison does the live alien belong.
-* @return Prison type.
-*/
-int RuleItem::getPrisonType() const
-{
-	return _liveAlienPrisonType;
-}
-
-/**
  * Returns whether this item charges a flat rate for costAimed.
  * @return True if this item charges a flat rate for costAimed.
  */
@@ -2412,22 +2408,19 @@ int RuleItem::calculateLimits(int& upperLimit, int& lowerLimit, int depth, Battl
 	upperLimit = type == BA_THROW ? 200 : getAimRange();
 	lowerLimit = type == BA_THROW ?   0 : getMinRange();
 
-	if (Options::battleUFOExtenderAccuracy)
+	switch (type)
 	{
-		switch (type)
-		{
-		case BA_SNAPSHOT:
-			upperLimit = getSnapRange();
-			break;
-		case BA_AUTOSHOT:
-			upperLimit = getAutoRange();
-			break;
-		case BA_THROW:
-			upperLimit = depth > 0 ? getUnderwaterThrowDropoffRange() : getThrowDropoffRange();
-			break;
-		default:
-			break;
-		}
+	case BA_SNAPSHOT:
+		upperLimit = getSnapRange();
+		break;
+	case BA_AUTOSHOT:
+		upperLimit = getAutoRange();
+		break;
+	case BA_THROW:
+		upperLimit = depth > 0 ? getUnderwaterThrowDropoffRange() : getThrowDropoffRange();
+		break;
+	default:
+		break;
 	}
 
 	return type == BA_THROW ? getThrowDropoff() : getDropoff();

@@ -30,6 +30,7 @@ class Mod;
 class SurfaceSet;
 class Surface;
 class SavedBattleGame;
+struct BattleAction;
 
 
 /**
@@ -75,9 +76,15 @@ public:
 	///returns a tile radius of alterations caused by hacking
 
 	/// Checks if this object can be hacked
-	bool canBeHacked() const { return !_wasUsed && _hackingDefence != 0; }
+	bool canBeHacked() const
+	{
+		return _rules && _rules->getUseType() == BATTLE_OBJECT_HACKING_TERMINAL &&
+			!_wasUsed && _hackingDefence > 0;
+	}
 
 	void hackingPostProcess(bool result, Game* game);
+	/// Resolves a sampling attempt and consumes the object only after success.
+	void resolveSamplingAttempt(BattleAction& action, Game* game);
 
 	Position getPosition() { return _position; }
 

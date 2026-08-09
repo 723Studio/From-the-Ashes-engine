@@ -30,7 +30,6 @@
 #include "../Savegame/BaseFacility.h"
 #include "../Mod/RuleBaseFacility.h"
 #include "BasescapeState.h"
-#include "SelectStartFacilityState.h"
 #include "../Savegame/SavedGame.h"
 #include "../Ufopaedia/Ufopaedia.h"
 #include "../Mod/RuleInterface.h"
@@ -45,9 +44,8 @@ namespace OpenXcom
  * @param game Pointer to the core game.
  * @param base Pointer to the base to get info from.
  * @param globe Pointer to the Geoscape globe.
- * @param first Is this a custom starting base?
  */
-PlaceLiftState::PlaceLiftState(Base *base, Globe *globe, bool first) : _base(base), _globe(globe), _first(first)
+PlaceLiftState::PlaceLiftState(Base *base, Globe *globe) : _base(base), _globe(globe)
 {
 	// Create objects
 	_view = new BaseView(192, 192, 0, 8);
@@ -96,7 +94,7 @@ PlaceLiftState::PlaceLiftState(Base *base, Globe *globe, bool first) : _base(bas
 			_accessLifts.push_back(facilityRule);
 		}
 	}
-	if (_first || _accessLifts.size() == 1)
+	if (_accessLifts.size() == 1)
 	{
 		_lift = _accessLifts.front();
 	}
@@ -158,10 +156,6 @@ void PlaceLiftState::viewClick(Action *)
 	BasescapeState *bState = new BasescapeState(_base, _globe);
 	_game->getSavedGame()->setSelectedBase(_game->getSavedGame()->getBases()->size() - 1);
 	_game->pushState(bState);
-	if (_first)
-	{
-		_game->pushState(new SelectStartFacilityState(_base, bState, _globe));
-	}
 }
 
 /**

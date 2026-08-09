@@ -77,7 +77,7 @@ private:
 	NumberText *_numTwoHandedIndicatorLeft, *_numTwoHandedIndicatorRight;
 	Uint8 _twoHandedRed, _twoHandedGreen;
 	Bar *_barTimeUnits, *_barEnergy, *_barHealth, *_barMorale, *_barMana;
-	bool _manaBarVisible, _ftaUI, _targetPreviewActive;
+	bool _manaBarVisible, _targetPreviewActive;
 	Timer *_animTimer, *_gameTimer;
 	SavedBattleGame *_save;
 	Text *_txtDebug, *_txtTooltip;
@@ -111,6 +111,10 @@ private:
 	void blinkHealthBar();
 	/// Shows the unit kneel state.
 	void toggleKneelButton(BattleUnit* unit);
+	/// Centers the camera on the target represented by a visible-unit widget.
+	bool centerOnVisibleTarget(int targetIndex);
+	/// Handles visible-target hotkeys, including Shift for targets 11-20.
+	bool handleVisibleTargetHotkey(Action* action);
 public:
 	/// Selects the next soldier.
 	void selectNextPlayerUnit(bool checkReselect = false, bool setReselect = false, bool checkInventory = false, bool checkFOV = true, bool byDistance = false);
@@ -205,10 +209,7 @@ public:
 	void btnReserveClick(Action *action);
 	/// Handler for clicking the reload button.
 	void btnReloadClick(Action *action);
-	/// Handler for clicking the [SelectMusicTrack] button.
-	void btnSelectMusicTrackClick(Action *action);
 	/// Handler for clicking the lighting button.
-	void btnPersonalLightingClick(Action *action);
 	/// Handler for toggling the "night vision" mode.
 	void btnNightVisionClick(Action *action);
 	/// Determines whether a playable unit is selected.

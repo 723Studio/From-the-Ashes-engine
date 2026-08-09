@@ -21,8 +21,10 @@
 #include <algorithm>
 #include <functional>
 #include <sstream>
+#include <set>
 #include <climits>
 #include <cassert>
+#include "../BuildInfo.h"
 #include "../version.h"
 #include "../Engine/CrossPlatform.h"
 #include "../Engine/FileMap.h"
@@ -54,7 +56,6 @@
 #include "../Engine/RNG.h"
 #include "../Engine/Options.h"
 #include "../Battlescape/Pathfinding.h"
-#include "RuleCountry.h"
 #include "RuleRegion.h"
 #include "RuleBaseFacility.h"
 #include "RuleCraft.h"
@@ -78,8 +79,10 @@
 #include "RuleInventory.h"
 #include "RuleResearch.h"
 #include "RuleManufacture.h"
-#include "RuleManufactureShortcut.h"
 #include "RuleIntelProject.h"
+#include "RuleXenoSpecies.h"
+#include "RuleContainedAlien.h"
+#include "RuleContainedMonster.h"
 #include "RulePrisoner.h"
 #include "ExtraStrings.h"
 #include "RuleInterface.h"
@@ -96,7 +99,6 @@
 #include "../Savegame/SavedBattleGame.h"
 #include "../Savegame/Region.h"
 #include "../Savegame/Base.h"
-#include "../Savegame/Country.h"
 #include "../Savegame/Soldier.h"
 #include "../Savegame/BattleUnit.h"
 #include "../Savegame/Craft.h"
@@ -113,7 +115,6 @@
 #include "StatString.h"
 #include "RuleGlobe.h"
 #include "RuleVideo.h"
-#include "RuleConverter.h"
 #include "RuleSoldierTransformation.h"
 #include "RuleSoldierBonus.h"
 
@@ -125,21 +126,17 @@ namespace OpenXcom
 namespace
 {
 
-struct OxceVersionDate
+struct FtaBuildDate
 {
 	int year = 0;
 	int month = 0;
 	int day = 0;
 
-	OxceVersionDate(const std::string& data)
+	FtaBuildDate(const std::string& data)
 	{
-		auto correct = false;
-		// check if look like format " (v2023-10-21)"
-		size_t offset = data.find(" (v");
-		if (offset != std::string::npos && data.size() >= offset + 14 && data[offset + 2] == 'v' && data[offset + 7] == '-' && data[offset + 10] == '-' && data[offset + 13] == ')')
-		{
-			correct = (std::sscanf(data.data() + offset, " (v%4d-%2d-%2d)", &year, &month, &day) == 3);
-		}
+		const bool correct = data.size() == 8
+			&& data.find_first_not_of("0123456789") == std::string::npos
+			&& std::sscanf(data.c_str(), "%4d%2d%2d", &year, &month, &day) == 3;
 
 		if (!correct)
 		{
@@ -265,11 +262,8 @@ void Mod::resetGlobalStatics()
 
 	Globe::OCEAN_COLOR = Palette::blockOffset(12);
 	Globe::OCEAN_SHADING = true;
-	Globe::COUNTRY_LABEL_COLOR = 239;
-	Globe::LINE_COLOR = 162;
 	Globe::CITY_LABEL_COLOR = 138;
 	Globe::BASE_LABEL_COLOR = 133;
-
 	TextButton::soundPress = 0;
 
 	Window::soundPopup[0] = 0;
@@ -396,7 +390,7 @@ public:
 		addConst("RuleList." + ModNameMaster, (int)0);
 		addConst("RuleList." + ModNameCurrent, (int)0);
 
-		auto v = OxceVersionDate(OPENXCOM_FTA_VERSION_GIT);
+		auto v = FtaBuildDate(FTA_BUILD_DATE);
 		addConst("SCRIPT_VERSION_DATE", (int)(v.year * 10000 + v.month * 100 + v.day));
 	}
 	/// Finishing loading data.
@@ -430,15 +424,16 @@ Mod::Mod() :
 	_inventoryOverlapsPaperdoll(false),
 	_maxViewDistance(20), _maxDarknessToSeeUnits(9), _maxStaticLightDistance(16), _maxDynamicLightDistance(24), _enhancedLighting(0), _visibilityStatsMod(0),
 	_costHireEngineer(0), _costHireScientist(0),
-	_costEngineer(0), _costScientist(0), _timePersonnel(0), _hireByCountryOdds(0), _hireByRegionOdds(0), _initialFunding(0),
+	_costEngineer(0), _costScientist(0), _timePersonnel(0), _hireByRegionOdds(0),
+	_startingFundsBeginner(0), _startingFundsExperienced(0), _startingFundsVeteran(0), _startingFundsGenius(0), _startingFundsSuperhuman(0),
 	_aiUseDelayBlaster(3), _aiUseDelayFirearm(0), _aiUseDelayGrenade(3), _aiUseDelayProxy(999), _aiUseDelayMelee(0), _aiUseDelayPsionic(0), _aiUseDelayMedikit(999),
 	_aiFireChoiceIntelCoeff(5), _aiFireChoiceAggroCoeff(5), _aiExtendedFireModeChoice(false), _aiRespectMaxRange(false), _aiDestroyBaseFacilities(false),
 	_aiPickUpWeaponsMoreActively(false), _aiPickUpWeaponsMoreActivelyCiv(false),
 	_aiReactionFireThreshold(0), _aiReactionFireThresholdCiv(0),
 	_maxLookVariant(0), _tooMuchSmokeThreshold(10), _customTrainingFactor(100),_minReactionAccuracy(0), _researchTrainingFactor(100), _engineeringTrainingFactor(100), _intelTrainingFactor(100), _researchSpeedFactor(100), _engineeringSpeedFactor(100), _intelSpeedFactor(100), _prisonerActionsSpeedFactor(100),
 	_chanceToStopRetaliation(0), _chanceToDetectAlienBaseEachMonth(20), _lessAliensDuringBaseDefense(false),
-	_allowCountriesToCancelAlienPact(false), _buildInfiltrationBaseCloseToTheCountry(false), _infiltrateRandomCountryInTheRegion(false), _allowAlienBasesOnWrongTextures(true),
-	_ftaGame(true), _ftaGameLength(3), _ironManEnabled(true), _researchTreeDisabled(false), //#FINNIKTODO - remove _ftaGame
+	_allowAlienBasesOnWrongTextures(true),
+	_gameLength(3), _ironManEnabled(true),
 	_kneelBonusGlobal(115), _oneHandedPenaltyGlobal(80),
 	_enableCloseQuartersCombat(0), _closeQuartersAccuracyGlobal(100), _closeQuartersTuCostGlobal(12), _closeQuartersEnergyCostGlobal(8), _closeQuartersSneakUpGlobal(0),
 	_noLOSAccuracyPenaltyGlobal(-1),
@@ -453,16 +448,15 @@ Mod::Mod() :
 	_escortRange(20), _drawEnemyRadarCircles(1), _escortsJoinFightAgainstHK(true), _hunterKillerFastRetarget(true),
 	_crewEmergencyEvacuationSurvivalChance(100), _pilotsEmergencyEvacuationSurvivalChance(100),
 	_showUfoPreviewInBaseDefense(false),
-	_soldiersPerRank({-1, -1, 5, 11, 23, 30}),
-	_pilotAccuracyZeroPoint(55), _pilotAccuracyRange(40), _pilotReactionsZeroPoint(55), _pilotReactionsRange(60),
-	_pilotCooperationZeroPoint(20), _pilotCooperationRange(20), _pilotTrackingZeroPoint(40), _pilotTrackingRange(50),
-	_performanceBonusFactor(0.0),  _covertOpsExperienceFactor(100), _covertOpsIntelBonusFactor(100),
+	_pilotWeaponAccuracyZeroPoint(55), _pilotWeaponAccuracyRange(40), _pilotManeuveringZeroPoint(55), _pilotManeuveringRange(60),
+	_pilotCoordinationZeroPoint(20), _pilotCoordinationRange(20), _pilotTrackingZeroPoint(40), _pilotTrackingRange(50),
+	_covertOpsExperienceFactor(100), _covertOpsIntelBonusFactor(100),
 	_enableNewResearchSorting(false), _displayCustomCategories(0), _shareAmmoCategories(false), _showDogfightDistanceInKm(false), _showFullNameInAlienInventory(false),
 	_alienInventoryOffsetX(80), _alienInventoryOffsetBigUnit(32),
 	_hidePediaInfoButton(false), _extraNerdyPediaInfoType(0),
 	_giveScoreAlsoForResearchedArtifacts(false), _statisticalBulletConservation(false), _stunningImprovesMorale(false),
 	_tuRecoveryWakeUpNewTurn(100), _shortRadarRange(0), _buildTimeReductionScaling(100),
-	_defeatScore(0), _defeatFunds(0), _reputationBreakthroughValue(500), _difficultyDemigod(false), _startingTime(6, 1, 1, 1999, 12, 0, 0), _startingDifficulty(0),
+	_defeatScore(0), _defeatLoyalty(0), _defeatFunds(0), _reputationBreakthroughValue(500), _difficultyDemigod(false), _startingTime(6, 1, 1, 1999, 12, 0, 0), _startingDifficulty(0),
 	_baseDefenseMapFromLocation(0), _disableUnderwaterSounds(false), _enableUnitResponseSounds(false), _pediaReplaceCraftFuelWithRangeType(-1),
 	_facilityListOrder(0), _craftListOrder(0), _covertOperationListOrder(0), _itemCategoryListOrder(0), _itemListOrder(0), _armorListOrder(0), _alienRaceListOrder(0),
 	_researchListOrder(0),  _manufactureListOrder(0), _intelligenceListOrder(0), _soldierBonusListOrder(0), _transformationListOrder(0), _ufopaediaListOrder(0), _invListOrder(0), _soldierListOrder(0),
@@ -582,7 +576,6 @@ Mod::Mod() :
 		_damageTypes[dmg->ResistType] = dmg;
 	}
 
-	_converter = new RuleConverter();
 	_statAdjustment.resize(MaxDifficultyLevels);
 	_statAdjustment[0].aimMultiplier = 0.5;
 	_statAdjustment[0].armorMultiplier = 0.5;
@@ -596,16 +589,12 @@ Mod::Mod() :
 		_statAdjustment[i].growthMultiplier = (int)i;
 	}
 
-	// Setting default value for array
-	_ufoTractorBeamSizeModifiers[0] = 400;
-	_ufoTractorBeamSizeModifiers[1] = 200;
-	_ufoTractorBeamSizeModifiers[2] = 100;
-	_ufoTractorBeamSizeModifiers[3] = 50;
-	_ufoTractorBeamSizeModifiers[4] = 25;
+	_noFundsPenaltyDifficultyMultipliers[0] = 50;
+	_noFundsPenaltyDifficultyMultipliers[1] = 100;
+	_noFundsPenaltyDifficultyMultipliers[2] = 200;
+	_noFundsPenaltyDifficultyMultipliers[3] = 300;
+	_noFundsPenaltyDifficultyMultipliers[4] = 400;
 
-	_pilotBraveryThresholds[0] = 90;
-	_pilotBraveryThresholds[1] = 80;
-	_pilotBraveryThresholds[2] = 30;
 }
 
 /**
@@ -616,7 +605,6 @@ Mod::~Mod()
 	delete _muteMusic;
 	delete _muteSound;
 	delete _globe;
-	delete _converter;
 	delete _scriptGlobal;
 	for (auto& pair : _fonts)
 	{
@@ -645,14 +633,6 @@ Mod::~Mod()
 	for (auto* rdt : _damageTypes)
 	{
 		delete rdt;
-	}
-	for (auto& pair : _countries)
-	{
-		delete pair.second;
-	}
-	for (auto& pair : _extraGlobeLabels)
-	{
-		delete pair.second;
 	}
 	for (auto& pair : _regions)
 	{
@@ -746,11 +726,19 @@ Mod::~Mod()
 	{
 		delete pair.second;
 	}
-	for (auto& pair : _prisoners)
+	for (auto& pair : _xenoSpecies)
 	{
 		delete pair.second;
 	}
-	for (auto& pair : _manufactureShortcut)
+	for (auto& pair : _containedAliens)
+	{
+		delete pair.second;
+	}
+	for (auto& pair : _containedMonsters)
+	{
+		delete pair.second;
+	}
+	for (auto& pair : _prisoners)
 	{
 		delete pair.second;
 	}
@@ -1151,7 +1139,7 @@ bool Mod::checkForObsoleteErrorByYear(const std::string &parent, const YAML::Yam
 	SeverityLevel level = LOG_INFO;
 	bool r = true;
 
-	const static OxceVersionDate currYear = { OPENXCOM_FTA_VERSION_GIT };
+	const static FtaBuildDate currYear = { FTA_BUILD_DATE };
 	if (currYear)
 	{
 		if (currYear.year < year)
@@ -2353,21 +2341,44 @@ void Mod::loadAll()
 	afterLoadHelper("items", this, _items, &RuleItem::afterLoad);
 	afterLoadHelper("weaponSets", this, _weaponSets, &RuleWeaponSet::afterLoad);
 	afterLoadHelper("manufacture", this, _manufacture, &RuleManufacture::afterLoad);
+	afterLoadHelper("alienMissions", this, _alienMissions, &RuleAlienMission::afterLoad);
 	afterLoadHelper("intelligence", this, _intelligence, &RuleIntelProject::afterLoad);
+	std::map<IntelProjectEffectType, std::string> intelligenceEffects;
+	for (const auto& entry : _intelligence)
+	{
+		const IntelProjectEffectType effect = entry.second->getEffectType();
+		if (effect == INTEL_EFFECT_NONE)
+		{
+			continue;
+		}
+		auto inserted = intelligenceEffects.emplace(effect, entry.first);
+		if (!inserted.second)
+		{
+			throw Exception("Intel projects '" + inserted.first->second + "' and '" + entry.first +
+				"' use the same non-zero effectType " + std::to_string(static_cast<int>(effect)));
+		}
+	}
+	afterLoadHelper("xenoSpecies", this, _xenoSpecies, &RuleXenoSpecies::afterLoad);
+	afterLoadHelper("containedAliens", this, _containedAliens, &RuleContainedAlien::afterLoad);
+	afterLoadHelper("containedMonsters", this, _containedMonsters, &RuleContainedMonster::afterLoad);
 	afterLoadHelper("prisoners", this, _prisoners, &RulePrisoner::afterLoad);
 	afterLoadHelper("covertOperations", this, _covertOperations, &RuleCovertOperation::afterLoad);
 	afterLoadHelper("armors", this, _armors, &Armor::afterLoad);
+	afterLoadHelper("alienDeployments", this, _alienDeployments, &AlienDeployment::afterLoad);
 	afterLoadHelper("units", this, _units, &Unit::afterLoad);
 	afterLoadHelper("soldiers", this, _soldiers, &RuleSoldier::afterLoad);
+	afterLoadHelper("soldierTransformation", this, _soldierTransformation, &RuleSoldierTransformation::afterLoad);
 	afterLoadHelper("facilities", this, _facilities, &RuleBaseFacility::afterLoad);
 	afterLoadHelper("startingConditions", this, _startingConditions, &RuleStartingCondition::afterLoad);
 	afterLoadHelper("enviroEffects", this, _enviroEffects, &RuleEnviroEffects::afterLoad);
 	afterLoadHelper("commendations", this, _commendations, &RuleCommendations::afterLoad);
 	afterLoadHelper("skills", this, _skills, &RuleSkill::afterLoad);
 	afterLoadHelper("craftWeapons", this, _craftWeapons, &RuleCraftWeapon::afterLoad);
-	afterLoadHelper("countries", this, _countries, &RuleCountry::afterLoad);
 	afterLoadHelper("crafts", this, _crafts, &RuleCraft::afterLoad);
 	afterLoadHelper("events", this, _events, &RuleEvent::afterLoad);
+	afterLoadHelper("objects", this, _objects, &RuleObject::afterLoad);
+	afterLoadHelper("diplomacyFactions", this, _diplomacyFactions, &RuleDiplomacyFaction::afterLoad);
+	afterLoadHelper("diplomacyFactionEvents", this, _diplomacyFactionEvents, &RuleDiplomacyFactionEvent::afterLoad);
 
 	for (auto& a : _armors)
 	{
@@ -2442,29 +2453,6 @@ void Mod::loadAll()
 		}
 	}
 
-	// auto-create alternative manufacture rules
-	for (auto& shortcutPair : _manufactureShortcut)
-	{
-		// 1. check if the new project has a unique name
-		auto& typeNew = shortcutPair.first;
-		auto it = _manufacture.find(typeNew);
-		if (it != _manufacture.end())
-		{
-			throw Exception("Manufacture project '" + typeNew + "' already exists! Choose a different name for this alternative project.");
-		}
-
-		// 2. copy an existing manufacture project
-		const RuleManufacture* ruleStartFrom = getManufacture(shortcutPair.second->getStartFrom(), true);
-		RuleManufacture* ruleNew = new RuleManufacture(*ruleStartFrom);
-		_manufacture[typeNew] = ruleNew;
-		_manufactureIndex.push_back(typeNew);
-
-		// 3. change the name and break down the sub-projects into simpler components
-		if (ruleNew != 0)
-		{
-			ruleNew->breakDown(this, shortcutPair.second);
-		}
-	}
 
 	// recommended user options
 	if (!_recommendedUserOptions.empty() && !Options::oxceRecommendedOptionsWereSet)
@@ -2487,11 +2475,9 @@ void Mod::loadAll()
 	// fixed user options
 	if (!_fixedUserOptions.empty())
 	{
-		_fixedUserOptions.erase("oxceLinks");
 		_fixedUserOptions.erase("maximizeInfoScreens"); // FIXME: make proper categorisations in the next release
 		_fixedUserOptions.erase("oxceModValidationLevel");
 		_fixedUserOptions.erase("oxceAutoNightVisionThreshold");
-		_fixedUserOptions.erase("oxceAlternateCraftEquipmentManagement");
 
 		for (auto& optionInfo : Options::getOptionInfo())
 		{
@@ -2829,22 +2815,6 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 
 
 
-	for (const auto& ruleReader : iterateRules("countries", "type"))
-	{
-		RuleCountry* rule = loadRule(ruleReader, &_countries, &_countriesIndex);
-		if (rule != 0)
-		{
-			rule->load(ruleReader, parsers, this);
-		}
-	}
-	for (const auto& ruleReader : iterateRules("extraGlobeLabels", "type"))
-	{
-		RuleCountry *rule = loadRule(ruleReader, &_extraGlobeLabels, &_extraGlobeLabelsIndex);
-		if (rule != 0)
-		{
-			rule->load(ruleReader, parsers, this);
-		}
-	}
 	for (const auto& ruleReader : iterateRules("regions", "type"))
 	{
 		RuleRegion *rule = loadRule(ruleReader, &_regions, &_regionsIndex);
@@ -3006,18 +2976,35 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 			rule->load(ruleReader, this);
 		}
 	}
-	for (const auto& ruleReader : iterateRules("manufactureShortcut", "name"))
-	{
-		RuleManufactureShortcut *rule = loadRule(ruleReader, &_manufactureShortcut, 0, "name");
-		if (rule != 0)
-		{
-			rule->load(ruleReader);
-		}
-	}
 	for (const auto& ruleReader : iterateRules("intelligence", "name"))
 	{
 		RuleIntelProject *rule = loadRule(ruleReader, &_intelligence, &_intelligenceIndex, "name", RuleListOrderedFactory<RuleIntelProject>{ _intelligenceListOrder, 100 });
 		if (rule != 0)
+		{
+			rule->load(ruleReader, this);
+		}
+	}
+	for (const auto& ruleReader : iterateRules("xenoSpecies", "type"))
+	{
+		RuleXenoSpecies* rule = loadRule(ruleReader, &_xenoSpecies, &_xenoSpeciesIndex, "type");
+		if (rule != nullptr)
+		{
+			rule->load(ruleReader, this);
+		}
+	}
+	for (const auto& ruleReader : iterateRules("containedAliens", "type"))
+	{
+		RuleContainedAlien* rule = loadRule(ruleReader, &_containedAliens, &_containedAliensIndex, "type");
+		if (rule != nullptr)
+		{
+			rule->load(ruleReader, this);
+		}
+	}
+	for (const auto& ruleReader : iterateRules("containedMonsters", "type"))
+	{
+		RuleContainedMonster* rule = loadRule(
+			ruleReader, &_containedMonsters, &_containedMonstersIndex, "type");
+		if (rule != nullptr)
 		{
 			rule->load(ruleReader, this);
 		}
@@ -3178,6 +3165,37 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 			battleScript->load(commandsReader);
 			_battleScripts[type].push_back(battleScript);
 		}
+
+		// Labels are local to this ordered command list. Validate the graph once
+		// at ruleset load instead of discovering authoring errors mid-battle.
+		std::set<int> labels;
+		size_t commandIndex = 0;
+		for (const BattleScript *battleScript : _battleScripts[type])
+		{
+			++commandIndex;
+			for (int condition : *battleScript->getConditionals())
+			{
+				if (condition == 0 || condition == INT_MIN)
+				{
+					throw Exception("BattleScript '" + type + "' command " + std::to_string(commandIndex)
+						+ " contains invalid conditional label " + std::to_string(condition) + ".");
+				}
+				const int referencedLabel = condition < 0 ? -condition : condition;
+				if (labels.find(referencedLabel) == labels.end())
+				{
+					throw Exception("BattleScript '" + type + "' command " + std::to_string(commandIndex)
+						+ " references label " + std::to_string(referencedLabel)
+						+ " that was not defined by an earlier command.");
+				}
+			}
+
+			const int label = battleScript->getLabel();
+			if (label > 0 && !labels.insert(label).second)
+			{
+				throw Exception("BattleScript '" + type + "' command " + std::to_string(commandIndex)
+					+ " duplicates label " + std::to_string(label) + ".");
+			}
+		}
 	}
 	for (const auto& ruleReader : iterateRulesSpecific("ufopaedia"))
 	{
@@ -3279,15 +3297,18 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 	reader.tryRead("costEngineer", _costEngineer);
 	reader.tryRead("costScientist", _costScientist);
 	reader.tryRead("timePersonnel", _timePersonnel);
-	reader.tryRead("hireByCountryOdds", _hireByCountryOdds);
 	reader.tryRead("hireByRegionOdds", _hireByRegionOdds);
-	reader.tryRead("initialFunding", _initialFunding);
+	reader.tryRead("startingFundsBeginner", _startingFundsBeginner);
+	reader.tryRead("startingFundsExperienced", _startingFundsExperienced);
+	reader.tryRead("startingFundsVeteran", _startingFundsVeteran);
+	reader.tryRead("startingFundsGenius", _startingFundsGenius);
+	reader.tryRead("startingFundsSuperhuman", _startingFundsSuperhuman);
 	reader.tryRead("alienFuel", _alienFuel);
 	reader.tryRead("fontName", _fontName);
 	reader.tryRead("psiUnlockResearch", _psiUnlockResearch);
 	reader.tryRead("ufopaediaUnlockResearch", _ufopaediaUnlockResearch);
 	reader.tryRead("alienTechUnlockResearch", _alienTechUnlockResearch);
-	reader.tryRead("xenologyUnlockResearch", _xenologyUnlockResearch);
+	reader.tryRead("xenolinguisticsUnlockResearch", _xenolinguisticsUnlockResearch);
 	reader.tryRead("craftsBeamUnlockResearch", _craftsBeamUnlockResearch);
 	reader.tryRead("craftSynapseUnlockResearch", _craftSynapseUnlockResearch);
 	reader.tryRead("craftGravControlUnlockResearch", _craftGravControlUnlockResearch);
@@ -3341,9 +3362,6 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 	reader.tryRead("chanceToStopRetaliation", _chanceToStopRetaliation);
 	reader.tryRead("chanceToDetectAlienBaseEachMonth", _chanceToDetectAlienBaseEachMonth);
 	reader.tryRead("lessAliensDuringBaseDefense", _lessAliensDuringBaseDefense);
-	reader.tryRead("allowCountriesToCancelAlienPact", _allowCountriesToCancelAlienPact);
-	reader.tryRead("buildInfiltrationBaseCloseToTheCountry", _buildInfiltrationBaseCloseToTheCountry);
-	reader.tryRead("infiltrateRandomCountryInTheRegion", _infiltrateRandomCountryInTheRegion);
 	reader.tryRead("allowAlienBasesOnWrongTextures", _allowAlienBasesOnWrongTextures);
 	reader.tryRead("kneelBonusGlobal", _kneelBonusGlobal);
 	reader.tryRead("oneHandedPenaltyGlobal", _oneHandedPenaltyGlobal);
@@ -3360,11 +3378,9 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 	reader.tryRead("bughuntRank", _bughuntRank);
 	reader.tryRead("bughuntLowMorale", _bughuntLowMorale);
 	reader.tryRead("bughuntTimeUnitsLeft", _bughuntTimeUnitsLeft);
-	reader.tryRead("ftaGame", _ftaGame);
-	reader.tryRead("ftaGameLength", _ftaGameLength);
+	reader.tryRead("gameLength", _gameLength);
 	reader.tryRead("reputationBreakthroughValue", _reputationBreakthroughValue);
 	reader.tryRead("ironManEnabled", _ironManEnabled);
-	reader.tryRead("researchTreeDisabled", _researchTreeDisabled);
 
 	if (const auto& nodeMana = loadDocInfoHelper("mana"))
 	{
@@ -3389,6 +3405,18 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 	reader.tryRead("hackingStatToTuCoef", _hackingStatToTuCoef);
 	reader.tryRead("hackingStatToHpCoef", _hackingStatToHpCoef);
 
+	const auto requirePositiveHackingSetting = [](const char* setting, int value)
+	{
+		if (value <= 0)
+		{
+			throw Exception(std::string("Global hacking setting '") + setting + "' must be greater than 0.");
+		}
+	};
+	requirePositiveHackingSetting("hackingBaseTuCost", _hackingBaseTuCost);
+	requirePositiveHackingSetting("hackingFirewallBaseTuCost", _hackingFirewallBaseTuCost);
+	requirePositiveHackingSetting("hackingFirewallBaseHpCost", _hackingFirewallBaseHpCost);
+	requirePositiveHackingSetting("hackingStatToTuCoef", _hackingStatToTuCoef);
+	requirePositiveHackingSetting("hackingStatToHpCoef", _hackingStatToHpCoef);
 
 	if (reader["loyaltySettings"])
 	{
@@ -3402,6 +3430,29 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 		nodeLoyalty.tryRead("coefAlienBase", _coefAlienBase);
 		nodeLoyalty.tryRead("noFundsPenalty", _noFundsPenalty);
 		nodeLoyalty.tryRead("noFundsValue", _noFundsValue);
+		bool invalidLoyaltySettings = false;
+		if (const auto& multipliers = nodeLoyalty["noFundsPenaltyDifficultyMultipliers"])
+		{
+			if (!multipliers.isSeq() || multipliers.childrenCount() != std::size(_noFundsPenaltyDifficultyMultipliers))
+			{
+				invalidLoyaltySettings = true;
+			}
+			else
+			{
+				for (size_t i = 0; i < std::size(_noFundsPenaltyDifficultyMultipliers); ++i)
+					multipliers[i].tryReadVal(_noFundsPenaltyDifficultyMultipliers[i]);
+			}
+		}
+
+		invalidLoyaltySettings = invalidLoyaltySettings || _coefBattlescape < 0 || _coefGeoscape < 0 || _coefDogfight < 0
+			|| _coefResearch < 0 || _coefAlienMission < 0 || _coefUfo < 0 || _coefAlienBase < 0
+			|| _noFundsPenalty < 0 || _noFundsValue >= 0;
+		for (int multiplier : _noFundsPenaltyDifficultyMultipliers)
+			invalidLoyaltySettings = invalidLoyaltySettings || multiplier < 0;
+		if (invalidLoyaltySettings)
+		{
+			throw Exception("Invalid loyaltySettings: coefficients and penalties must be non-negative, noFundsValue must be negative, and difficulty multipliers must contain exactly five non-negative values.");
+		}
 	}
 
 	if (const auto& nodeGameOver = loadDocInfoHelper("gameOver"))
@@ -3412,11 +3463,6 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 	}
 	reader.tryRead("ufoGlancingHitThreshold", _ufoGlancingHitThreshold);
 	reader.tryRead("ufoBeamWidthParameter", _ufoBeamWidthParameter);
-	if (const auto& arrayReader = reader["ufoTractorBeamSizeModifiers"])
-	{
-		for (size_t j = 0; j < std::size(_ufoTractorBeamSizeModifiers); j++)
-			arrayReader[j].tryReadVal(_ufoTractorBeamSizeModifiers[j]);
-	}
 	reader.tryRead("escortRange", _escortRange);
 	reader.tryRead("drawEnemyRadarCircles", _drawEnemyRadarCircles);
 	reader.tryRead("escortsJoinFightAgainstHK", _escortsJoinFightAgainstHK);
@@ -3424,28 +3470,100 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 	reader.tryRead("crewEmergencyEvacuationSurvivalChance", _crewEmergencyEvacuationSurvivalChance);
 	reader.tryRead("pilotsEmergencyEvacuationSurvivalChance", _pilotsEmergencyEvacuationSurvivalChance);
 	reader.tryRead("showUfoPreviewInBaseDefense", _showUfoPreviewInBaseDefense);
-	reader.tryRead("soldiersPerSergeant", _soldiersPerRank[RANK_SERGEANT]);
-	reader.tryRead("soldiersPerCaptain", _soldiersPerRank[RANK_CAPTAIN]);
-	reader.tryRead("soldiersPerColonel", _soldiersPerRank[RANK_COLONEL]);
-	reader.tryRead("soldiersPerCommander", _soldiersPerRank[RANK_COMMANDER]);
-	reader.tryRead("pilotAccuracyZeroPoint", _pilotAccuracyZeroPoint);
-	reader.tryRead("pilotAccuracyRange", _pilotAccuracyRange);
-	reader.tryRead("pilotReactionsZeroPoint", _pilotReactionsZeroPoint);
-	reader.tryRead("pilotReactionsRange", _pilotReactionsRange);
-	if (const auto& arrayReader = reader["pilotBraveryThresholds"])
-	{
-		for (size_t j = 0; j < std::size(_pilotBraveryThresholds); j++)
-			arrayReader[j].tryReadVal(_pilotBraveryThresholds[j]);
-	}
-	reader.tryRead("pilotCooperationZeroPoint", _pilotCooperationZeroPoint);
-	reader.tryRead("pilotCooperationRange", _pilotCooperationRange);
-	reader.tryRead("pilotTacticsZeroPoint", _pilotCooperationZeroPoint);
-	reader.tryRead("pilotTacticsRange", _pilotCooperationRange);
+	reader.tryRead("pilotWeaponAccuracyZeroPoint", _pilotWeaponAccuracyZeroPoint);
+	reader.tryRead("pilotWeaponAccuracyRange", _pilotWeaponAccuracyRange);
+	reader.tryRead("pilotManeuveringZeroPoint", _pilotManeuveringZeroPoint);
+	reader.tryRead("pilotManeuveringRange", _pilotManeuveringRange);
+	reader.tryRead("pilotCoordinationZeroPoint", _pilotCoordinationZeroPoint);
+	reader.tryRead("pilotCoordinationRange", _pilotCoordinationRange);
 	reader.tryRead("pilotTrackingZeroPoint", _pilotTrackingZeroPoint);
 	reader.tryRead("pilotTrackingRange", _pilotTrackingRange);
-	reader.tryRead("performanceBonusFactor", _performanceBonusFactor);
 	reader.tryRead("covertOpsExperienceFactor", _covertOpsExperienceFactor);
 	reader.tryRead("covertOpsIntelBonusFactor", _covertOpsIntelBonusFactor);
+	if (const auto& covertOpsOdds = loadDocInfoHelper("covertOpsOdds"))
+	{
+		if (const auto& investigation = covertOpsOdds["investigation"])
+		{
+			investigation.tryRead("investigationDivisor", _covertOperationOddsFactors.investigation.investigationDivisor);
+			investigation.tryRead("perceptionDivisor", _covertOperationOddsFactors.investigation.perceptionDivisor);
+			investigation.tryRead("interrogationDivisor", _covertOperationOddsFactors.investigation.interrogationDivisor);
+		}
+		if (const auto& infiltration = covertOpsOdds["infiltration"])
+		{
+			infiltration.tryRead("stealthDivisor", _covertOperationOddsFactors.infiltration.stealthDivisor);
+			infiltration.tryRead("perceptionDivisor", _covertOperationOddsFactors.infiltration.perceptionDivisor);
+			infiltration.tryRead("interrogationDivisor", _covertOperationOddsFactors.infiltration.interrogationDivisor);
+			if (const auto& bravery = infiltration["bravery"])
+			{
+				bravery.tryRead("scale", _covertOperationOddsFactors.infiltration.bravery.scale);
+				bravery.tryRead("exponent", _covertOperationOddsFactors.infiltration.bravery.exponent);
+				bravery.tryRead("limit", _covertOperationOddsFactors.infiltration.bravery.limit);
+				bravery.tryRead("offset", _covertOperationOddsFactors.infiltration.bravery.offset);
+			}
+		}
+		if (const auto& negotiation = covertOpsOdds["negotiation"])
+		{
+			negotiation.tryRead("charismaDivisor", _covertOperationOddsFactors.negotiation.charismaDivisor);
+		}
+		if (const auto& deception = covertOpsOdds["deception"])
+		{
+			deception.tryRead("deceptionDivisor", _covertOperationOddsFactors.deception.deceptionDivisor);
+			if (const auto& bravery = deception["bravery"])
+			{
+				bravery.tryRead("scale", _covertOperationOddsFactors.deception.bravery.scale);
+				bravery.tryRead("exponent", _covertOperationOddsFactors.deception.bravery.exponent);
+				bravery.tryRead("limit", _covertOperationOddsFactors.deception.bravery.limit);
+				bravery.tryRead("offset", _covertOperationOddsFactors.deception.bravery.offset);
+			}
+		}
+		if (const auto& psionics = covertOpsOdds["psionics"])
+		{
+			if (const auto& offensive = psionics["offensive"])
+			{
+				offensive.tryRead("scale", _covertOperationOddsFactors.psionics.offensive.scale);
+				offensive.tryRead("exponent", _covertOperationOddsFactors.psionics.offensive.exponent);
+				offensive.tryRead("limit", _covertOperationOddsFactors.psionics.offensive.limit);
+				offensive.tryRead("offset", _covertOperationOddsFactors.psionics.offensive.offset);
+				offensive.tryRead("divisor", _covertOperationOddsFactors.psionics.offensiveDivisor);
+			}
+			if (const auto& passive = psionics["passive"])
+			{
+				passive.tryRead("scale", _covertOperationOddsFactors.psionics.passive.scale);
+				passive.tryRead("exponent", _covertOperationOddsFactors.psionics.passive.exponent);
+				passive.tryRead("limit", _covertOperationOddsFactors.psionics.passive.limit);
+				passive.tryRead("offset", _covertOperationOddsFactors.psionics.passive.offset);
+				passive.tryRead("divisor", _covertOperationOddsFactors.psionics.passiveDivisor);
+			}
+		}
+
+		auto validateDivisor = [](double value, const std::string& name)
+		{
+			if (value <= 0.0)
+				throw Exception(name + " must be greater than 0");
+		};
+		auto validateCurve = [&validateDivisor](const CovertOperationOddsCurve& curve, const std::string& name)
+		{
+			validateDivisor(curve.scale, name + ".scale");
+			validateDivisor(curve.exponent, name + ".exponent");
+			if (curve.limit < 0.0)
+				throw Exception(name + ".limit must be greater than or equal to 0");
+		};
+
+		validateDivisor(_covertOperationOddsFactors.investigation.investigationDivisor, "covertOpsOdds.investigation.investigationDivisor");
+		validateDivisor(_covertOperationOddsFactors.investigation.perceptionDivisor, "covertOpsOdds.investigation.perceptionDivisor");
+		validateDivisor(_covertOperationOddsFactors.investigation.interrogationDivisor, "covertOpsOdds.investigation.interrogationDivisor");
+		validateDivisor(_covertOperationOddsFactors.infiltration.stealthDivisor, "covertOpsOdds.infiltration.stealthDivisor");
+		validateDivisor(_covertOperationOddsFactors.infiltration.perceptionDivisor, "covertOpsOdds.infiltration.perceptionDivisor");
+		validateDivisor(_covertOperationOddsFactors.infiltration.interrogationDivisor, "covertOpsOdds.infiltration.interrogationDivisor");
+		validateCurve(_covertOperationOddsFactors.infiltration.bravery, "covertOpsOdds.infiltration.bravery");
+		validateDivisor(_covertOperationOddsFactors.negotiation.charismaDivisor, "covertOpsOdds.negotiation.charismaDivisor");
+		validateDivisor(_covertOperationOddsFactors.deception.deceptionDivisor, "covertOpsOdds.deception.deceptionDivisor");
+		validateCurve(_covertOperationOddsFactors.deception.bravery, "covertOpsOdds.deception.bravery");
+		validateCurve(_covertOperationOddsFactors.psionics.offensive, "covertOpsOdds.psionics.offensive");
+		validateDivisor(_covertOperationOddsFactors.psionics.offensiveDivisor, "covertOpsOdds.psionics.offensive.divisor");
+		validateCurve(_covertOperationOddsFactors.psionics.passive, "covertOpsOdds.psionics.passive");
+		validateDivisor(_covertOperationOddsFactors.psionics.passiveDivisor, "covertOpsOdds.psionics.passive.divisor");
+	}
 	reader.tryRead("visibilityStatsMod", _visibilityStatsMod);
 	reader.tryRead("enableNewResearchSorting", _enableNewResearchSorting);
 	reader.tryRead("displayCustomCategories", _displayCustomCategories);
@@ -3494,6 +3612,7 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 	loadSoundOffset("global", _startDogfightSound, reader["startDogfightSound"], "BATTLE.CAT");
 	reader.tryRead("flagByKills", _flagByKills);
 	reader.tryRead("defeatScore", _defeatScore);
+	reader.tryRead("defeatLoyalty", _defeatLoyalty);
 	reader.tryRead("defeatFunds", _defeatFunds);
 	reader.tryRead("difficultyDemigod", _difficultyDemigod);
 
@@ -3649,10 +3768,6 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 	{
 		_globe->load(reader["globe"], this);
 	}
-	if (reader["converter"])
-	{
-		_converter->load(reader["converter"]);
-	}
 	if (const auto& constants = reader["constants"])
 	{
 		//backward compatibility version
@@ -3669,8 +3784,7 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 		}
 	}
 
-
-	// refresh _psiRequirements for psiStrengthEval
+	// Refresh the research requirements used to display psionic information.
 	for (const auto& facType : _facilitiesIndex)
 	{
 		RuleBaseFacility *rule = getBaseFacility(facType);
@@ -3680,7 +3794,7 @@ void Mod::loadFile(const FileMap::FileRecord &filerec, ModScript &parsers)
 			break;
 		}
 	}
-	// override the default (used when you want to separate screening and training)
+	// Override the default when screening and training are unlocked separately.
 	if (!_psiUnlockResearch.empty())
 	{
 		_psiRequirements.clear();
@@ -3955,25 +4069,14 @@ SavedGame *Mod::newSave(GameDifficulty diff) const
 	SavedGame *save = new SavedGame();
 	save->setDifficulty(diff);
 
-	// Add countries
-	for (const auto& countryName : _countriesIndex)
+	switch (diff)
 	{
-		RuleCountry *countryRule = getCountry(countryName);
-		if (!countryRule->getLonMin().empty())
-			save->getCountries()->push_back(new Country(countryRule));
+	case DIFF_BEGINNER: save->setFunds(_startingFundsBeginner); break;
+	case DIFF_EXPERIENCED: save->setFunds(_startingFundsExperienced); break;
+	case DIFF_VETERAN: save->setFunds(_startingFundsVeteran); break;
+	case DIFF_GENIUS: save->setFunds(_startingFundsGenius); break;
+	case DIFF_SUPERHUMAN: save->setFunds(_startingFundsSuperhuman); break;
 	}
-	// Adjust funding to total $6M
-	int missing = ((_initialFunding - save->getCountryFunding()/1000) / (int)save->getCountries()->size()) * 1000;
-	for (auto* country : *save->getCountries())
-	{
-		int funding = country->getFunding().back() + missing;
-		if (funding < 0)
-		{
-			funding = country->getFunding().back();
-		}
-		country->setFunding(funding);
-	}
-	save->setFunds(save->getCountryFunding());
 
 	// Add regions
 	for (const auto& regionName : _regionsIndex)
@@ -3986,14 +4089,10 @@ SavedGame *Mod::newSave(GameDifficulty diff) const
 	// Set up starting base
 	const YAML::YamlRootNodeReader startingBaseByDiff(getStartingBase(diff), "(starting base template)");
 	Base *base = new Base(this);
-	base->load(startingBaseByDiff, save, true);
+	base->load(startingBaseByDiff, save);
 	if (const auto& globalTemplates = startingBaseByDiff["globalTemplates"])
 	{
 		save->loadTemplates(globalTemplates, this);
-	}
-	if (const auto& ufopediaRuleStatus = startingBaseByDiff["ufopediaRuleStatus"])
-	{
-		save->loadUfopediaRuleStatus(ufopediaRuleStatus);
 	}
 	save->getBases()->push_back(base);
 
@@ -4079,8 +4178,7 @@ SavedGame *Mod::newSave(GameDifficulty diff) const
 		for (auto& randomType : randomTypes)
 		{
 			const RuleSoldier* ruleSoldier = getSoldier(randomType, true);
-			int nationality = save->selectSoldierNationalityByLocation(this, ruleSoldier, nullptr); // -1 (unfortunately the first base is not placed yet)
-			Soldier *soldier = genSoldier(save, ruleSoldier, nationality);
+			Soldier *soldier = genSoldier(save, ruleSoldier);
 			base->getSoldiers()->push_back(soldier);
 			// Award soldier a special 'original eight' commendation
 			if (_commendations.find("STR_MEDAL_ORIGINAL8_NAME") != _commendations.end())
@@ -4096,7 +4194,7 @@ SavedGame *Mod::newSave(GameDifficulty diff) const
 		// Sort soldiers by role
 		auto compareRole = [](const Soldier* lhs, const Soldier* rhs)
 		{
-			return lhs->getRoles()[0]->role < rhs->getRoles()[0]->role;
+			return lhs->getBestRole() < rhs->getBestRole();
 		};
 		sort(base->getSoldiers()->begin(), base->getSoldiers()->end(), compareRole);
 
@@ -4146,7 +4244,7 @@ SavedGame *Mod::newSave(GameDifficulty diff) const
 		// Fill dropship passenger space with combat soldiers, keeping any unfilled pilot slots free.
 		for (auto* soldier : *base->getSoldiers())
 		{
-			if (soldier->getCraft() != nullptr || soldier->getRoleRank(ROLE_SOLDIER) <= 0)
+			if (soldier->getCraft() != nullptr || !soldier->isDeployableCombatUnit())
 			{
 				continue;
 			}
@@ -4175,46 +4273,6 @@ SavedGame *Mod::newSave(GameDifficulty diff) const
 	save->setTime(_startingTime);
 
 	return save;
-}
-
-/**
- * Returns the rules for the specified country.
- * @param id Country type.
- * @return Rules for the country.
- */
-RuleCountry *Mod::getCountry(const std::string &id, bool error) const
-{
-	return getRule(id, "Country", _countries, error);
-}
-
-/**
- * Returns the list of all countries
- * provided by the mod.
- * @return List of countries.
- */
-const std::vector<std::string> &Mod::getCountriesList() const
-{
-	return _countriesIndex;
-}
-
-/**
- * Returns the rules for the specified extra globe label.
- * @param id Extra globe label type.
- * @return Rules for the extra globe label.
- */
-RuleCountry *Mod::getExtraGlobeLabel(const std::string &id, bool error) const
-{
-	return getRule(id, "Extra Globe Label", _extraGlobeLabels, error);
-}
-
-/**
- * Returns the list of all extra globe labels
- * provided by the mod.
- * @return List of extra globe labels.
- */
-const std::vector<std::string> &Mod::getExtraGlobeLabelsList() const
-{
-	return _extraGlobeLabelsIndex;
 }
 
 /**
@@ -4838,6 +4896,36 @@ const std::vector<std::string> &Mod::getIntelProjectsList() const
 	return _intelligenceIndex;
 }
 
+RuleXenoSpecies* Mod::getXenoSpecies(const std::string& id, bool error) const
+{
+	return getRule(id, "XenoSpecies", _xenoSpecies, error);
+}
+
+const std::vector<std::string>& Mod::getXenoSpeciesList() const
+{
+	return _xenoSpeciesIndex;
+}
+
+RuleContainedAlien* Mod::getContainedAlien(const std::string& id, bool error) const
+{
+	return getRule(id, "ContainedAlien", _containedAliens, error);
+}
+
+const std::vector<std::string>& Mod::getContainedAliensList() const
+{
+	return _containedAliensIndex;
+}
+
+RuleContainedMonster* Mod::getContainedMonster(const std::string& id, bool error) const
+{
+	return getRule(id, "ContainedMonster", _containedMonsters, error);
+}
+
+const std::vector<std::string>& Mod::getContainedMonstersList() const
+{
+	return _containedMonstersIndex;
+}
+
 /**
  * Returns the rules for the specified prisoner.
  * @param id Inteligence project type.
@@ -4893,29 +4981,6 @@ RuleSoldierTransformation *Mod::getSoldierTransformation (const std::string &id,
 const std::vector<std::string> &Mod::getSoldierTransformationList() const
 {
 	return _soldierTransformationIndex;
-}
-
-/**
- * Generates and returns a list of facilities for custom bases.
- * The list contains all the facilities that are listed in the 'startingBase'
- * part of the ruleset.
- * @return The list of facilities for custom bases.
- */
-std::vector<RuleBaseFacility*> Mod::getCustomBaseFacilities(GameDifficulty diff) const
-{
-	std::vector<RuleBaseFacility*> placeList;
-
-	const YAML::YamlRootNodeReader startingBaseByDiff(getStartingBase(diff), "(starting base template)");
-	for (const auto& facilityReader : startingBaseByDiff["facilities"].children())
-	{
-		std::string type = facilityReader["type"].readVal<std::string>();
-		RuleBaseFacility *facility = getBaseFacility(type, true);
-		if (!facility->isLift() && !facility->isUpgradeOnly())
-		{
-			placeList.push_back(facility);
-		}
-	}
-	return placeList;
 }
 
 /**
@@ -4997,7 +5062,7 @@ const YAML::YamlString& Mod::getDefaultStartingBase() const
 }
 
 /**
- * Gets the custom starting base (by game difficulty).
+ * Gets the starting base definition for the selected difficulty.
  * @return The starting base definition.
  */
 const YAML::YamlString& Mod::getStartingBase(GameDifficulty diff) const
@@ -5258,7 +5323,7 @@ void Mod::sortLists()
 }
 
 /**
- * Gets the research-requirements for Psi-Lab (it's a cache for psiStrengthEval)
+ * Gets the research requirements used to display psionic information.
  */
 const std::vector<std::string> &Mod::getPsiRequirements() const
 {
@@ -5271,7 +5336,7 @@ const std::vector<std::string> &Mod::getPsiRequirements() const
  * @param type The soldier type to generate.
  * @return Newly generated soldier.
  */
-Soldier *Mod::genSoldier(SavedGame *save, const RuleSoldier* ruleSoldier, int nationality) const
+Soldier *Mod::genSoldier(SavedGame *save, const RuleSoldier* ruleSoldier) const
 {
 	Soldier *soldier = 0;
 	int newId = save->getId("STR_SOLDIER");
@@ -5282,7 +5347,7 @@ Soldier *Mod::genSoldier(SavedGame *save, const RuleSoldier* ruleSoldier, int na
 	for (int tries = 0; tries < 10 && duplicate; ++tries)
 	{
 		delete soldier;
-		soldier = new Soldier(const_cast<RuleSoldier*>(ruleSoldier), ruleSoldier->getDefaultArmor(), nationality, newId);
+		soldier = new Soldier(const_cast<RuleSoldier*>(ruleSoldier), ruleSoldier->getDefaultArmor(), newId);
 		duplicate = false;
 		for (auto* xbase : *save->getBases())
 		{
@@ -5307,7 +5372,7 @@ Soldier *Mod::genSoldier(SavedGame *save, const RuleSoldier* ruleSoldier, int na
 	}
 
 	// calculate new statString
-	soldier->calcStatString(getStatStrings(), (Options::psiStrengthEval && save->isResearched(getPsiRequirements())));
+	soldier->calcStatString(getStatStrings());
 
 	return soldier;
 }
@@ -5394,15 +5459,6 @@ RuleInterface *Mod::getInterface(const std::string &id, bool error) const
 RuleGlobe *Mod::getGlobe() const
 {
 	return _globe;
-}
-
-/**
-* Gets the rules for the Save Converter.
-* @return Pointer to converter rules.
-*/
-RuleConverter *Mod::getConverter() const
-{
-	return _converter;
 }
 
 const std::map<std::string, SoundDefinition *> *Mod::getSoundDefinitions() const
@@ -6149,7 +6205,6 @@ void Mod::loadBattlescapeResources()
 	}
 
 	//"fix" of color index in original solders sprites
-	if (Options::battleHairBleach)
 	{
 		std::string name;
 
@@ -6768,6 +6823,16 @@ int Mod::getDefeatScore() const
 }
 
 /**
+ * Returns the minimum loyalty the player can have,
+ * otherwise they are defeated. Changes based on difficulty.
+ * @return Loyalty.
+ */
+int Mod::getDefeatLoyalty() const
+{
+	return _defeatLoyalty;
+}
+
+/**
  * Returns the minimum amount of funds the player can have,
  * otherwise they are defeated.
  * @return Funds.
@@ -6944,43 +7009,20 @@ void Mod::ScriptRegister(ScriptParserBase *parser)
 
 #ifndef NDEBUG
 
-static auto dummyParseDate = ([]
+static auto dummyParseBuildDate = ([]
 {
-	assert(OxceVersionDate(OPENXCOM_FTA_VERSION_GIT));
-	assert(OxceVersionDate(" (v1976-04-23)"));
-	assert(OxceVersionDate(" (v9999-99-99)")); //accept impossible dates
-	assert(OxceVersionDate(" (v   6-04-23)"));
-	assert(OxceVersionDate(" (v   1- 1- 1)"));
-
-	assert(!OxceVersionDate(" (v21976-04-23)"));
-	assert(!OxceVersionDate(" (v1976-034-22)"));
-	assert(!OxceVersionDate(" (v1976-04-232)"));
-	assert(!OxceVersionDate(" (v1976-b4-23)"));
-
-	assert(!OxceVersionDate(""));
-	assert(!OxceVersionDate(" (v"));
-	assert(!OxceVersionDate(" (v)"));
-	assert(!OxceVersionDate(" (v 1976-04-23)"));
-	assert(!OxceVersionDate(" (v1976- 04-23)"));
-	assert(!OxceVersionDate(" (v1976-04- 23)"));
-	assert(!OxceVersionDate(" (v1976-04-23 )"));
-	assert(!OxceVersionDate(" (v    -  -  )"));
-	assert(!OxceVersionDate(" (v   0- 0- 0)"));
-	assert(!OxceVersionDate(" (v 1 1- 1- 1)"));
+	assert(FtaBuildDate("19760423"));
+	assert(FtaBuildDate("99999999")); //accept impossible dates
+	assert(!FtaBuildDate(""));
+	assert(!FtaBuildDate("1976-04-23"));
+	assert(!FtaBuildDate("1976042"));
+	assert(!FtaBuildDate("197604232"));
+	assert(!FtaBuildDate("1976b423"));
+	assert(!FtaBuildDate("00000000"));
 
 	{
-		OxceVersionDate d("   (v1976-04-23)");
+		FtaBuildDate d("19760423");
 		assert(d && d.year == 1976 && d.month == 04 && d.day == 23);
-	}
-
-	{
-		OxceVersionDate d("   (v1976-04-22)    ");
-		assert(d && d.year == 1976 && d.month == 04 && d.day == 22);
-	}
-
-	{
-		OxceVersionDate d(" aaads  (v1976-04-22)  sdafdfsfsd  ");
-		assert(d && d.year == 1976 && d.month == 04 && d.day == 22);
 	}
 
 	return 0;

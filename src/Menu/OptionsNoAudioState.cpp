@@ -17,7 +17,6 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "OptionsNoAudioState.h"
-#include "../Engine/LocalizedText.h"
 #include "../Interface/Text.h"
 
 namespace OpenXcom

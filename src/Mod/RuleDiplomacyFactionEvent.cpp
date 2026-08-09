@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "RuleDiplomacyFactionEvent.h"
+#include "Mod.h"
 #include <climits>
 
 namespace OpenXcom
@@ -69,8 +70,36 @@ void RuleDiplomacyFactionEvent::load(const YAML::YamlNodeReader& node)
 	reader.tryRead("playerResearchTriggers", _playerResearchTriggers);
 	reader.tryRead("factionResearchTriggers", _factionResearchTriggers);
 	reader.tryRead("itemTriggers", _itemTriggers);
-	reader.tryRead("itemsToAdd", _itemsToAdd);
+	reader.tryRead("itemsChange", _itemsChange);
 	reader.tryRead("staffToAdd", _staffToAdd);
 	reader.tryRead("discoveredResearches", _discoveredResearches);
+}
+
+void RuleDiplomacyFactionEvent::afterLoad(const Mod* mod)
+{
+	for (const auto& trigger : _playerResearchTriggers)
+	{
+		mod->getResearch(trigger.first, true);
+	}
+	for (const auto& trigger : _factionResearchTriggers)
+	{
+		mod->getResearch(trigger.first, true);
+	}
+	for (const auto& research : _discoveredResearches)
+	{
+		mod->getResearch(research, true);
+	}
+	for (const auto& trigger : _itemTriggers)
+	{
+		mod->getItem(trigger.first, true);
+	}
+	for (const auto& item : _itemsChange)
+	{
+		mod->getItem(item.first, true);
+	}
+	for (const auto& staff : _staffToAdd)
+	{
+		mod->getSoldier(staff.first, true);
+	}
 }
 }

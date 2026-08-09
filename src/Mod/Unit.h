@@ -32,6 +32,8 @@ class Armor;
 class RuleItem;
 class RuleSoldier;
 class RulePrisoner;
+class RuleContainedAlien;
+class RuleContainedMonster;
 class ModScript;
 class ScriptParserBase;
 
@@ -88,8 +90,8 @@ struct UnitStats
 
 	Type tu, stamina, health, bravery, reactions, firing, throwing, strength, psiStrength, psiSkill, melee, mana, //soldiers
 		maneuvering, missiles, dogfight, tracking, cooperation, beams, synaptic, gravity, //pilot
-		physics, chemistry, biology, insight, data, computers, tactics, materials, designing, psionics, xenolinguistics, //scientist
-		weaponry, explosives, efficiency, microelectronics, metallurgy, processing, hacking, robotics, diligence, alienTech, reverseEngineering, //engineers
+		physics, chemistry, biology, insight, data, computers, tactics, materials, designing, psionics, xenolinguistics, //scientists
+		weaponry, explosives, efficiency, microelectronics, metallurgy, processing, hacking, robotics, diligence, alienTech, reverseEngineering, //engineers; alienTech is shared with scientists
 		stealth, perception, charisma, investigation, deception, interrogation; //agents
 
 	UnitStats() : tu(0), stamina(0), health(0), bravery(0), reactions(0), firing(0), throwing(0),
@@ -821,7 +823,7 @@ class Unit
 {
 private:
 	std::string _type;
-	std::string _civilianRecoveryTypeName, _spawnedPersonName, _liveAlienName;
+	std::string _civilianRecoveryTypeName, _spawnedPersonName;
 	const RuleSoldier* _civilianRecoverySoldierType = nullptr;
 	const RuleItem* _civilianRecoveryItemType = nullptr;
 	YAML::YamlString _spawnedSoldier;
@@ -832,6 +834,10 @@ private:
 	std::vector<SoldierRole> _roles;
 	std::string _prisonerName;
 	const RulePrisoner* _prisoner = nullptr;
+	std::string _containedAlienName;
+	const RuleContainedAlien* _containedAlien = nullptr;
+	std::string _containedMonsterName;
+	const RuleContainedMonster* _containedMonster = nullptr;
 	std::string _armorName;
 	const Armor* _armor;
 	int _standHeight, _kneelHeight, _floatHeight;
@@ -841,12 +847,10 @@ private:
 	int _intelligence, _aggression, _spotter, _sniper, _energyRecovery;
 	SpecialAbility _specab;
 	SpecialObjective _specialObjective;
-	const RuleItem* _liveAlien = nullptr;
 	const Unit *_spawnUnit = nullptr;
-	const Unit* _altUnit = nullptr;
 	std::string _spawnUnitName;
 	bool _livingWeapon;
-	std::string _meleeWeapon, _psiWeapon, _altRecoveredUnit;
+	std::string _meleeWeapon, _psiWeapon;
 	std::vector<std::vector<std::string> > _builtInWeaponsNames;
 	std::vector<std::vector<const RuleItem*> > _builtInWeapons;
 	std::vector<WeightedOptions*> _weightedBuiltInWeapons;
@@ -856,8 +860,7 @@ private:
 	bool _waitIfOutsideWeaponRange;
 	int _pickUpWeaponsMoreActively;
 	Sint8 _avoidsFire;
-	bool _vip;
-	bool _cosmetic, _ignoredByAI;
+	bool _cosmetic, _ignoredByAI, _treatedByAI;
 	bool _canPanic;
 	bool _canBeMindControlled;
 	int _berserkChance;
@@ -912,6 +915,10 @@ public:
 	std::vector<SoldierRole> getRoles() const { return _roles; }
 	/// Gets the prisoner type.
 	const RulePrisoner* getPrisoner() const { return _prisoner; }
+	/// Gets the contained-alien capture profile.
+	const RuleContainedAlien* getContainedAlien() const { return _containedAlien; }
+	/// Gets the contained-monster capture profile.
+	const RuleContainedMonster* getContainedMonster() const { return _containedMonster; }
 	/// Gets the value - for score calculation.
 	int getValue() const;
 	/// Percentage modifier for morale loss when this unit is killed.
@@ -944,8 +951,6 @@ public:
 	int getSniperPercentage() const;
 	/// Gets the alien's special ability.
 	int getSpecialAbility() const;
-	/// Gets the Geoscape live alien item.
-	const RuleItem* getLiveAlienGeoscape() const { return _liveAlien; }
 	/// Gets the unit's spawn unit.
 	const Unit *getSpawnUnit() const;
 	/// Gets the unit's warcries.
@@ -968,8 +973,6 @@ public:
 	bool canSurrender() const;
 	/// Gets special objective of a unit.
 	SpecialObjective getSpecialObjective() const { return _specialObjective; }
-	/// Gets alternative unit for recovery.
-	const Unit* getAltUnit() const { return _altUnit; };
 	/// Checks if this unit surrenders automatically, if all other units surrendered too.
 	bool autoSurrender() const;
 	bool isLeeroyJenkins() const { return _isLeeroyJenkins; };
@@ -981,12 +984,12 @@ public:
 	bool avoidsFire() const;
 	/// Should alien inventory show full name (e.g. Sectoid Leader) or just the race (e.g. Sectoid)?
 	bool getShowFullNameInAlienInventory(Mod *mod) const;
-	/// Is this a VIP unit?
-	bool isVIP() const { return _vip; }
 	/// Is this only a cosmetic unit?
 	bool isCosmetic() const { return _cosmetic; }
 	/// Should this unit be ignored by the AI?
 	bool isIgnoredByAI() const { return _ignoredByAI; }
+	/// Should this unit be treated as an enemy by AI units regardless of its faction?
+	bool isTreatedByAI() const { return _treatedByAI; }
 	/// Checks if this unit can panic.
 	bool canPanic() const { return _canPanic; }
 	/// Checks if this unit can be mind controlled.

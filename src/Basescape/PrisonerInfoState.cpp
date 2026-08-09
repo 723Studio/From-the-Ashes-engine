@@ -22,11 +22,11 @@
 #include "../Engine/Game.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Options.h"
-#include "../Engine/RNG.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/TextList.h"
 #include "../Interface/Window.h"
+#include "../Mod/Mod.h"
 #include "../Mod/RuleInterface.h"
 #include "../Mod/RulePrisoner.h"
 #include "../Savegame/Base.h"
@@ -108,7 +108,7 @@ PrisonerInfoState::PrisonerInfoState(Base* base, BasePrisoner* prisoner, const R
 
 	_txtTitle->setBig();
 	_txtTitle->setAlign(ALIGN_CENTER);
-	_txtTitle->setText(_prisoner->getNameAndId(_game->getLanguage()));
+	_txtTitle->setText(_prisoner->getNameAndDesignation(_game->getLanguage()));
 
 	_btnAllocate->setText(tr("STR_ALLOCATE_AGENTS"));
 	_btnAllocate->onMouseClick((ActionHandler)&PrisonerInfoState::btnAllocateClick);
@@ -150,10 +150,7 @@ PrisonerInfoState::PrisonerInfoState(Base* base, BasePrisoner* prisoner, const R
 
 	if (_rule->getRecruitingRules().getReuiredResearch() != nullptr)
 	{
-		_ableRecruit = _game->getSavedGame()->isResearched(_rule->getRecruitingRules().getReuiredResearch())
-			&& _prisoner->getMorale() > 0
-			&& _prisoner->getCooperation() > 0
-			&& _prisoner->getAggression() < 0;
+		_ableRecruit = _game->getSavedGame()->isResearched(_rule->getRecruitingRules().getReuiredResearch());
 	}
 
 	_btnInterrogate->setText(tr("STR_INTERROGATE"));

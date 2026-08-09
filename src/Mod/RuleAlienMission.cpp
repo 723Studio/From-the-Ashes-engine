@@ -17,6 +17,8 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "RuleAlienMission.h"
+#include "Mod.h"
+#include "../Engine/Exception.h"
 #include "../Savegame/WeightedOptions.h"
 
 namespace OpenXcom
@@ -24,7 +26,7 @@ namespace OpenXcom
 
 RuleAlienMission::RuleAlienMission(const std::string &type) :
 	_type(type), _skipScoutingPhase(false), _points(0), _objective(OBJECTIVE_SCORE), _spawnZone(-1),
-	_retaliationOdds(-1), _endlessInfiltration(true), _multiUfoRetaliation(false), _multiUfoRetaliationExtra(false),
+	_retaliationOdds(-1), _multiUfoRetaliation(false), _multiUfoRetaliationExtra(false),
 	_ignoreBaseDefenses(false), _instaHyper(false),
 	_despawnEvenIfTargeted(false), _respawnUfoAfterSiteDespawn(false), _showAlienBase(false),
 	_operationType(AMOT_SPACE), _operationSpawnZone(-1),
@@ -67,7 +69,6 @@ void RuleAlienMission::load(const YAML::YamlNodeReader& node)
 	reader.tryRead("spawnZone", _spawnZone);
 	reader.tryRead("missionWeights", _weights);
 	reader.tryRead("retaliationOdds", _retaliationOdds);
-	reader.tryRead("endlessInfiltration", _endlessInfiltration);
 	reader.tryRead("multiUfoRetaliation", _multiUfoRetaliation);
 	reader.tryRead("multiUfoRetaliationExtra", _multiUfoRetaliationExtra);
 	if (_multiUfoRetaliationExtra)
@@ -88,22 +89,13 @@ void RuleAlienMission::load(const YAML::YamlNodeReader& node)
 	reader.tryRead("operationBaseType", _operationBaseType);
 	reader.tryRead("targetBaseOdds", _targetBaseOdds);
 
-	for (const auto& weights : reader["regionWeights"].children())
+	typedef std::map<size_t, WeightedOptions*> Associative;
+	typedef std::vector< std::pair<size_t, WeightedOptions*> > Linear;
+	auto mergeDistribution = [](Linear& distribution, const YAML::YamlNodeReader& weights)
 	{
-		WeightedOptions* nw = new WeightedOptions();
-		nw->load(weights);
-		_regionWeights.push_back(std::make_pair(weights.readKey<size_t>(0), nw));
-	}
-
-	//Only allow full replacement of mission racial distribution.
-	if (const auto& weights = reader["raceWeights"])
-	{
-		typedef std::map<size_t, WeightedOptions*> Associative;
-		typedef std::vector< std::pair<size_t, WeightedOptions*> > Linear;
-
 		Associative assoc;
 		//Place in the associative container so we can index by month and keep entries sorted.
-		for (Linear::iterator ii = _raceDistribution.begin(); ii != _raceDistribution.end(); ++ii)
+		for (Linear::iterator ii = distribution.begin(); ii != distribution.end(); ++ii)
 		{
 			assoc.insert(*ii);
 		}
@@ -128,8 +120,8 @@ void RuleAlienMission::load(const YAML::YamlNodeReader& node)
 		}
 
 		// Now replace values in our actual member variable!
-		_raceDistribution.clear();
-		_raceDistribution.reserve(assoc.size());
+		distribution.clear();
+		distribution.reserve(assoc.size());
 		for (Associative::iterator ii = assoc.begin(); ii != assoc.end(); ++ii)
 		{
 			if (ii->second->empty())
@@ -140,9 +132,66 @@ void RuleAlienMission::load(const YAML::YamlNodeReader& node)
 			else
 			{
 				// Place it
-				_raceDistribution.push_back(*ii);
+				distribution.push_back(*ii);
 			}
 		}
+	};
+
+	if (const auto& weights = reader["regionWeights"])
+	{
+		mergeDistribution(_regionWeights, weights);
+	}
+	if (const auto& weights = reader["raceWeights"])
+	{
+		mergeDistribution(_raceDistribution, weights);
+	}
+}
+
+/**
+ * Validates race references after all ruleset merges are complete.
+ */
+void RuleAlienMission::afterLoad(const Mod* mod)
+{
+	if (_spawnZone < -1)
+	{
+		throw Exception("Alien mission '" + _type + "' has invalid spawnZone: expected -1 or a non-negative zone index");
+	}
+
+	for (const auto& distribution : _raceDistribution)
+	{
+		for (const auto& race : distribution.second->getNames())
+		{
+			if (!mod->getAlienRace(race))
+			{
+				throw Exception("Alien mission '" + _type + "' has undefined race '" + race + "' in raceWeights");
+			}
+		}
+	}
+	for (const auto& distribution : _regionWeights)
+	{
+		for (const auto& region : distribution.second->getNames())
+		{
+			if (!mod->getRegion(region))
+			{
+				throw Exception("Alien mission '" + _type + "' has undefined region '" + region + "' in regionWeights");
+			}
+		}
+	}
+}
+
+/**
+ * Ensures that a mission spawned without a RuleMissionScript or alien base
+ * can select a race at every point in the campaign.
+ */
+void RuleAlienMission::validateDirectSpawn() const
+{
+	if (_raceDistribution.empty() || _raceDistribution.front().first != 0)
+	{
+		throw Exception("Alien mission '" + _type + "' is used for direct spawning and must define raceWeights starting at month 0");
+	}
+	if (!_regionWeights.empty() && _regionWeights.front().first != 0)
+	{
+		throw Exception("Alien mission '" + _type + "' is used for direct spawning and its regionWeights must start at month 0");
 	}
 }
 
@@ -208,15 +257,6 @@ int RuleAlienMission::getWeight(const size_t monthsPassed) const
 int RuleAlienMission::getRetaliationOdds() const
 {
 	return _retaliationOdds;
-}
-
-/**
- * Should the infiltration end after first cycle or continue indefinitely?
- * @return True, if infiltration should continue indefinitely.
- */
-bool RuleAlienMission::isEndlessInfiltration() const
-{
-	return _endlessInfiltration;
 }
 
 /**

@@ -21,7 +21,6 @@
 #include "MainMenuState.h"
 #include "SlideshowState.h"
 #include "VideoState.h"
-#include "../Engine/CrossPlatform.h"
 #include "../Engine/Game.h"
 #include "../Engine/Logger.h"
 #include "../Engine/Options.h"

@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "PrisonReportState.h"
+#include "GeoscapeState.h"
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
 #include "../Interface/TextButton.h"
@@ -28,6 +29,7 @@
 #include "../Basescape/SoldiersState.h"
 #include "../Engine/Options.h"
 #include "../Savegame/BasePrisoner.h"
+#include "../Battlescape/PromotionsState.h"
 
 namespace OpenXcom
 {
@@ -37,7 +39,7 @@ namespace OpenXcom
  * @param base - current base
  */
 PrisonReportState::PrisonReportState(BasePrisoner* prisoner, Base* base) :
-		_prisoner(prisoner), _base(base), _reportCase(PRISONER_REPORT_CASE_DEATH)
+		_research(nullptr), _bonus(nullptr), _prisoner(prisoner), _base(base), _soldier(nullptr), _reportCase(PRISONER_REPORT_CASE_DEATH)
 {
 	initUI();
 }
@@ -49,14 +51,21 @@ PrisonReportState::PrisonReportState(BasePrisoner* prisoner, Base* base) :
  * @param prisoner - current prisoner
  * @param base - current base
  */
-PrisonReportState::PrisonReportState(const RuleResearch* research, const RuleResearch* bonus, BasePrisoner* prisoner, Base* base) :
-		_research(research), _bonus(bonus), _prisoner(prisoner), _base(base), _soldier(0), _reportCase(PRISONER_REPORT_CASE_INTERROGATION)
+PrisonReportState::PrisonReportState(const RuleResearch* research, const RuleResearch* bonus,
+	BasePrisoner* prisoner, Base* base, const PromotionBatch& promotions,
+	std::vector<std::string> articleIds, std::vector<std::string> newResearchNotifications,
+	bool containedAlienStudiesUnblocked) :
+		_research(research), _bonus(bonus), _prisoner(prisoner), _base(base), _soldier(0),
+		_reportCase(PRISONER_REPORT_CASE_INTERROGATION), _promotions(promotions),
+		_articleIds(std::move(articleIds)),
+		_newResearchNotifications(std::move(newResearchNotifications)),
+		_containedAlienStudiesUnblocked(containedAlienStudiesUnblocked)
 {
 	initUI();
 }
 
-PrisonReportState::PrisonReportState(Soldier* soldier, BasePrisoner* prisoner, Base* base) : _prisoner(prisoner), _base(base),
-	_research(0), _soldier(soldier), _reportCase(PRISONER_REPORT_CASE_INTERROGATION)
+PrisonReportState::PrisonReportState(Soldier* soldier, BasePrisoner* prisoner, Base* base) :
+	_research(nullptr), _bonus(nullptr), _prisoner(prisoner), _base(base), _soldier(soldier), _reportCase(PRISONER_REPORT_RECRUITING)
 {
 	initUI();
 }
@@ -73,8 +82,12 @@ void PrisonReportState::initUI()
 	_window = new Window(this, 230, 140, 45, 30, POPUP_BOTH);
 	_btnOk = new TextButton(80, 16, 64, 146);
 	_btnDetails = new TextButton(80, 16, 176, 146);
-	_txtTitle = new Text(230, 17, 45, 70);
-	_txtDescription = new Text(230, 32, 45, 96);
+	_btnPromotions = new TextButton(80, 16, 176, 125);
+	_txtTitle = new Text(230, 17, 45,
+		_containedAlienStudiesUnblocked ? 58 : 70);
+	_txtDescription = new Text(230,
+		_containedAlienStudiesUnblocked ? 44 : 32, 45,
+		_containedAlienStudiesUnblocked ? 78 : 96);
 
 	// Set palette
 	std::string interface = "geoPrisonerReportNormal";
@@ -86,6 +99,7 @@ void PrisonReportState::initUI()
 	add(_window, "window", interface);
 	add(_btnOk, "button", interface);
 	add(_btnDetails, "button", interface);
+	add(_btnPromotions, "button", interface);
 	add(_txtTitle, "text1", interface);
 	add(_txtDescription, "text2", interface);
 
@@ -98,23 +112,29 @@ void PrisonReportState::initUI()
 	_btnOk->onMouseClick((ActionHandler)&PrisonReportState::btnOkClick);
 	_btnOk->onKeyboardPress((ActionHandler)&PrisonReportState::btnOkClick, Options::keyCancel);
 
+	_btnPromotions->setText(tr("STR_VIEW_PROMOTIONS"));
+	_btnPromotions->onMouseClick((ActionHandler)&PrisonReportState::btnPromotionsClick);
+	_btnPromotions->setVisible(_reportCase == PRISONER_REPORT_CASE_INTERROGATION && !_promotions.empty());
+
 	std::string btnName = "NONE", desription = "NONE";
+	bool detailsAvailable = true;
 	std::ostringstream ss;
 	switch (_reportCase) {
 	case PRISONER_REPORT_CASE_DEATH:
 		btnName = "STR_GO_TO_BASE";
 		ss << tr("STR_PRISONER_DIED_PT1");
 		ss << " ";
-		ss << _prisoner->getNameAndId(_game->getLanguage());
+		ss << _prisoner->getNameAndDesignation(_game->getLanguage());
 		ss << " ";
 		ss << tr("STR_PRISONER_DIED_PT2");
 		desription = ss.str();
 		break;
 	case PRISONER_REPORT_CASE_INTERROGATION:
 		btnName = "STR_VIEW_REPORT";
+		detailsAvailable = !_articleIds.empty();
 		ss << tr("STR_PRISONER_INTERROGATED_PT1");
 		ss << " ";
-		ss << _prisoner->getNameAndId(_game->getLanguage());
+		ss << _prisoner->getNameAndDesignation(_game->getLanguage());
 		ss << " ";
 		if (_research != nullptr || _bonus != nullptr)
 		{
@@ -133,7 +153,7 @@ void PrisonReportState::initUI()
 			btnName = "STR_VIEW_SOLDIER";
 			ss << tr("STR_PRISONER_RECRUITING_PT1");
 			ss << " ";
-			ss << _prisoner->getNameAndId(_game->getLanguage());
+			ss << _prisoner->getNameAndDesignation(_game->getLanguage());
 			ss << " ";
 			ss << tr("STR_PRISONER_RECRUITING_PT2");
 			ss << " ";
@@ -146,7 +166,7 @@ void PrisonReportState::initUI()
 		{
 			ss << tr("STR_PRISONER_RECRUITING_PT1");
 			ss << " ";
-			ss << _prisoner->getNameAndId(_game->getLanguage());
+			ss << _prisoner->getNameAndDesignation(_game->getLanguage());
 			ss << " ";
 			ss << tr("STR_PRISONER_RECRUITING_PT2");
 			ss << " ";
@@ -156,16 +176,32 @@ void PrisonReportState::initUI()
 
 		break;
 	}
+	if (_containedAlienStudiesUnblocked)
+	{
+		ss << "\n" << tr("STR_CONTAINED_ALIEN_STUDIES_CAN_CONTINUE");
+		desription = ss.str();
+	}
 	_btnDetails->setText(tr(btnName));
 	_btnDetails->onMouseClick((ActionHandler)&PrisonReportState::btnDetailsClick);
-	_btnDetails->onKeyboardPress((ActionHandler)&PrisonReportState::btnDetailsClick, Options::keyOk);
+	_btnDetails->setVisible(detailsAvailable);
+	if (detailsAvailable)
+	{
+		_btnDetails->onKeyboardPress((ActionHandler)&PrisonReportState::btnDetailsClick, Options::keyOk);
+	}
+	else
+	{
+		_btnOk->onKeyboardPress((ActionHandler)&PrisonReportState::btnOkClick, Options::keyOk);
+	}
 
 	_txtTitle->setBig();
 	_txtTitle->setAlign(ALIGN_CENTER);
 	_txtTitle->setText(tr("STR_PRISON_REPORT"));
 
 	_txtDescription->setAlign(ALIGN_CENTER);
-	_txtDescription->setBig();
+	if (!_containedAlienStudiesUnblocked)
+	{
+		_txtDescription->setBig();
+	}
 	_txtDescription->setWordWrap(true);
 	_txtDescription->setText(desription);
 }
@@ -176,7 +212,14 @@ void PrisonReportState::initUI()
  */
 void PrisonReportState::btnOkClick(Action *)
 {
-	_game->popState();
+	Game* game = _game;
+	Base* base = _base;
+	const auto researchIds = _newResearchNotifications;
+	game->popState();
+	if (GeoscapeState* geoscape = game->getGeoscapeState())
+	{
+		geoscape->showNewResearchNotifications(base, researchIds);
+	}
 }
 
 /**
@@ -185,36 +228,32 @@ void PrisonReportState::btnOkClick(Action *)
  */
 void PrisonReportState::btnDetailsClick(Action *)
 {
-	_game->popState();
 	if (_reportCase == PRISONER_REPORT_CASE_DEATH)
 	{
-		_game->pushState(new PrisonManagementState(_base));
+		Game* game = _game;
+		Base* base = _base;
+		game->popState();
+		game->pushState(new PrisonManagementState(base));
 	}
 	else if (_reportCase == PRISONER_REPORT_CASE_INTERROGATION)
 	{
-		if (_bonus)
+		for (auto article = _articleIds.rbegin(); article != _articleIds.rend(); ++article)
 		{
-			std::string bonusName;
-			if (_bonus->getLookup().empty())
-				bonusName = _bonus->getName();
-			else
-				bonusName = _bonus->getLookup();
-			Ufopaedia::openArticle(_game, bonusName);
-		}
-		if (_research)
-		{
-			std::string name;
-			if (_research->getLookup().empty())
-				name = _research->getName();
-			else
-				name = _research->getLookup();
-			Ufopaedia::openArticle(_game, name);
+			Ufopaedia::openArticle(_game, *article);
 		}
 	}
 	else if (_reportCase == PRISONER_REPORT_RECRUITING)
 	{
-		_game->pushState(new SoldiersState(_base));
+		Game* game = _game;
+		Base* base = _base;
+		game->popState();
+		game->pushState(new SoldiersState(base));
 	}
+}
+
+void PrisonReportState::btnPromotionsClick(Action *)
+{
+	_game->pushState(new PromotionsState(_promotions));
 }
 
 }

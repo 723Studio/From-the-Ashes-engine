@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "FinishedCoverOperationState.h"
+#include "GeoscapeState.h"
 #include "FinishedCoverOperationDetailsState.h"
 #include "../Engine/Game.h"
 #include "../Engine/LocalizedText.h"
@@ -28,6 +29,8 @@
 #include "../Mod/RuleCovertOperation.h"
 #include "../Savegame/CovertOperation.h"
 #include "../Savegame/Base.h"
+#include "../Savegame/SavedGame.h"
+#include "../Battlescape/PromotionsState.h"
 #include "../Ufopaedia/Ufopaedia.h"
 
 
@@ -39,15 +42,33 @@ namespace OpenXcom
 	 * @param operation Pointer to the operation.
 	 * @param result - comes true if success operation, false if it was failed.
 	 */
-	FinishedCoverOperationState::FinishedCoverOperationState(CovertOperation* operation, bool result) : _operation(operation), _rule(operation->getRules())
+	FinishedCoverOperationState::FinishedCoverOperationState(CovertOperation* operation, bool result) :
+		_operation(operation), _rule(operation->getRules()),
+		_promotions(operation->getResults() ? operation->getResults()->getPromotions() : PromotionBatch{})
 	{
+		if (operation->getResults())
+		{
+			_newResearchNotifications = operation->getResults()->getNewResearchNotifications();
+			_researchArticleIds = operation->getResults()->getResearchArticleIds();
+			_containedAlienStudiesUnblocked =
+				operation->getResults()->getContainedAlienStudiesUnblocked();
+		}
 		_screen = false;
 		// Load result rules and stats
 		std::string ui;
 		std::string description;
 		std::string backgrd;
 		std::string resultTxt;
-		if (result)
+		const bool cancelled = operation->isCancelled();
+		if (cancelled)
+		{
+			// Reuse the failure palette, but cancellation is not a failed result
+			// and deliberately has no failure music or side effects.
+			ui = "covertOperationFinishFailure";
+			resultTxt = tr("STR_OPERATION_CANCELLED");
+			description = _rule->getCancelledDescription();
+		}
+		else if (result)
 		{
 			ui = "covertOperationFinishSuccess";
 			resultTxt = tr("STR_SUCCESS_US");
@@ -63,16 +84,17 @@ namespace OpenXcom
 			backgrd = _rule->getFailureBackground();
 			_music = _rule->getFailureMusic();
 		}
-		_researchName = operation->getDiscoveredResearch();
-
 		// Create objects
 		_window = new Window(this, 256, 200, 0, 0, POPUP_BOTH);
 		_txtTitle = new Text(240, 17, 8, 10);
 		_txtResult = new Text(240, 9, 8, 32);
 		_txtBase = new Text(240, 9, 8, 44);
-		_txtMessage = new Text(240, 113, 8, 58); 
-		_btnOk = new TextButton(115, 18, 133, 174);
+		_txtMessage = new Text(240,
+			(_promotions.empty() && _researchArticleIds.empty()) ? 113 : 88, 8, 58);
+		_btnOk = new TextButton(cancelled ? 240 : 115, 18, cancelled ? 8 : 133, 174);
 		_btnDetails = new TextButton(115, 18, 8, 174);
+		_btnReport = new TextButton(115, 18, 8, 151);
+		_btnPromotions = new TextButton(115, 18, 133, 151);
 
 		// Set palette
 		setInterface(ui);
@@ -84,6 +106,8 @@ namespace OpenXcom
 		add(_txtMessage, "text2", ui);
 		add(_btnOk, "button", ui);
 		add(_btnDetails, "button", ui);
+		add(_btnReport, "button", ui);
+		add(_btnPromotions, "button", ui);
 
 		centerAllSurfaces();
 
@@ -113,7 +137,13 @@ namespace OpenXcom
 
 		_txtMessage->setVerticalAlign(ALIGN_TOP);
 		_txtMessage->setWordWrap(true);
-		_txtMessage->setText(tr(description));
+		std::ostringstream reportText;
+		reportText << tr(description);
+		if (_containedAlienStudiesUnblocked)
+		{
+			reportText << "\n" << tr("STR_CONTAINED_ALIEN_STUDIES_CAN_CONTINUE");
+		}
+		_txtMessage->setText(reportText.str());
 
 		_btnOk->setText(tr("STR_OK"));
 		_btnOk->onMouseClick((ActionHandler)&FinishedCoverOperationState::btnOkClick);
@@ -121,6 +151,15 @@ namespace OpenXcom
 
 		_btnDetails->setText(tr("STR_DETAILS_BUTTON"));
 		_btnDetails->onMouseClick((ActionHandler)&FinishedCoverOperationState::btnDetailsClick);
+		_btnDetails->setVisible(!cancelled);
+
+		_btnReport->setText(tr("STR_VIEW_REPORT"));
+		_btnReport->onMouseClick((ActionHandler)&FinishedCoverOperationState::btnReportClick);
+		_btnReport->setVisible(!_researchArticleIds.empty());
+
+		_btnPromotions->setText(tr("STR_VIEW_PROMOTIONS"));
+		_btnPromotions->onMouseClick((ActionHandler)&FinishedCoverOperationState::btnPromotionsClick);
+		_btnPromotions->setVisible(!_promotions.empty());
 	}
 
 	/**
@@ -149,13 +188,17 @@ namespace OpenXcom
 	 */
 	void FinishedCoverOperationState::btnOkClick(Action*)
 	{
-		_game->popState();
-		_operation->finishOperation();
-		if (!_researchName.empty())
+		Game* game = _game;
+		CovertOperation* operation = _operation;
+		Base* operationBase = operation->getBase();
+		const auto newResearch = _newResearchNotifications;
+		game->popState();
+		operation->finishOperation();
+		operationBase->removeCovertOperation(operation);
+		if (GeoscapeState* geoscape = game->getGeoscapeState())
 		{
-			Ufopaedia::openArticle(_game, _researchName);
+			geoscape->showNewResearchNotifications(operationBase, newResearch);
 		}
-		
 	}
 	/**
 	 * Shows Finished Covert Opration details.
@@ -164,6 +207,19 @@ namespace OpenXcom
 	void FinishedCoverOperationState::btnDetailsClick(Action* action)
 	{
 		_game->pushState(new FinishedCoverOperationDetailsState(_operation));
+	}
+
+	void FinishedCoverOperationState::btnReportClick(Action*)
+	{
+		for (auto article = _researchArticleIds.rbegin(); article != _researchArticleIds.rend(); ++article)
+		{
+			Ufopaedia::openArticle(_game, *article);
+		}
+	}
+
+	void FinishedCoverOperationState::btnPromotionsClick(Action*)
+	{
+		_game->pushState(new PromotionsState(_promotions));
 	}
 
 }

@@ -24,11 +24,12 @@
 #include "../Mod/RulePrisoner.h"
 #include "../Engine/Game.h"
 #include "../Engine/RNG.h"
-#include "../FTA/MasterMind.h"
-#include "../Geoscape/PrisonReportState.h"
+#include "../Geoscape/GeoscapeState.h"
 #include "../Engine/Language.h"
+#include "../Engine/Exception.h"
 #include <sstream>
 #include <algorithm>
+#include <set>
 
 namespace OpenXcom
 {
@@ -36,10 +37,12 @@ namespace OpenXcom
  * Initializes a BattleUnit from a Soldier
  * @param mod Mod
  * @param type prisoner type
- * @param id prisoner id
+ * @param id technical captive instance id
+ * @param designation player-facing captive designation
  */
-BasePrisoner::BasePrisoner(const RulePrisoner* rule, Base* base, const std::string &type, std::string id) :
-	_rule(rule),_id(std::move(id)), _type(type), _state(PRISONER_STATE_NONE),
+BasePrisoner::BasePrisoner(const RulePrisoner* rule, Base* base, const std::string& type,
+	int id, std::string designation) :
+	_rule(rule), _id(id), _designation(std::move(designation)), _type(type), _state(PRISONER_STATE_NONE),
 	_health(1), _intelligence(0), _aggression(0), _morale(100), _cooperation(0), _interrogationProgress(0), _recruitingProgress(0), _base(base)
 {
 }
@@ -49,12 +52,36 @@ void BasePrisoner::loadRoles(const std::vector<int>& r)
 	_roles.clear();
 	for (auto i : r)
 	{
-		SoldierRole role = static_cast<SoldierRole>(i);
-		if (_roles.empty() || std::find(_roles.begin(), _roles.end(), role) == _roles.end())
+		if (i < ROLE_NONE || i > ROLE_ENGINEER)
 		{
-			_roles.push_back(role);
+			throw Exception("Prisoner '" + _type + "' contains an invalid role value.");
 		}
+		SoldierRole role = static_cast<SoldierRole>(i);
+		if (std::find(_roles.begin(), _roles.end(), role) != _roles.end())
+		{
+			throw Exception("Prisoner '" + _type + "' contains a duplicate role.");
+		}
+		_roles.push_back(role);
 	}
+	if (_roles.size() > 1 && std::find(_roles.begin(), _roles.end(), ROLE_NONE) != _roles.end())
+	{
+		throw Exception("Prisoner '" + _type + "' cannot combine ROLE_NONE with a real role.");
+	}
+	if (_roles.size() > 1 && std::find(_roles.begin(), _roles.end(), ROLE_ROBOT) != _roles.end())
+	{
+		throw Exception("Prisoner '" + _type + "' cannot combine a non-sapient ROLE_ROBOT with another role.");
+	}
+}
+
+void BasePrisoner::setRoles(const std::vector<SoldierRole>& roles)
+{
+	std::vector<int> rawRoles;
+	rawRoles.reserve(roles.size());
+	for (SoldierRole role : roles)
+	{
+		rawRoles.push_back(static_cast<int>(role));
+	}
+	loadRoles(rawRoles);
 }
 
 ///**
@@ -63,6 +90,15 @@ void BasePrisoner::loadRoles(const std::vector<int>& r)
 // */
 void BasePrisoner::load(const YAML::YamlNodeReader& reader, const Mod* mod)
 {
+	if (_id <= 0)
+	{
+		throw Exception("Prisoner '" + _type + "': id must be a positive integer");
+	}
+	if (_designation.empty())
+	{
+		throw Exception("Prisoner '" + _type + "' with id " + std::to_string(_id) +
+			": designation must not be empty");
+	}
 	reader.tryRead("name", _name);
 	reader.tryRead("type", _type);
 	reader.tryRead("state", _state);
@@ -79,6 +115,8 @@ void BasePrisoner::load(const YAML::YamlNodeReader& reader, const Mod* mod)
 	reader.tryRead("aggression", _aggression);
 	reader.tryRead("morale", _morale);
 	reader.tryRead("cooperation", _cooperation);
+	setMorale(_morale);
+	setCooperation(_cooperation);
 	reader.tryRead("spawnedTortureEvent", _spawnedTortureEvent);
 	reader.tryRead("interrogationProgress", _interrogationProgress);
 	reader.tryRead("recruitingProgress", _recruitingProgress);
@@ -107,6 +145,7 @@ void BasePrisoner::save(YAML::YamlNodeWriter writer) const
 {
 	writer.setAsMap();
 	writer.write("id", _id);
+	writer.write("designation", _designation);
 	writer.write("type", _type);
 	writer.write("name", _name);
 	writer.write("state", (int)_state);
@@ -141,19 +180,35 @@ void BasePrisoner::setMorale(int morale)
 		morale = 100;
 
 	_morale = morale;
+}
 
+void BasePrisoner::setCooperation(int cooperation)
+{
+	_cooperation = std::max(-300, std::min(cooperation, 100));
+}
+
+/**
+ * Applies the signed daily containment upkeep or income.
+ * @param save Current campaign.
+ */
+void BasePrisoner::applyDailyFunds(SavedGame& save) const
+{
+	save.setFunds(save.getFunds() + _rule->getContainingRules().getFunds());
 }
 
 /**
  * Geoscape logic
  * @param engine - game pointer
- * @param promotedSoldiers - a pointer to a vector to return in geoscape for promotion screen
  */
-bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
+PrisonerProcessResult BasePrisoner::think(Game &engine)
 {
 	const Mod& mod = *engine.getMod();
 	SavedGame& save = *engine.getSavedGame();
-	bool result = false;
+	PrisonerProcessResult result;
+
+	// Containment upkeep/income is a daily per-prisoner rule and applies
+	// regardless of the prisoner's currently selected activity.
+	applyDailyFunds(save);
 
 	//populate data
 	PrisonerState prisonerState = getPrisonerState();
@@ -165,29 +220,36 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 	}
 
 	//first, let's process physical conditions first
-	if (!save.isResearched(_rule->getContainingRules().getReuiredResearch()))
+	auto containReq = _rule->getContainingRules().getReuiredResearch();
+	if (containReq != nullptr && !save.isResearched(containReq))
 	{
 		setHealth(getHealth() - RNG::generate(0, _rule->getDamageOverTime()));
 	}
 
 	if (getHealth() <= 0) //prisoner dies
 	{
-		promoteAgents(promotedSoldiers);
+		finalizeAgentExperience(false);
 		die();
-		engine.pushState(new PrisonReportState(this, _base));
+		result.event = PRISONER_PROCESS_DEATH;
 	}
 	else
 	{
 		//process different stats
 		double speedFactor = (double)engine.getMod()->getPrisonerActionsSpeedFactor() / 100;
 		int trainingFactor = mod.getIntelTrainingFactor();
-		double loyaltyFactor = (double)engine.getMasterMind()->getLoyaltyPerformanceBonus() / 100;
+		double loyaltyFactor = (double)engine.getGeoscapeState()->getLoyaltyPerformanceBonus() / 100;
 
 		if (prisonerState == PRISONER_STATE_INTERROGATION)
 		{
-			auto rules = _rule->getInterrogationRules();
-			int breakpoint = rules.getBaseResistance() + getMorale() / 4 + getAggression() * 2 + getIntelligence() * 2;
+			const auto& rules = _rule->getInterrogationRules();
+			int breakpoint = rules.getBaseResistance()
+				+ getMorale() / 4
+				- getCooperation() / 4
+				+ getAggression() * 2
+				+ getIntelligence() * 2;
+			breakpoint = std::max(1, breakpoint);
 			int progress = 0;
+			int contributingAgents = 0;
 			double effort = 0;
 			for (auto s : _agents)
 			{
@@ -195,7 +257,9 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 				{
 					continue;
 				}
+				++contributingAgents;
 
+				const bool canTrain = s->canGainExperience();
 				auto stats = s->getCurrentStats();
 				auto caps = s->getRules()->getStatCaps();
 				double soldierEffort = 0, statEffort = 0;
@@ -206,7 +270,7 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 
 				statEffort = stats->interrogation;
 				soldierEffort += (statEffort / interrogationCoef);
-				if (stats->interrogation < caps.interrogation
+				if (canTrain && stats->interrogation < caps.interrogation
 					&& RNG::generate(0, caps.interrogation) > stats->interrogation
 					&& RNG::percent(trainingFactor))
 				{
@@ -215,7 +279,7 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 
 				statEffort = stats->charisma;
 				soldierEffort += (statEffort / charismaCoef);
-				if (stats->charisma < caps.charisma
+				if (canTrain && stats->charisma < caps.charisma
 					&& RNG::generate(0, caps.charisma) > stats->charisma
 					&& RNG::percent(trainingFactor))
 				{
@@ -224,7 +288,7 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 
 				statEffort = stats->deception;
 				soldierEffort += (statEffort / deceptionCoef);
-				if (stats->deception < caps.deception
+				if (canTrain && stats->deception < caps.deception
 					&& RNG::generate(0, caps.deception) > stats->deception
 					&& RNG::percent(trainingFactor))
 				{
@@ -242,7 +306,7 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 					statEffort = stats->psiSkill;
 					soldierEffort += (statEffort / psiCoef);
 
-					if (stats->psiSkill < caps.psiSkill
+					if (canTrain && stats->psiSkill < caps.psiSkill
 						&& RNG::generate(0, caps.psiSkill) > stats->psiSkill
 						&& RNG::percent(trainingFactor / 2))
 					{
@@ -254,46 +318,66 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 				effort += soldierEffort;
 			}
 			// If one woman can carry a baby in nine months, nine women can't do it in a month...
-			if (_agents.size() > 1)
+			if (contributingAgents > 1)
 			{
-				effort *= (100 - (25 * log(_agents.size()))) / 100;
+				effort *= std::max(0.0, (100.0 - 25.0 * log(contributingAgents)) / 100.0);
 			}
 			effort *= loyaltyFactor;
 			effort *= speedFactor;
-			progress = static_cast<int>(effort);
+			progress = std::max(0, static_cast<int>(effort));
 			_interrogationProgress += progress;
 			if (_interrogationProgress >= breakpoint)
 			{
-				result = true;
-				promoteAgents(promotedSoldiers);
+				result.event = PRISONER_PROCESS_INTERROGATION;
+				PromotionBatch promotions = finalizeAgentExperience(true);
 				_interrogationProgress = 0;
 				// give research if any
 				std::string researchName;
 				std::string bonusResearchName;
-				if (!rules.getUnlockedResearches().empty())
+				std::vector<const RuleResearch*> possibilities;
+				auto unlockResearches = rules.getUnlockedResearches();
+				const bool hasResearchReward = std::any_of(unlockResearches.begin(), unlockResearches.end(),
+					[&](const RuleResearch* research)
+					{
+						return !save.isResearched(research, false) ||
+							save.hasUndiscoveredGetOneFree(research, true);
+					});
+				if (hasResearchReward)
 				{
-					std::vector<const RuleResearch*> possibilities;
-
-					engine.getMasterMind()->helpResearchDiscovery(rules.getUnlockedResearches(), possibilities, _base, researchName, bonusResearchName);
-
-					if (rules.isDiesAfterInterrogation()) //prisoner dies
+					std::vector<RuleResearch*> researchBefore;
+					save.getAvailableResearchProjects(researchBefore, &mod, _base);
+					const std::set<const RuleResearch*> discoveredBefore(
+						save.getDiscoveredResearch().begin(), save.getDiscoveredResearch().end());
+					engine.getSavedGame()->helpResearchDiscovery(unlockResearches, possibilities, engine.getMod(), _base, researchName, bonusResearchName);
+					result.researchNotifications = save.getNewlyAvailableResearchIds(
+						researchBefore, &mod, _base);
+					for (const auto* discovered : save.getDiscoveredResearch())
 					{
-						die();
-					}
-					else if (possibilities.empty()) //there is no point interrogating further
-					{
-						if (save.isResearched(_rule->getContainingRules().getReuiredResearch()))
+						if (discoveredBefore.find(discovered) == discoveredBefore.end())
 						{
-							setPrisonerState(PRISONER_STATE_CONTAINING);
-						}
-						else
-						{
-							setPrisonerState(PRISONER_STATE_NONE);
+							result.newlyDiscovered.push_back(discovered);
 						}
 					}
 				}
 
-				_interrogationDone = true;
+				if (rules.isDiesAfterInterrogation()) //prisoner dies
+				{
+					die();
+				}
+				else if (possibilities.empty()) //there is no point interrogating further
+				{
+					auto containReq = _rule->getContainingRules().getReuiredResearch();
+					if (containReq == nullptr || save.isResearched(containReq))
+					{
+						setPrisonerState(PRISONER_STATE_CONTAINING);
+					}
+					else
+					{
+						setPrisonerState(PRISONER_STATE_NONE);
+					}
+				}
+
+				_interrogationDone = rules.isDiesAfterInterrogation() || possibilities.empty();
 				for (auto s : _agents)
 				{
 					s->clearBaseDuty();
@@ -311,12 +395,14 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 				else
 					bonus = nullptr;
 
-				engine.pushState(new PrisonReportState(research, bonus, this, _base));
+				result.research = research;
+				result.bonus = bonus;
+				result.promotions = std::move(promotions);
 			}
 		}
 		else if (prisonerState == PRISONER_STATE_TORTURE)
 		{
-			auto rules = _rule->getTortureRules();
+			const auto& rules = _rule->getTortureRules();
 			// let's calculate power of our team
 			int psionics = 0, torturePower = 0;
 			for (auto agent: _agents)
@@ -337,14 +423,17 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 				if (RNG::percent(-10 * save.getDifficultyCoefficient() + 80))
 				{
 					int tortureDifficulty = RNG::generate(rules.getDifficulty() / 2, rules.getDifficulty() * 2);
+					tortureDifficulty = std::max(1, tortureDifficulty * (50 + getMorale()) / 100);
 					//calculate and apply torture effects
 					int maxDmg = 4 + floor(save.getDifficultyCoefficient() / 2);
 					int loyaty = rules.getLoyalty() * (1 + floor(save.getDifficultyCoefficient() / 2));
 					int moraleDmg = rules.getMorale();
+					int cooperationChange = rules.getCooperation();
 					int eventChance = rules.getEventChance();
 					if (tortureDifficulty > torturePower * 2) // min torture
 					{
 						moraleDmg = 0;
+						cooperationChange /= 10;
 						maxDmg = ceil(maxDmg / 2);
 						loyaty = ceil(loyaty / 5);
 						eventChance = ceil(eventChance / 3);
@@ -353,13 +442,14 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 					{
 						maxDmg = ceil(maxDmg / 2);
 						moraleDmg = ceil(moraleDmg / 3);
+						cooperationChange /= 3;
 						loyaty = ceil(loyaty / 4);
 						eventChance = ceil(eventChance / 2);
 					}
 					setHealth(getHealth() - RNG::generate(0, maxDmg));
 					setMorale(getMorale() - moraleDmg);
-					setCooperation(getCooperation() - rules.getCooperation());
-					engine.getMasterMind()->updateLoyalty(loyaty);
+					setCooperation(getCooperation() + cooperationChange);
+					engine.getGeoscapeState()->updateLoyalty(loyaty);
 
 					if (_spawnedTortureEvent && !rules.isMultipleEventsPossible())
 					{
@@ -368,10 +458,14 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 					else if (RNG::percent(eventChance))
 					{
 						auto events = rules.getSpawnedEvents();
-						events.push_back(rules.getWeightedEvent(save.getMonthsPassed()));
-						if (!events.empty())
+						auto weightedEvent = rules.getWeightedEvent(save.getMonthsPassed());
+						if (!weightedEvent.empty())
 						{
-							save.spawnEvent(events, &mod);
+							events.push_back(weightedEvent);
+						}
+						if (!events.empty() && save.spawnEvent(events, &mod))
+						{
+							_spawnedTortureEvent = true;
 						}
 					}
 				}
@@ -379,20 +473,32 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 		}
 		else if (prisonerState == PRISONER_STATE_REQRUITING)
 		{
-			auto rules = _rule->getRecruitingRules();
-			int breakpoint = rules.getDifficulty() - getCooperation() + (100 - getMorale());
+			const auto& rules = _rule->getRecruitingRules();
+			int breakpoint = rules.getDifficulty()
+				- getCooperation()
+				+ (100 - getMorale()) / 2
+				+ getAggression() * 10;
+			breakpoint = std::max(1, breakpoint);
 			int progress = 0;
+			int contributingAgents = 0;
 			double effort = 0;
 
 			for (auto s : _agents)
 			{
+				if (s->getCraft() != nullptr && s->getCraft()->getStatus() == "STR_OUT")
+				{
+					continue;
+				}
+				++contributingAgents;
+
 				double soldierEffort = 0, statEffort = 0;
+				const bool canTrain = s->canGainExperience();
 				auto stats = s->getCurrentStats();
 				auto caps = s->getRules()->getStatCaps();
 
 				statEffort = stats->charisma;
 				soldierEffort += (statEffort);
-				if (stats->charisma < caps.charisma
+				if (canTrain && stats->charisma < caps.charisma
 					&& RNG::generate(0, caps.charisma) > stats->charisma
 					&& RNG::percent(trainingFactor))
 				{
@@ -401,7 +507,7 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 
 				statEffort = stats->deception;
 				soldierEffort += (statEffort);
-				if (stats->deception < caps.deception
+				if (canTrain && stats->deception < caps.deception
 					&& RNG::generate(0, caps.deception) > stats->deception
 					&& RNG::percent(trainingFactor))
 				{
@@ -412,19 +518,19 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 				effort += soldierEffort;
 			}
 
-			if (_agents.size() > 1)
+			if (contributingAgents > 1)
 			{
-				effort *= (100 - (25 * log(_agents.size()))) / 100;
+				effort *= std::max(0.0, (100.0 - 25.0 * log(contributingAgents)) / 100.0);
 			}
 
 			effort *= loyaltyFactor;
 			effort *= speedFactor;
-			progress = static_cast<int>(effort);
+			progress = std::max(0, static_cast<int>(effort));
 			_recruitingProgress += progress;
 			if (_recruitingProgress >= breakpoint)
 			{
-				result = true;
-				promoteAgents(promotedSoldiers);
+				result.event = PRISONER_PROCESS_RECRUITING;
+				finalizeAgentExperience(false);
 				_recruitingProgress = 0;
 				auto events = rules.getSpawnedEvents();
 				if (!events.empty() && RNG::percent(rules.getEventChance()))
@@ -437,12 +543,17 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 				{
 					Soldier* soldier = new Soldier(soldierRule, _armor, save.getId("STR_SOLDIER"));
 					soldier->setBothStats(&_stats);
-					for (auto r : _roles)
+					for (auto role : _roles)
 					{
-						soldier->addRole(r);
+						if (role != ROLE_NONE && !soldier->hasRole(role) && !soldier->addRole(role))
+						{
+							delete soldier;
+							throw Exception("Recruited prisoner '" + _type + "' could not receive configured role "
+								+ std::to_string(static_cast<int>(role)) + ".");
+						}
 					}
 					_base->getSoldiers()->push_back(soldier);
-					engine.pushState(new PrisonReportState(soldier, this, _base));
+					result.recruitedSoldier = soldier;
 				}
 
 				die();
@@ -450,7 +561,7 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 		}
 		else if (prisonerState == PRISONER_STATE_CONTAINING)
 		{
-			auto rules = _rule->getInterrogationRules();
+			const auto& rules = _rule->getContainingRules();
 			int effort = 0;
 			for (auto s : _agents)
 			{
@@ -467,16 +578,20 @@ bool BasePrisoner::think(Game &engine, std::vector<Soldier*>& promotedSoldiers)
 				effort += statEffort;
 			}
 
-			int moraleRegen = RNG::generate(-5, effort / 10 + 3);
+			const int braveryBias = (static_cast<int>(getStats()->bravery) - 35) / 5;
+			int moraleChange = RNG::generate(-4 + braveryBias, 4 + braveryBias);
 			int hpRegen = RNG::generate(0, 2);
 			if (effort > 20)
 			{
 				hpRegen += RNG::generate(0, 1);
 			}
-			int coopChange = RNG::generate(-2, effort / 10 + 1);
-			setMorale(getMorale() + moraleRegen);
-			setHealth(getHealth() + hpRegen);
-			setCooperation(getCooperation() + coopChange);
+			int authoredCooperationChange = rules.getCooperation();
+			int cooperationChange = RNG::generate(
+				std::min(0, authoredCooperationChange),
+				std::max(0, authoredCooperationChange));
+			setMorale(getMorale() + moraleChange);
+			setHealth(std::min(getHealth() + hpRegen, static_cast<int>(getStats()->health)));
+			setCooperation(getCooperation() + cooperationChange);
 		}
 
 		//almost done...
@@ -504,25 +619,31 @@ void BasePrisoner::die()
 	_recruitingProgress = 0;
 }
 
-void BasePrisoner::promoteAgents(std::vector<Soldier*>& promotedSoldiers)
+PromotionBatch BasePrisoner::finalizeAgentExperience(bool checkPromotions)
 {
+	PromotionBatch promotions;
 	for (auto* s : _agents)
 	{
 		s->improvePrimaryStats(s->getIntelExperience(), ROLE_AGENT);
 		s->clearIntelExperience();
-		if (s->rolePromoteSoldier(ROLE_AGENT))
+		if (checkPromotions)
 		{
-			promotedSoldiers.push_back(s);
+			RolePromotion promotion;
+			if (s->rolePromoteSoldier(ROLE_AGENT, &promotion))
+			{
+				promotions.push_back(promotion);
+			}
 		}
 	}
+	return promotions;
 }
 
-std::string BasePrisoner::getNameAndId(Language* lang)
+std::string BasePrisoner::getNameAndDesignation(Language* lang) const
 {
 	std::ostringstream nameId;
 	nameId << lang->getString(getName());
 	nameId << " / ";
-	nameId << getId();
+	nameId << getDesignation();
 	return nameId.str();
 }
 

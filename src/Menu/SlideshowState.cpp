@@ -18,7 +18,6 @@
  */
 #include "SlideshowState.h"
 #include "CutsceneState.h"
-#include "../Engine/FileMap.h"
 #include "../Engine/Game.h"
 #include "../Engine/InteractiveSurface.h"
 #include "../Engine/Screen.h"

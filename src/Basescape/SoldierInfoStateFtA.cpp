@@ -38,12 +38,12 @@
 #include "../Savegame/Soldier.h"
 #include "../Savegame/DiplomacyFaction.h"
 #include "../Savegame/SoldierPool.h"
-#include "../FTA/DiplomacyHirePersonnelState.h"
+#include "../Savegame/Transfer.h"
+#include "DiplomacyHirePersonnelState.h"
 #include "../Engine/SurfaceSet.h"
 #include "../Mod/Armor.h"
 #include "../Mod/RuleSoldier.h"
 #include "../Menu/ErrorMessageState.h"
-#include "SellState.h"
 #include "SoldierArmorState.h"
 #include "SoldierBonusState.h"
 #include "SoldierExperienceState.h"
@@ -122,11 +122,18 @@ void SoldierInfoStateFtA::initUi()
 	//_edtSoldier = new TextEdit(this, 210, 16, 40, 9);
 	_btnDiary = new TextButton(60, 14, 260, 33);
 	_btnHire = new TextButton(60, 14, 260, 33);
-	_cbxRoles = new ComboBox(this, 60, 14, 260, 48, false);
+	if (Options::soldierDiaries || _faction)
+	{
+		_cbxRoles = new ComboBox(this, 60, 14, 260, 48, false);
+	}
+	else
+	{
+		_cbxRoles = new ComboBox(this, 60, 14, 260, 33, false);
+	}
 	_txtRank = new Text(130, 9, 0, 48);
 	_txtMissions = new Text(100, 9, 130, 48);
 	_txtKills = new Text(100, 9, 200, 48);
-	_txtStuns = new Text(60, 9, 260, 48);
+	_txtStuns = new Text(60, 9, 200, 56);
 	_txtCraft = new Text(130, 9, 0, 56);
 	_txtRecovery = new Text(180, 9, 130, 56);
 	_txtOperation = new Text(180, 9, 0, 64);
@@ -211,27 +218,6 @@ void SoldierInfoStateFtA::initUi()
 	_btnBonuses->onMouseClick((ActionHandler)&SoldierInfoStateFtA::btnBonusesClick);
 
 	_edtSoldier->setBig();
-
-	//if (_listing)
-	//{
-	//	_edtSoldier->onChange((ActionHandler)&SoldierInfoStateFtA::edtSoldierChange);
-	//	_edtSoldier->onMousePress((ActionHandler)&SoldierInfoStateFtA::edtSoldierPress);
-	//}
-	//else
-	//{
-	//	_edtSoldier->setDisabled(true);
-	//}
-
-	// Can't change nationality of dead soldiers or factional soldiers
-	if (_base != 0 && !_faction)
-	{
-		// Ignore also if flags are used to indicate number of kills
-		if (_game->getMod()->getFlagByKills().empty())
-		{
-			_flag->onMouseClick((ActionHandler)&SoldierInfoStateFtA::btnFlagClick, SDL_BUTTON_LEFT);
-			_flag->onMouseClick((ActionHandler)&SoldierInfoStateFtA::btnFlagClick, SDL_BUTTON_RIGHT);
-		}
-	}
 
 	_btnDiary->setText(tr("STR_DIARY"));
 	_btnDiary->onMouseClick((ActionHandler)&SoldierInfoStateFtA::btnDiaryClick);
@@ -321,13 +307,16 @@ void SoldierInfoStateFtA::init()
 		default: _cbxRoles->setSelected(0);
 		}
 	}
+	role = static_cast<SoldierRole>(_cbxRoles->getSelected());
 
 	SurfaceSet *texture = _game->getMod()->getSurfaceSet("BASEBITS.PCK");
-	auto frame = texture->getFrame(_soldier->getRankSprite());
-	frame = texture->getFrame(_soldier->getRoleRankSprite(role));
-	if (frame)
+	_rank->clear();
+	if (_soldier->getRoleRank(role) > 0)
 	{
-		frame->blitNShade(_rank, 0, 0);
+		if (auto* frame = texture->getFrame(_soldier->getRoleRankSprite(role)))
+		{
+			frame->blitNShade(_rank, 0, 0);
+		}
 	}
 
 	std::ostringstream flagId;
@@ -373,14 +362,13 @@ void SoldierInfoStateFtA::init()
 
 	_btnArmor->setText(wsArmor);
 
-	_txtRank->setText(tr("STR_RANK_").arg(tr(_soldier->getRankString(true))));
+	_txtRank->setText(tr("STR_RANK_").arg(tr(_soldier->getRankString())));
 
 	_txtMissions->setText(tr("STR_MISSIONS").arg(_soldier->getMissions()));
 
 	_txtKills->setText(tr("STR_KILLS").arg(_soldier->getKills()));
 
 	_txtStuns->setText(tr("STR_STUNS").arg(_soldier->getStuns()));
-	_txtStuns->setVisible(!Options::soldierDiaries);
 
 	std::string craft;
 	if (_soldier->getCraft() == 0)
@@ -434,6 +422,9 @@ void SoldierInfoStateFtA::init()
 			_txtRecovery->setText(tr("STR_HEALTH_RECOVERY").arg(getDaysOrInfinity(healthRecoveryTime)));
 		}
 	}
+	bool hasRecovery = !_txtRecovery->getText().empty();
+	_txtRecovery->setVisible(hasRecovery);
+	_txtStuns->setVisible(!hasRecovery);
 
 	_txtPsionic->setVisible(_soldier->isInPsiTraining());
 
@@ -546,10 +537,10 @@ void SoldierInfoStateFtA::btnNextClick(Action *)
  */
 void SoldierInfoStateFtA::btnArmorClick(Action *)
 {
-	if (!_soldier->getCraft() || (_soldier->getCraft() && _soldier->getCraft()->getStatus() != "STR_OUT")
-		&& !_soldier->getCovertOperation())
+	Craft* craft = _soldier->getCraft();
+	if ((!craft || craft->getStatus() != "STR_OUT") && !_soldier->getCovertOperation())
 	{
-		_game->pushState(new SoldierArmorState(_base, _soldierId, SA_GEOSCAPE));
+		_game->pushState(new SoldierArmorState(_base, _soldierId));
 	}
 }
 
@@ -579,7 +570,7 @@ void SoldierInfoStateFtA::btnHireClick(Action *)
 				"BACK13.SCR",
 				menuInterface->getElement("errorPalette")->color));
 		}
-		else if (_base->getUsedQuarters() + 1 >= _base->getAvailableQuarters())
+		else if (_base->getUsedQuarters() + _soldier->getRules()->getLivingSpace() > _base->getAvailableQuarters())
 		{
 			_game->pushState(new ErrorMessageState("STR_NOT_ENOUGH_SPACE",
 				_palette,
@@ -589,6 +580,10 @@ void SoldierInfoStateFtA::btnHireClick(Action *)
 		}
 		else
 		{
+			int64_t hireCost = _soldier->getHireValue();
+			_game->getSavedGame()->setFunds(_game->getSavedGame()->getFunds() - hireCost);
+			_faction->setFunds(_faction->getFunds() + hireCost);
+
 			int time = _soldier->getRules()->getTransferTime();
 			if (time == 0)
 				time = _game->getMod()->getPersonnelTime();
@@ -620,40 +615,32 @@ void SoldierInfoStateFtA::cbxRolesChange(Action *action)
 }
 
 /**
-* Changes soldier's nationality.
-* @param action Pointer to an action.
-*/
+ * Legacy selector for the technical identity/name-pool index.
+ *
+ * This handler intentionally has no UI binding: nationality is no longer a
+ * player choice. TODO: remove this helper together with the legacy
+ * nationality field when RulePersonnelOrigin is introduced.
+ */
 void SoldierInfoStateFtA::btnFlagClick(Action *action)
 {
-	int temp = _soldier->getNationality();
-	if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
+	int poolIndex = _soldier->getNationality();
+	poolIndex += action->getDetails()->button.button == SDL_BUTTON_LEFT ? 1 : -1;
+
+	const auto &names = _soldier->getRules()->getNames();
+	if (names.empty())
 	{
-		temp += 1;
+		poolIndex = 0;
 	}
-	else if (action->getDetails()->button.button == SDL_BUTTON_RIGHT)
+	else if (poolIndex >= static_cast<int>(names.size()))
 	{
-		temp += -1;
+		poolIndex = 0;
+	}
+	else if (poolIndex < 0)
+	{
+		poolIndex = static_cast<int>(names.size()) - 1;
 	}
 
-	const std::vector<SoldierNamePool*> &names = _soldier->getRules()->getNames();
-	if (!names.empty())
-	{
-		const int max = names.size();
-		if (temp > max - 1)
-		{
-			temp = 0;
-		}
-		else if (temp < 0)
-		{
-			temp = max - 1;
-		}
-	}
-	else
-	{
-		temp = 0;
-	}
-
-	_soldier->setNationality(temp);
+	_soldier->setNationality(poolIndex);
 	init();
 }
 

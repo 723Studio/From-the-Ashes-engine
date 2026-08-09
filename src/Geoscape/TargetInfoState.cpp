@@ -20,7 +20,6 @@
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
 #include "../Mod/AlienRace.h"
-#include "../Engine/LocalizedText.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
@@ -130,10 +129,7 @@ TargetInfoState::TargetInfoState(Target *target, Globe *globe) : _target(target)
 	{
 		_txtPenalty->setAlign(ALIGN_CENTER);
 		_txtPenalty->setText(tr("STR_DESPAWN_PENALTY").arg(_deploymentRule->getDespawnPenalty()));
-		if (_game->getMod()->isFTAGame())
-		{
-			_txtPenalty->setVisible(false); // just because
-		}
+		_txtPenalty->setVisible(false); // just because
 	}
 }
 

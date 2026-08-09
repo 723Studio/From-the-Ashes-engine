@@ -25,9 +25,7 @@
 #include "../Mod/RuleItem.h"
 #include "../Engine/LocalizedText.h"
 #include "../Interface/TextButton.h"
-#include "../Interface/TextEdit.h"
 #include "../Interface/TextList.h"
-#include "../Interface/ToggleTextButton.h"
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
 #include "../Interface/ComboBox.h"
@@ -71,15 +69,12 @@ NewBattleState::NewBattleState() :
 {
 	// Create objects
 	_window = new Window(this, 320, 200, 0, 0, POPUP_BOTH);
-	_btnQuickSearch = new TextEdit(this, 48, 9, 264, 183);
 	_txtTitle = new Text(304, 17, 8, 9);
 
 	_txtMapOptions = new Text(148, 9, 8, 68);
 	_frameLeft = new Frame(148, 96, 8, 78);
 	_txtAlienOptions = new Text(148, 9, 164, 68);
 	_frameRight = new Frame(148, 96, 164, 78);
-
-	_btnUfoLanded = new ToggleTextButton(100, 16, 212, 8);
 
 	_txtMission = new Text(100, 9, 8, 30);
 	_cbxMission = new ComboBox(this, 214, 16, 98, 26);
@@ -123,14 +118,12 @@ NewBattleState::NewBattleState() :
 	setInterface("newBattleMenu");
 
 	add(_window, "window", "newBattleMenu");
-	add(_btnQuickSearch, "button1", "newBattleMenu");
 	add(_txtTitle, "heading", "newBattleMenu");
 	add(_txtMapOptions, "heading", "newBattleMenu");
 	add(_frameLeft, "frames", "newBattleMenu");
 	add(_txtAlienOptions, "heading", "newBattleMenu");
 	add(_frameRight, "frames", "newBattleMenu");
 
-	add(_btnUfoLanded, "button1", "newBattleMenu");
 
 	add(_txtMission, "text", "newBattleMenu");
 	add(_txtCraft, "text", "newBattleMenu");
@@ -181,11 +174,6 @@ NewBattleState::NewBattleState() :
 	_txtAlienOptions->setText(tr("STR_ALIEN_OPTIONS"));
 
 	_frameRight->setThickness(3);
-
-	_btnUfoLanded->setText(tr("STR_LANDED"));
-	_btnUfoLanded->setVisible(Options::oxceCrashedOrLanded > 0);
-	_btnUfoLanded->setPressed(Options::oxceCrashedOrLanded > 1);
-	_txtTitle->setAlign(_btnUfoLanded->getVisible() ? ALIGN_LEFT : ALIGN_CENTER);
 
 	_txtMission->setText(tr("STR_MISSION"));
 
@@ -333,11 +321,6 @@ NewBattleState::NewBattleState() :
 	_lstSelect->onMouseClick((ActionHandler)&NewBattleState::lstSelectClick, SDL_BUTTON_MIDDLE);
 	_lstSelect->setVisible(false);
 
-	_btnQuickSearch->setText(""); // redraw
-	_btnQuickSearch->onEnter((ActionHandler)&NewBattleState::btnQuickSearchApply);
-	_btnQuickSearch->setVisible(false);
-
-	_btnCancel->onKeyboardRelease((ActionHandler)&NewBattleState::btnQuickSearchToggle, Options::keyToggleQuickSearch);
 }
 
 /**
@@ -346,25 +329,6 @@ NewBattleState::NewBattleState() :
 NewBattleState::~NewBattleState()
 {
 
-}
-
-/**
- * Handle key shortcuts.
- * @param action Pointer to an action.
- */
-void NewBattleState::handle(Action* action)
-{
-	State::handle(action);
-
-	if (action->getDetails()->type == SDL_KEYDOWN)
-	{
-		// F11 - show/hide "UFO crashed" toggle button
-		if (action->getDetails()->key.keysym.sym == SDLK_F11)
-		{
-			_btnUfoLanded->setVisible(!_btnUfoLanded->getVisible());
-			_txtTitle->setAlign(_btnUfoLanded->getVisible() ? ALIGN_LEFT : ALIGN_CENTER);
-		}
-	}
 }
 
 /**
@@ -417,7 +381,7 @@ void NewBattleState::load(const std::string &filename)
 				SavedGame *save = new SavedGame();
 
 				Base *base = new Base(mod);
-				base->load(cfgReader["base"], save, false);
+				base->load(cfgReader["base"], save);
 				save->getBases()->push_back(base);
 
 				// Add research
@@ -466,11 +430,6 @@ void NewBattleState::load(const std::string &filename)
 	{
 		_game->getSavedGame()->loadTemplates(globalTemplates, _game->getMod());
 	}
-	if (const auto& ufopediaRuleStatus = starterBaseReader["ufopediaRuleStatus"])
-	{
-		_game->getSavedGame()->loadUfopediaRuleStatus(ufopediaRuleStatus);
-	}
-
 }
 
 /**
@@ -509,7 +468,7 @@ void NewBattleState::initSave()
 	SavedGame *save = new SavedGame();
 	Base *base = new Base(mod);
 	YAML::YamlRootNodeReader startingBaseReader(_game->getMod()->getDefaultStartingBase(), "(starting base template)");
-	base->load(startingBaseReader, save, true, true);
+	base->load(startingBaseReader, save);
 	save->getBases()->push_back(base);
 
 	// Kill everything we don't want in this base
@@ -529,19 +488,23 @@ void NewBattleState::initSave()
 	base->getCrafts()->push_back(_craft);
 
 	// Generate soldiers
-	bool psiStrengthEval = (Options::psiStrengthEval && save->isResearched(mod->getPsiRequirements()));
 	for (int i = 0; i < 30; ++i)
 	{
 		int randomType = RNG::generate(0, mod->getSoldiersList().size() - 1);
 		const RuleSoldier* ruleSoldier = mod->getSoldier(mod->getSoldiersList().at(randomType), true);
-		int nationality = save->selectSoldierNationalityByLocation(mod, ruleSoldier, nullptr); // -1
-		Soldier *soldier = mod->genSoldier(save, ruleSoldier, nationality);
+		Soldier *soldier = mod->genSoldier(save, ruleSoldier);
 
-		for (int n = 0; n < 5; ++n)
+		for (int n = 0; n < 5 && soldier->canGainExperience(); ++n)
 		{
 			if (RNG::percent(70))
 				continue;
-			soldier->promoteRank();
+			const int roleRank = soldier->getRoleRank(ROLE_SOLDIER);
+			const int requiredExperience = ruleSoldier->getRequiredExperience(ROLE_SOLDIER, roleRank);
+			if (roleRank > 0 && requiredExperience >= 0)
+			{
+				soldier->addExperience(ROLE_SOLDIER, requiredExperience, "quick battle generation");
+				soldier->rolePromoteSoldier(ROLE_SOLDIER);
+			}
 
 			UnitStats* stats = soldier->getCurrentStatsEditable();
 			stats->tu			+= RNG::generate(0, 5);
@@ -561,7 +524,7 @@ void NewBattleState::initSave()
 		stats->bravery = (int)ceil(stats->bravery / 10.0) * 10; // keep it a multiple of 10
 
 		// update again, could have been changed since soldier creation
-		soldier->calcStatString(mod->getStatStrings(), psiStrengthEval);
+		soldier->calcStatString(mod->getStatStrings());
 
 		base->getSoldiers()->push_back(soldier);
 
@@ -614,10 +577,6 @@ void NewBattleState::btnOkClick(Action *)
 
 	SavedBattleGame *bgame = new SavedBattleGame(_game->getMod(), _game->getLanguage());
 	_game->getSavedGame()->setBattleGame(bgame);
-	if (_game->getMod()->isFTAGame())
-	{
-		_game->getSavedGame()->setFtAGame(true);
-	}
 	bgame->setMissionType(_missionTypes[_cbxMission->getSelected()]);
 	BattlescapeGenerator bgen = BattlescapeGenerator(_game);
 	Base *base = 0;
@@ -656,7 +615,7 @@ void NewBattleState::btnOkClick(Action *)
 		_craft->setDestination(u);
 		bgen.setUfo(u);
 		// either ground assault or ufo crash
-		bool ufoLanded = _btnUfoLanded->getVisible() ? _btnUfoLanded->getPressed() : RNG::generate(0, 1) == 1;
+		bool ufoLanded = RNG::generate(0, 1) == 1;
 		if (ufoLanded)
 		{
 			u->setStatus(Ufo::LANDED);
@@ -991,28 +950,13 @@ void NewBattleState::fillList(NewBattleSelectType selectType, bool isRightClick)
 		_btnCancel->setVisible(true);
 		_btnRandom->setVisible(false);
 		_lstSelect->setVisible(true);
-		_btnQuickSearch->setVisible(Options::oxceQuickSearchButton);
 	}
-
-	std::string searchString = _btnQuickSearch->getText();
-	Unicode::upperCase(searchString);
 
 	size_t counter = 0;
 	auto fill = [&](const std::vector<std::string>& list, bool prefix, size_t scroll)
 	{
 		for (auto& m : list)
 		{
-			if (!searchString.empty())
-			{
-				std::string itemName;
-				if (_isRightClick) { itemName = m; } else { itemName = tr(prefix ? "MAP_" + m : m); }
-				Unicode::upperCase(itemName);
-				if (itemName.find(searchString) == std::string::npos)
-				{
-					counter++;
-					continue;
-				}
-			}
 			_filtered.push_back(counter);
 			counter++;
 			_lstSelect->addRow(1, _isRightClick ? m.c_str() : tr(prefix ? "MAP_" + m : m).c_str());
@@ -1095,47 +1039,11 @@ void NewBattleState::lstSelectClick(Action *action)
  */
 void NewBattleState::cleanup()
 {
-	_btnQuickSearch->setText("");
-	_btnQuickSearch->setVisible(false);
-
 	for (auto& surfacePair : _surfaceBackup)
 	{
 		surfacePair.first->setVisible(surfacePair.second);
 	}
 	_surfaceBackup.clear();
-}
-
-/**
- * Quick search toggle.
- * @param action Pointer to an action.
- */
-void NewBattleState::btnQuickSearchToggle(Action *action)
-{
-	if (_surfaceBackup.empty())
-	{
-		return;
-	}
-
-	if (_btnQuickSearch->getVisible())
-	{
-		_btnQuickSearch->setText("");
-		_btnQuickSearch->setVisible(false);
-		btnQuickSearchApply(action);
-	}
-	else
-	{
-		_btnQuickSearch->setVisible(true);
-		_btnQuickSearch->setFocus(true);
-	}
-}
-
-/**
- * Quick search.
- * @param action Pointer to an action.
- */
-void NewBattleState::btnQuickSearchApply(Action *)
-{
-	fillList(_selectType, _isRightClick);
 }
 
 }

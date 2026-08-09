@@ -38,12 +38,14 @@ class OptionsBattlescapeState : public OptionsBaseState
 private:
 	Text *_txtEdgeScroll, *_txtDragScroll;
 	ComboBox *_cbxEdgeScroll, *_cbxDragScroll;
-	Text *_txtScrollSpeed, *_txtFireSpeed, *_txtXcomSpeed, *_txtAlienSpeed;
-	Slider *_slrScrollSpeed, *_slrFireSpeed, *_slrXcomSpeed, *_slrAlienSpeed;
+	Text *_txtScrollSpeed, *_txtFireSpeed;
+	Slider *_slrScrollSpeed, *_slrFireSpeed;
 	Text *_txtPathPreview;
-	ToggleTextButton *_btnArrows, *_btnTuCost, *_btnEnergyCost;
+	ToggleTextButton *_btnArrows, *_btnTuCost, *_btnEnergyCost, *_btnTargetPreview;
 	Text *_txtOptions;
 	ToggleTextButton *_btnTooltips, *_btnDeaths;
+	/// Updates visibility of options that require path arrows.
+	void updatePathPreviewButtons();
 public:
 	/// Creates the Battlescape Options state.
 	OptionsBattlescapeState(OptionsOrigin origin);
@@ -57,10 +59,6 @@ public:
 	void slrScrollSpeedChange(Action *action);
 	/// Handler for changing the fire speed slider.
 	void slrFireSpeedChange(Action *action);
-	/// Handler for changing the X-COM movement speed slider.
-	void slrXcomSpeedChange(Action *action);
-	/// Handler for changing the alien movement speed slider.
-	void slrAlienSpeedChange(Action *action);
 	/// Handler for clicking a Path Preview button.
 	void btnPathPreviewClick(Action *action);
 	/// Handler for clicking the Tooltips button.

@@ -27,9 +27,7 @@
 #include "Globe.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/Region.h"
-#include "../Savegame/Country.h"
 #include "../Mod/RuleRegion.h"
-#include "../Mod/RuleCountry.h"
 #include "../Savegame/AlienBase.h"
 #include "../Engine/Options.h"
 
@@ -71,15 +69,7 @@ AlienBaseState::AlienBaseState(AlienBase *base, GeoscapeState *state) : _state(s
 	_txtTitle->setWordWrap(true);
 
 	// Check location of base
-	std::string regionName, countryName;
-	for (const auto* country : *_game->getSavedGame()->getCountries())
-	{
-		if (country->getRules()->insideCountry(_base->getLongitude(), _base->getLatitude()))
-		{
-			countryName = tr(country->getRules()->getType());
-			break;
-		}
-	}
+	std::string regionName;
 	for (const auto* region : *_game->getSavedGame()->getRegions())
 	{
 		if (region->getRules()->insideRegion(_base->getLongitude(), _base->getLatitude()))
@@ -89,11 +79,7 @@ AlienBaseState::AlienBaseState(AlienBase *base, GeoscapeState *state) : _state(s
 		}
 	}
 	std::string location;
-	if (!countryName.empty())
-	{
-		location = tr("STR_COUNTRIES_COMMA").arg(countryName).arg(regionName);
-	}
-	else if (!regionName.empty())
+	if (!regionName.empty())
 	{
 		location = regionName;
 	}

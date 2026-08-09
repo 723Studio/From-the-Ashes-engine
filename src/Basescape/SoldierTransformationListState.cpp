@@ -22,12 +22,9 @@
 #include "../Engine/Game.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Options.h"
-#include "../Engine/Screen.h"
-#include "../Engine/Unicode.h"
 #include "../Interface/ComboBox.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextButton.h"
-#include "../Interface/TextEdit.h"
 #include "../Interface/TextList.h"
 #include "../Interface/ToggleTextButton.h"
 #include "../Interface/Window.h"
@@ -58,7 +55,6 @@ SoldierTransformationListState::SoldierTransformationListState(Base *base, Combo
 	_txtTitle = new Text(310, 17, 5, 8);
 	_cbxSoldierType = new ComboBox(this, 148, 16, 8, 30, false);
 	_cbxSoldierStatus = new ComboBox(this, 148, 16, 164, 30, false);
-	_btnQuickSearch = new TextEdit(this, 48, 9, 16, 48);
 	_txtProject = new Text(140, 9, 16, 58);
 	_txtNumber = new Text(78, 17, 160, 50);
 	_txtSoldierNumber = new Text(78, 17, 238, 50);
@@ -71,7 +67,6 @@ SoldierTransformationListState::SoldierTransformationListState(Base *base, Combo
 
 	add(_window, "window", "transformationList");
 	add(_txtTitle, "text1", "transformationList");
-	add(_btnQuickSearch, "button", "transformationList");
 	add(_txtProject, "text2", "transformationList");
 	add(_txtNumber, "text2", "transformationList");
 	add(_txtSoldierNumber, "text2", "transformationList");
@@ -140,12 +135,6 @@ SoldierTransformationListState::SoldierTransformationListState(Base *base, Combo
 	_lstTransformations->onMouseClick((ActionHandler)&SoldierTransformationListState::lstTransformationsClick);
 	_lstTransformations->onMouseClick((ActionHandler)&SoldierTransformationListState::lstTransformationsClick, SDL_BUTTON_MIDDLE);
 
-	_btnQuickSearch->setText(""); // redraw
-	_btnQuickSearch->onEnter((ActionHandler)&SoldierTransformationListState::btnQuickSearchApply);
-	_btnQuickSearch->setVisible(Options::oxceQuickSearchButton);
-
-	_btnOK->onKeyboardRelease((ActionHandler)&SoldierTransformationListState::btnQuickSearchToggle, Options::keyToggleQuickSearch);
-
 	initList();
 }
 
@@ -165,25 +154,11 @@ void SoldierTransformationListState::initList()
 	_lstTransformations->clearList();
 	_transformationIndices.clear();
 
-	std::string searchString = _btnQuickSearch->getText();
-	Unicode::upperCase(searchString);
-
 	int currentIndex = -1;
 	ItemContainer* itemContainer(_base->getStorageItems());
 	for (const auto* transformationRule : _availableTransformations)
 	{
 		++currentIndex;
-
-		// quick search
-		if (!searchString.empty())
-		{
-			std::string transformationName = tr(transformationRule->getName());
-			Unicode::upperCase(transformationName);
-			if (transformationName.find(searchString) == std::string::npos)
-			{
-				continue;
-			}
-		}
 
 		if (_cbxSoldierType->getSelected() > 0 &&
 			std::find(
@@ -244,9 +219,9 @@ void SoldierTransformationListState::initList()
 		for (auto* soldier : *_base->getSoldiers())
 		{
 			bool roleRankPassed = true;
-			if (!transformationRule->getRoleRankRequirments().empty())
+			if (!transformationRule->getRoleRankRequirements().empty())
 			{
-				for (auto req : transformationRule->getRoleRankRequirments())
+				for (const auto &req : transformationRule->getRoleRankRequirements())
 				{
 					if (soldier->getRoleRank(req.first) < req.second)
 					{
@@ -310,34 +285,6 @@ void SoldierTransformationListState::initList()
 		_lstTransformations->addRow(3, tr(transformationRule->getName()).c_str(), col1.str().c_str(), col2.str().c_str());
 		_transformationIndices.push_back(currentIndex);
 	}
-}
-
-/**
- * Quick search toggle.
- * @param action Pointer to an action.
- */
-void SoldierTransformationListState::btnQuickSearchToggle(Action *action)
-{
-	if (_btnQuickSearch->getVisible())
-	{
-		_btnQuickSearch->setText("");
-		_btnQuickSearch->setVisible(false);
-		btnQuickSearchApply(action);
-	}
-	else
-	{
-		_btnQuickSearch->setVisible(true);
-		_btnQuickSearch->setFocus(true);
-	}
-}
-
-/**
- * Quick search.
- * @param action Pointer to an action.
- */
-void SoldierTransformationListState::btnQuickSearchApply(Action *)
-{
-	initList();
 }
 
 /**

@@ -41,13 +41,14 @@ RuleBaseFacility::RuleBaseFacility(const std::string &type, int listOrder) :
 	_missileAttraction(100), _fakeUnderwater(-1),
 	_lift(false), _hyper(false), _mind(false), _grav(false), _globalRadar(false), _mindPower(1),
 	_sizeX(1), _sizeY(1), _buildCost(0), _refundValue(0), _buildTime(0), _monthlyCost(0),
-	_storage(0), _personnel(0), _aliens(0), _crafts(0), _labs(0), _workshops(0), _psiLabs(0), _ftaPrisonSpace(0),
+	_storage(0), _personnel(0), _prisonSpace(0), _alienContainmentSpace(0),
+	_monsterContainmentSpace(0), _crafts(0), _labs(0), _workshops(0), _psiLabs(0),
 	_spriteEnabled(false),
 	_sightRange(0), _sightChance(0), _radarRange(0), _radarChance(0),
 	_defense(0), _hitRatio(0), _fireSound(0), _hitSound(0), _placeSound(-1),
-	_ammoMax(0), _rearmRate(1), _ammoNeeded(1), _interrogationSpace(0), _unifiedDamageFormula(false), _shieldDamageModifier(100), _listOrder(listOrder),
+	_ammoMax(0), _rearmRate(1), _ammoNeeded(1), _interrogationSpace(0), _intelSpace(0), _containedAliensResearchSpace(0), _unifiedDamageFormula(false), _shieldDamageModifier(100), _listOrder(listOrder),
 	_trainingRooms(0), _maxAllowedPerBase(0), _sickBayAbsoluteBonus(0.0f), _sickBayRelativeBonus(0.0f),
-	_prisonType(0), _rightClickActionType(0), _verticalLevels(),
+	_rightClickActionType(0), _verticalLevels(),
 	_removalTime(0), _canBeBuiltOver(false), _upgradeOnly(false), _destroyedFacility(0)
 {
 }
@@ -106,8 +107,27 @@ void RuleBaseFacility::load(const YAML::YamlNodeReader& node, Mod *mod)
 	reader.tryRead("storage", _storage);
 	reader.tryRead("personnel", _personnel);
 	reader.tryRead("interrogationSpace", _interrogationSpace);
-	reader.tryRead("ftaPrisonSpace", _ftaPrisonSpace);
-	reader.tryRead("aliens", _aliens);
+	reader.tryRead("intelSpace", _intelSpace);
+	reader.tryRead("containedAliensResearchSpace", _containedAliensResearchSpace);
+	if (_intelSpace < 0)
+	{
+		throw Exception("Base facility '" + _type +
+			"': intelSpace must be non-negative, got " + std::to_string(_intelSpace));
+	}
+	if (_containedAliensResearchSpace < 0)
+	{
+		throw Exception("Base facility '" + _type +
+			"': containedAliensResearchSpace must be non-negative, got " +
+			std::to_string(_containedAliensResearchSpace));
+	}
+	reader.tryRead("prisonSpace", _prisonSpace);
+	reader.tryRead("alienContainmentSpace", _alienContainmentSpace);
+	reader.tryRead("monsterContainmentSpace", _monsterContainmentSpace);
+	if (_prisonSpace < 0 || _alienContainmentSpace < 0 || _monsterContainmentSpace < 0)
+	{
+		throw Exception("Base facility '" + _type +
+			"': prisonSpace, alienContainmentSpace and monsterContainmentSpace must be non-negative");
+	}
 	reader.tryRead("crafts", _crafts);
 	reader.tryRead("labs", _labs);
 	reader.tryRead("workshops", _workshops);
@@ -119,6 +139,11 @@ void RuleBaseFacility::load(const YAML::YamlNodeReader& node, Mod *mod)
 	reader.tryRead("sightChance", _sightChance);
 	reader.tryRead("radarRange", _radarRange);
 	reader.tryRead("radarChance", _radarChance);
+	if (_globalRadar && _radarRange != 0)
+	{
+		throw Exception("Base facility '" + _type +
+			"': radarRange must be 0 when globalRadar is true, got " + std::to_string(_radarRange));
+	}
 	reader.tryRead("defense", _defense);
 	reader.tryRead("hitRatio", _hitRatio);
 
@@ -140,7 +165,6 @@ void RuleBaseFacility::load(const YAML::YamlNodeReader& node, Mod *mod)
 	reader.tryRead("healthRecoveryPerDay", _healthRecoveryPerDay);
 	reader.tryRead("sickBayAbsoluteBonus", _sickBayAbsoluteBonus);
 	reader.tryRead("sickBayRelativeBonus", _sickBayRelativeBonus);
-	reader.tryRead("prisonType", _prisonType);
 	reader.tryRead("rightClickActionType", _rightClickActionType);
 
 	if (const auto& items = reader["buildCostItems"])
@@ -191,6 +215,16 @@ void RuleBaseFacility::load(const YAML::YamlNodeReader& node, Mod *mod)
  */
 void RuleBaseFacility::afterLoad(const Mod* mod)
 {
+	if (_intelSpace < 0)
+	{
+		throw Exception("Base facility '" + _type +
+			"': intelSpace must be non-negative, got " + std::to_string(_intelSpace));
+	}
+	if (_globalRadar && _radarRange != 0)
+	{
+		throw Exception("Base facility '" + _type +
+			"': radarRange must be 0 when globalRadar is true, got " + std::to_string(_radarRange));
+	}
 	mod->verifySpriteOffset(_type, _spriteShape, "BASEBITS.PCK");
 	mod->verifySpriteOffset(_type, _spriteFacility, "BASEBITS.PCK");
 	mod->verifySoundOffset(_type, _fireSound, "GEO.CAT");
@@ -469,16 +503,6 @@ int RuleBaseFacility::getPersonnel() const
 }
 
 /**
- * Gets the number of captured live aliens this facility
- * can contain.
- * @return The number of aliens.
- */
-int RuleBaseFacility::getAliens() const
-{
-	return _aliens;
-}
-
-/**
  * Gets the number of base craft this facility can contain.
  * @return The number of craft.
  */
@@ -611,15 +635,6 @@ int RuleBaseFacility::getTrainingFacilities() const
 int RuleBaseFacility::getMaxAllowedPerBase() const
 {
 	return _maxAllowedPerBase;
-}
-
-/**
-* Gets the prison type.
-* @return 0=alien containment, 1=prison, 2=animal cages, etc.
-*/
-int RuleBaseFacility::getPrisonType() const
-{
-	return _prisonType;
 }
 
 /**

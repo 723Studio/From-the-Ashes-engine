@@ -18,7 +18,6 @@
  */
 #include <sstream>
 #include <climits>
-#include "PsiTrainingState.h"
 #include "AllocatePsiTrainingState.h"
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
@@ -35,7 +34,7 @@
 #include "../Engine/Options.h"
 #include "../Interface/ComboBox.h"
 #include "../Mod/RuleSoldier.h"
-#include "../Basescape/SoldierInfoState.h"
+#include "../Basescape/SoldierInfoStateFtA.h"
 #include "../Basescape/SoldierSortUtil.h"
 #include <algorithm>
 #include "../Engine/Unicode.h"
@@ -86,8 +85,6 @@ AllocatePsiTrainingState::AllocatePsiTrainingState(Base *base) : _sel(0), _base(
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&AllocatePsiTrainingState::btnOkClick);
 	_btnOk->onKeyboardPress((ActionHandler)&AllocatePsiTrainingState::btnOkClick, Options::keyCancel);
-	_btnOk->onKeyboardPress((ActionHandler)&AllocatePsiTrainingState::btnDeassignAllSoldiersClick, Options::keyRemoveSoldiersFromTraining);
-	_btnOk->onKeyboardPress((ActionHandler)&AllocatePsiTrainingState::btnAssignAllSoldiersClick, Options::keyAddSoldiersToTraining);
 
 	_btnPlus->setText("+");
 	_btnPlus->setPressed(false);
@@ -257,10 +254,9 @@ void AllocatePsiTrainingState::cbxSortByChange(Action *action)
 void AllocatePsiTrainingState::btnOkClick(Action *)
 {
 	// Note: statString updates are needed only because of the potential "psiTraining" attribute change
-	bool psiStrengthEval = (Options::psiStrengthEval && _game->getSavedGame()->isResearched(_game->getMod()->getPsiRequirements()));
 	for (auto* soldier : *_base->getSoldiers())
 	{
-		soldier->calcStatString(_game->getMod()->getStatStrings(), psiStrengthEval);
+		soldier->calcStatString(_game->getMod()->getStatStrings());
 	}
 	_game->popState();
 }
@@ -291,7 +287,7 @@ void AllocatePsiTrainingState::init()
 {
 	State::init();
 
-	// coming back from SoldierInfoState
+	// coming back from SoldierInfoStateFtA
 	if (_doNotReset)
 	{
 		_doNotReset = false;
@@ -316,10 +312,9 @@ void AllocatePsiTrainingState::initList(size_t scrl)
 		std::ostringstream ssStr;
 		std::ostringstream ssSkl;
 		_soldiers.push_back(soldier);
-		if (soldier->getCurrentStats()->psiSkill > 0 || (Options::psiStrengthEval && _game->getSavedGame()->isResearched(_game->getMod()->getPsiRequirements())))
+		if (soldier->getCurrentStats()->psiSkill > 0)
 		{
 			ssStr << "   " << stats->psiStrength;
-			if (Options::allowPsiStrengthImprovement) ssStr << "/+" << soldier->getPsiStrImprovement();
 		}
 		else
 		{
@@ -533,7 +528,7 @@ void AllocatePsiTrainingState::lstSoldiersClick(Action *action)
 	else if (action->getDetails()->button.button == SDL_BUTTON_RIGHT)
 	{
 		_doNotReset = true;
-		_game->pushState(new SoldierInfoState(_base, _sel, true, true));
+		_game->pushState(new SoldierInfoStateFtA(_base, _sel));
 	}
 }
 
@@ -565,64 +560,6 @@ void AllocatePsiTrainingState::lstSoldiersMousePress(Action *action)
 			moveSoldierDown(action, row);
 		}
 	}
-}
-
-/**
- * Removes all soldiers from Psi Training.
- * @param action Pointer to an action.
- */
-void AllocatePsiTrainingState::btnDeassignAllSoldiersClick(Action* action)
-{
-	int row = 0;
-	for (auto* s : *_base->getSoldiers())
-	{
-		s->setPsiTraining(false);
-		if (s->getRules()->getTrainingStatCaps().psiSkill <= 0)
-		{
-			_lstSoldiers->setCellText(row, 3, tr("STR_NO_WOUNDED"));
-		}
-		else if (s->isFullyPsiTrained())
-		{
-			_lstSoldiers->setCellText(row, 3, tr("STR_NO_DONE"));
-		}
-		else
-		{
-			_lstSoldiers->setCellText(row, 3, tr("STR_NO"));
-		}
-		_lstSoldiers->setRowColor(row, _lstSoldiers->getColor());
-		row++;
-	}
-	_labSpace = _base->getAvailablePsiLabs() - _base->getUsedPsiLabs();
-	_txtRemaining->setText(tr("STR_REMAINING_PSI_LAB_CAPACITY").arg(_labSpace));
-}
-
-/**
- * Adds all soldiers to Psi Training.
- * @param action Pointer to an action.
- */
-void AllocatePsiTrainingState::btnAssignAllSoldiersClick(Action* action)
-{
-	int row = 0;
-	for (auto* s : *_base->getSoldiers())
-	{
-		if (s->getRules()->getTrainingStatCaps().psiSkill <= 0)
-		{
-			// noop
-		}
-		else if (s->isFullyPsiTrained())
-		{
-			// can't put fully psi-trained soldiers back into psi training
-		}
-		else if (_labSpace > 0 && !s->isInPsiTraining())
-		{
-			_lstSoldiers->setCellText(row, 3, tr("STR_YES"));
-			_lstSoldiers->setRowColor(row, _lstSoldiers->getSecondaryColor());
-			_labSpace--;
-			s->setPsiTraining(true);
-		}
-		row++;
-	}
-	_txtRemaining->setText(tr("STR_REMAINING_PSI_LAB_CAPACITY").arg(_labSpace));
 }
 
 }

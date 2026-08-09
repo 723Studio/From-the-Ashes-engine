@@ -18,13 +18,19 @@
  */
 
 #include "BattleObject.h"
+#include "BattleItem.h"
+#include "BattleUnit.h"
+#include "Soldier.h"
 #include "Tile.h"
 #include "SavedGame.h"
 #include "SavedBattleGame.h"
+#include "../Battlescape/BattlescapeGame.h"
 #include "../Mod/Mod.h"
+#include "../Mod/RuleItem.h"
 #include "../Mod/RuleObject.h"
 #include "../Engine/RNG.h"
 #include "../Engine/Game.h"
+#include <climits>
 
 namespace OpenXcom
 {
@@ -84,14 +90,25 @@ void BattleObject::setTile(Tile *tile)
  */
 void BattleObject::hackingPostProcess(bool result, Game* game)
 {
-	setHackingDefence(ceil(getHackingDefence() * RNG::generate(0.3, 0.7)));
+	// Opening the minigame is an attempt: the target hardens itself even if the player cancels.
+	const int currentDefence = getHackingDefence() > 0 ? getHackingDefence() : 1;
+	const int defenceIncrease = static_cast<int>(ceil(currentDefence * RNG::generate(0.3, 0.7)));
+	setHackingDefence(currentDefence > INT_MAX - defenceIncrease ? INT_MAX : currentDefence + defenceIncrease);
+
 	if (result)
 	{
-		for (auto e : _rules->getSpawnedEvents())
+		// Hacking is wireless: strategic rewards are transmitted immediately and intentionally
+		// survive the hacker's death, mission failure, or a later tactical rollback.
+		for (const std::string& eventId : _rules->getSpawnedEvents())
 		{
-			game->getSavedGame()->spawnEvent(game->getMod()->getEvent(e));
+			game->getSavedGame()->spawnEvent(game->getMod()->getEvent(eventId));
 		}
-		game->getSavedGame()->spawnEvent(game->getMod()->getEvent(_rules->getWeightedEvent(game->getSavedGame()->getMonthsPassed())));
+
+		const std::string weightedEvent = _rules->getWeightedEvent(game->getSavedGame()->getMonthsPassed());
+		if (!weightedEvent.empty())
+		{
+			game->getSavedGame()->spawnEvent(game->getMod()->getEvent(weightedEvent));
+		}
 
 		if (_rules->isMissionObjective())
 		{
@@ -102,6 +119,83 @@ void BattleObject::hackingPostProcess(bool result, Game* game)
 	{
 		_failedAttempts++;
 	}
+}
+
+/**
+ * Resolves a sampling attempt.
+ *
+ * Failed rolls still spend TUs, but the object is consumed only after all
+ * configured rewards have been delivered successfully.
+ */
+void BattleObject::resolveSamplingAttempt(BattleAction& action, Game* game)
+{
+	if (_wasUsed || !_rules)
+	{
+		action.result = "STR_NOTHING_TO_GATHER";
+		return;
+	}
+
+	const BattleObjectType useType = _rules->getUseType();
+	if ((useType != BATTLE_OBJECT_BIOLOGY_SAMPLING && useType != BATTLE_OBJECT_ANOMALY_SAMPLING) ||
+		_rules->getSamplingDefence() <= 0 || !action.actor || !action.weapon ||
+		!action.actor->getGeoscapeSoldier())
+	{
+		action.result = "STR_NOTHING_TO_GATHER";
+		return;
+	}
+	if (!action.spendTU(&action.result))
+	{
+		return;
+	}
+	if (BattlescapeGame *battleGame = game->getSavedGame()->getSavedBattle()->getBattleGame())
+	{
+		battleGame->processUndercoverAction(action);
+	}
+
+	BattleUnit* unit = action.actor;
+	Soldier* soldier = unit->getGeoscapeSoldier();
+	auto stats = unit->getBaseStats();
+	int power = action.weapon->getRules()->getSamplingPower();
+	if (useType == BATTLE_OBJECT_BIOLOGY_SAMPLING)
+	{
+		power += stats->biology;
+	}
+	else if (useType == BATTLE_OBJECT_ANOMALY_SAMPLING)
+	{
+		power += stats->physics;
+	}
+
+	if (soldier->getRoleRank(ROLE_SCIENTIST) < 1)
+	{
+		power /= 2;
+	}
+	if (RNG::generate(0, power) < _rules->getSamplingDefence())
+	{
+		action.result = "STR_SAMPLES_GATHERING_FAILED";
+		return;
+	}
+
+	for (const std::string& eventId : _rules->getSpawnedEvents())
+	{
+		game->getSavedGame()->spawnEvent(game->getMod()->getEvent(eventId, true));
+	}
+	if (!_rules->getSpawnedItem().empty())
+	{
+		const RuleItem* itemRule = game->getMod()->getItem(_rules->getSpawnedItem(), true);
+		game->getSavedGame()->getSavedBattle()->createItemForTile(itemRule, unit->getTile());
+	}
+
+	if (useType == BATTLE_OBJECT_BIOLOGY_SAMPLING)
+	{
+		unit->addBiologyExp();
+	}
+	else if (useType == BATTLE_OBJECT_ANOMALY_SAMPLING)
+	{
+		unit->addPhysicsExp();
+	}
+
+	action.result = "STR_SAMPLES_GATHERED";
+	setWasUsed(true);
 }
 
 /**

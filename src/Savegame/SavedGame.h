@@ -37,9 +37,7 @@ namespace OpenXcom
 
 class Game;
 class Mod;
-class MasterMind;
 class GameTime;
-class Country;
 class Base;
 class Region;
 class Ufo;
@@ -60,6 +58,10 @@ class AlienMission;
 class GeoscapeEvent;
 class DiplomacyFaction;
 class CovertOperation;
+class IntelProject;
+class RuleIntelProject;
+class XenoSpecies;
+class RuleXenoSpecies;
 class Target;
 class Soldier;
 class Craft;
@@ -69,6 +71,7 @@ class RuleSoldierTransformation;
 class AlienRace;
 struct MissionStatistics;
 struct BattleUnitKills;
+enum IntelProjectEffectType : int;
 
 /**
  * Enumerator containing all the possible game difficulties.
@@ -78,12 +81,17 @@ enum GameDifficulty : int { DIFF_BEGINNER = 0, DIFF_EXPERIENCED, DIFF_VETERAN, D
 /**
  * Enumerator for the various save types.
  */
-enum SaveType { SAVE_DEFAULT, SAVE_INSTA, SAVE_QUICK, SAVE_AUTO_GEOSCAPE, SAVE_AUTO_BATTLESCAPE, SAVE_IRONMAN, SAVE_IRONMAN_END };
+enum SaveType { SAVE_DEFAULT, SAVE_QUICK, SAVE_AUTO_GEOSCAPE, SAVE_AUTO_BATTLESCAPE, SAVE_IRONMAN, SAVE_IRONMAN_END };
 
 /**
  * Enumerator for the current game ending.
  */
 enum GameEnding { END_NONE, END_WIN, END_LOSE };
+
+/**
+ * Source categories for savegame loyalty changes.
+ */
+enum LoyaltySource { XCOM_BATTLESCAPE, XCOM_DOGFIGHT, XCOM_GEOSCAPE, XCOM_RESEARCH, ALIEN_MISSION_DESPAWN, ALIEN_UFO_ACTIVITY, ALIEN_BASE, ABSOLUTE_COEF };
 
 /**
  * Container for savegame info displayed on listings.
@@ -95,8 +103,25 @@ struct SaveInfo
 	time_t timestamp;
 	std::string isoDate, isoTime;
 	std::string details;
+	std::string version;
 	std::vector<std::string> mods;
 	bool reserved;
+};
+
+/**
+ * Result of one primary research completion pipeline.
+ */
+struct ResearchDiscoveryResult
+{
+	const RuleResearch* primary = nullptr;
+	const RuleResearch* primaryDisplay = nullptr;
+	const RuleResearch* bonus = nullptr;
+	const RuleResearch* bonusDisplay = nullptr;
+	bool primaryWasNew = false;
+	bool primaryDisplayWasNew = false;
+	bool bonusWasNew = false;
+	std::vector<const RuleResearch*> newlyDiscovered;
+	std::vector<const RuleResearch*> primarySideEffects;
 };
 
 /**
@@ -130,16 +155,16 @@ private:
 	GameEnding _end;
 	bool _ironman;
 	GameTime *_time;
-	std::vector<std::string> _userNotes;
 	std::vector<std::string> _geoscapeDebugLog;
-	std::vector<int> _researchScores;
+	std::vector<int> _researchScores, _loyaltyHistory;
 	std::vector<int64_t> _funds, _maintenance, _incomes, _expenditures;
 	double _globeLon, _globeLat;
 	int _globeZoom;
 	std::map<std::string, int> _ids;
-	std::vector<Country*> _countries;
 	std::vector<Region*> _regions;
 	std::vector<Base*> _bases;
+	std::vector<IntelProject*> _intelProjects;
+	std::vector<XenoSpecies*> _xenoSpecies;
 	std::vector<Ufo*> _ufos;
 	std::vector<Waypoint*> _waypoints;
 	std::vector<MissionSite*> _missionSites;
@@ -150,27 +175,23 @@ private:
 	std::vector<std::string> _performedOperations;
 	std::map<std::string, int> _missionScriptsTimers, _eventScriptsTimers;
 	std::map<std::string, int> _generatedEvents;
-	std::map<std::string, int> _ufopediaRuleStatus;
-	std::map<std::string, int> _manufactureRuleStatus;
 	std::map<std::string, int> _researchRuleStatus;
 	std::map<std::string, int> _monthlyPurchaseLimitLog;
-	std::map<std::string, bool> _hiddenPurchaseItemsMap;
 	std::map<std::string, RuleCraftDeployment> _customRuleCraftDeployments;
 	Base* _previewBase;
 	std::vector<AlienMission*> _activeMissions;
 	std::vector<GeoscapeEvent*> _geoscapeEvents;
 	std::vector<CovertOperation*> _covertOperations;
 	std::vector<DiplomacyFaction*> _diplomacyFactions;
-	bool _debug, _warned, _ftaGame;
-	bool _togglePersonalLight, _toggleNightVision;
+	bool _debug, _warned;
+	bool _toggleNightVision;
 	int _toggleBrightness;
 	int _monthsPassed;
 	int _loyalty, _lastMonthsLoyalty;
 	int _daysPassed;
 	int _vehiclesLost;
 	std::string _graphRegionToggles;
-	std::string _graphCountryToggles;
-	std::string _graphFinanceToggles;
+	std::string _graphFinanceToggles, _graphFactionToggles;
 	std::vector<const RuleResearch*> _poppedResearch;
 	std::vector<Soldier*> _deadSoldiers;
 	size_t _selectedBase;
@@ -182,9 +203,7 @@ private:
 	ItemContainer *_globalCraftLoadout[MAX_CRAFT_LOADOUT_TEMPLATES];
 	std::vector<MissionStatistics*> _missionStatistics;
 	std::set<int> _ignoredUfos;
-	std::set<const RuleItem *> _autosales;
 	bool _disableSoldierEquipment;
-	bool _alienContainmentChecked;
 	ScriptValues<SavedGame> _scriptValues;
 
 	static SaveInfo getSaveInfo(const std::string &file, Language *lang);
@@ -201,7 +220,6 @@ public:
 	/// Loads a saved game from YAML.
 	void load(const std::string &filename, Mod *mod, Language *lang);
 	void loadTemplates(const YAML::YamlNodeReader& reader, const Mod* mod);
-	void loadUfopediaRuleStatus(const YAML::YamlNodeReader& reader);
 	/// Saves a saved game to YAML.
 	void save(const std::string &filename, Mod *mod) const;
 	/// Gets the game name.
@@ -226,10 +244,6 @@ public:
 	bool isIronman() const;
 	/// Sets if the game is in ironman mode.
 	void setIronman(bool ironman);
-	/// Gets if the game is FtA game.
-	bool isFtAGame() const { return _ftaGame; }
-	/// Sets if the game is FtA game.
-	void setFtAGame(bool ftaGame) { _ftaGame = ftaGame; }
 	/// Sets game object pointer
 	static void setGamePtr(Game *game) { _game = game; }
 	/// Gets our game.
@@ -244,10 +258,14 @@ public:
 	int getLoyalty() const { return _loyalty; }
 	/// Sets the new loyalty score.
 	void setLoyalty(int loyalty) { _loyalty = loyalty; }
+	/// Gets loyalty values from completed months.
+	const std::vector<int>& getLoyaltyHistory() const { return _loyaltyHistory; }
 	/// Gets the last month loyalty score.
 	int getLastMonthsLoyalty() const { return _lastMonthsLoyalty; }
 	/// Sets the new last month loyalty score.
 	void setLastMonthsLoyalty(int loyalty) { _lastMonthsLoyalty = loyalty; }
+	/// Finalizes the current month's Loyalty after monthly adjustments.
+	void finalizeMonthlyLoyalty();
 	/// Gets the current globe longitude.
 	double getGlobeLongitude() const;
 	/// Sets the new globe longitude.
@@ -260,18 +278,18 @@ public:
 	int getGlobeZoom() const;
 	/// Sets the new globe zoom.
 	void setGlobeZoom(int zoom);
-	/// Handles monthly funding.
-	void monthlyFunding();
 	/// Handles monthly scoring (reduced method for FtA).
 	void monthlyScoring();
-	/// Handles soldier promotion postprocessing.
-	void handlePromotionsPostprocessing();
 	/// Gets the current game time.
 	GameTime *getTime() const;
 	/// Sets the current game time.
 	void setTime(const GameTime& time);
 	/// Gets the current ID for an object.
 	int getId(const std::string &name);
+	/// Generates a designation unique across all captive types, bases and transfers.
+	std::string generateCaptiveDesignation() const;
+	/// Rejects duplicate captive ids/designations after all bases and transfers are loaded.
+	void validateCaptiveIdentities() const;
 	/// Gets the last ID for an object.
 	int getLastId(const std::string& name);
 	/// Increase a custom counter.
@@ -282,16 +300,36 @@ public:
 	const std::map<std::string, int> &getAllIds() const;
 	/// Resets the list of object IDs.
 	void setAllIds(const std::map<std::string, int> &ids);
-	/// Gets the list of countries.
-	std::vector<Country*> *getCountries();
-	/// Gets the total country funding.
-	int getCountryFunding() const;
 	/// Gets the list of regions.
 	std::vector<Region*> *getRegions();
 	/// Gets the list of bases.
 	std::vector<Base*> *getBases();
 	/// Gets the list of bases.
 	const std::vector<Base*> *getBases() const;
+	/// Gets all global intelligence projects, including completed projects.
+	const std::vector<IntelProject*>& getIntelProjects() const { return _intelProjects; }
+	/// Gets a global intelligence project by ruleset id.
+	IntelProject* getIntelProject(const std::string& name) const;
+	/// Creates a global intelligence project if it does not already exist.
+	IntelProject* addIntelProject(const RuleIntelProject* rules);
+	/// Gets all campaign-global alien-species knowledge records.
+	const std::vector<XenoSpecies*>& getXenoSpecies() const { return _xenoSpecies; }
+	/// Gets one campaign-global alien-species knowledge record by ruleset id.
+	XenoSpecies* getXenoSpecies(const std::string& type) const;
+	/// Creates alien-species campaign state lazily.
+	XenoSpecies* addXenoSpecies(const RuleXenoSpecies* rules);
+	/// Completes a global project and releases every assigned agent.
+	bool completeIntelProject(const std::string& name);
+	/// Gets agents assigned to a global intelligence project across all bases.
+	std::map<Soldier*, int> getIntelProjectAgents(const IntelProject* project) const;
+	/// Gets the number of assigned agents globally or at one base.
+	size_t getIntelProjectAgentCount(const IntelProject* project, const Base* base = nullptr) const;
+	/// Calculates current global daily effort for a project.
+	int getIntelProjectEffort(IntelProject* project, const Mod* mod, bool estimate) const;
+	/// Gets one globally calculated intelligence effect.
+	int getIntelEffect(IntelProjectEffectType type, const Mod* mod) const;
+	/// Gets the shared loyalty performance modifier.
+	int getLoyaltyPerformanceBonus() const;
 	/// Gets the total base maintenance.
 	int getBaseMaintenance() const;
 	/// Gets the list of UFOs.
@@ -306,14 +344,8 @@ public:
 	SavedBattleGame *getSavedBattle();
 	/// Sets the current battle game.
 	void setBattleGame(SavedBattleGame *battleGame);
-	/// Sets the status of a ufopedia rule
-	void setUfopediaRuleStatus(const std::string &ufopediaRule, int newStatus);
-	/// Sets the status of a manufacture rule
-	void setManufactureRuleStatus(const std::string &manufactureRule, int newStatus);
-	/// Sets the status of a research rule
-	void setResearchRuleStatus(const std::string &researchRule, int newStatus);
-	/// Sets the item as hidden or unhidden
-	void setHiddenPurchaseItemsStatus(const std::string &itemName, bool hidden);
+	/// Enables or permanently disables a research rule.
+	void setResearchRuleDisabled(const std::string &researchRule, bool disabled);
 	/// Add covert operation to the "performed operation" list
 	void addPerformedCovertOperation(const std::string& operation) { _performedOperations.push_back(operation); }
 	/// Remove covert operation from the "performed operation" list
@@ -322,12 +354,18 @@ public:
 	const std::vector<std::string>& getPerformedCovertOperations() { return _performedOperations; }
 	/// Selects a "getOneFree" topic for the given research rule.
 	const RuleResearch* selectGetOneFree(const RuleResearch* research);
+	/// Unlocks one research topic from the provided list and handles related bonus discoveries.
+	void helpResearchDiscovery(std::vector<const RuleResearch*> projects, std::vector<const RuleResearch*> &possibilities, const Mod* mod, Base *base, std::string& researchName, std::string& bonusResearchName);
 	/// Remove a research from the "already discovered" list
 	void removeDiscoveredResearch(const RuleResearch *research);
 	/// Make all research discovered (used in New Battle)
 	void makeAllResearchDiscovered(const Mod* mod);
 	/// Add a finished ResearchProject
 	void addFinishedResearch(const RuleResearch *research, const Mod *mod, Base *base, bool score = true);
+	/// Completes a primary research source, including lookup, getOneFree, zero-cost cascade and side effects.
+	ResearchDiscoveryResult completeResearchDiscovery(const RuleResearch* research, const Mod* mod,
+		Base* base, bool score = true, bool repeatPrimarySideEffects = false,
+		bool applyPrimarySideEffects = true);
 	/// Get the list of already discovered research projects
 	const std::vector<const RuleResearch*> & getDiscoveredResearch() const;
 	/// Does this item correspond to at least one research topic that can be researched now or in the future?
@@ -336,6 +374,9 @@ public:
 	void getAvailableResearchProjects(std::vector<RuleResearch*> & projects, const Mod *mod, Base *base, bool considerDebugMode = false) const;
 	/// Get the list of newly available research projects once a research has been completed.
 	void getNewlyAvailableResearchProjects(std::vector<RuleResearch*> & before, std::vector<RuleResearch*> & after, std::vector<RuleResearch*> & diff) const;
+	/// Get stable IDs newly available after an event-owned research change.
+	std::vector<std::string> getNewlyAvailableResearchIds(
+		const std::vector<RuleResearch*>& before, const Mod* mod, Base* base) const;
 	/// Get the list of Productions which can be manufactured in a Base
 	void getAvailableProductions(std::vector<RuleManufacture*> & productions, const Mod *mod, Base *base, ManufacturingFilterType filter = MANU_FILTER_DEFAULT) const;
 	/// Get the list of newly available manufacture projects once a research has been completed.
@@ -348,24 +389,14 @@ public:
 	void getDependableCraft(std::vector<RuleCraft*> & dependables, const RuleResearch *research, const Mod *mod) const;
 	/// Get the list of newly available facilities to build once a research has been completed.
 	void getDependableFacilities(std::vector<RuleBaseFacility*> & dependables, const RuleResearch *research, const Mod *mod) const;
-	/// Gets the status of a ufopedia rule.
-	int getUfopediaRuleStatus(const std::string &ufopediaRule);
 	/// Gets the log of monthly purchase limits
 	std::map<std::string, int>& getMonthlyPurchaseLimitLog() { return _monthlyPurchaseLimitLog; }
-	/// Gets the list of hidden items
-	const std::map<std::string, bool> &getHiddenPurchaseItems();
 	/// Gets the list of player-defined save-specific RuleCraft '_deployment' overrides
 	std::map<std::string, RuleCraftDeployment>& getCustomRuleCraftDeployments() { return _customRuleCraftDeployments; }
 	/// Gets the preview base.
 	Base* getPreviewBase() { return _previewBase; }
 	/// Sets the preview base.
 	void setPreviewBase(Base* previewBase) { _previewBase = previewBase; }
-	/// Gets the status of a manufacture rule.
-	int getManufactureRuleStatus(const std::string &manufactureRule);
-	/// Gets all the research rule status info.
-	const std::map<std::string, int> &getResearchRuleStatusRaw() const { return _researchRuleStatus; }
-	/// Gets the status of a research rule.
-	int getResearchRuleStatus(const std::string &researchRule) const;
 	/// Is the research permanently disabled?
 	bool isResearchRuleStatusDisabled(const std::string &researchRule) const;
 	/// Gets if a research still has undiscovered non-disabled "getOneFree".
@@ -388,10 +419,6 @@ public:
 	bool isSoldierTypeHired(const std::string& soldierType) const;
 	/// Gets the soldier matching this ID.
 	Soldier *getSoldier(int id) const;
-	/// Handles the higher promotions.
-	bool handlePromotions(std::vector<Soldier*> &participants, const Mod *mod);
-	/// Checks how many soldiers of a rank exist and which one has the highest score.
-	Soldier *inspectSoldiers(std::vector<Soldier*> &soldiers, std::vector<Soldier*> &participants, int rank);
 	/// Gets the (approximate) number of idle days since the soldier's last mission.
 	int getSoldierIdleDays(const Soldier *soldier);
 	///  Returns the list of alien bases.
@@ -415,10 +442,6 @@ public:
 	/// sets whether or not the player has been warned
 	void setWarned(bool warned);
 
-	/// gets personal light toggle
-	bool getTogglePersonalLight() const { return _togglePersonalLight; }
-	/// sets personal light toggle
-	void setTogglePersonalLight(bool togglePersonalLight) { _togglePersonalLight = togglePersonalLight; }
 	/// gets night vision toggle
 	bool getToggleNightVision() const { return _toggleNightVision; }
 	/// sets night vision toggle
@@ -450,10 +473,6 @@ public:
 	Region *locateRegion(double lon, double lat) const;
 	/// Locate a region containing a Target.
 	Region *locateRegion(const Target &target) const;
-	/// Locate a country containing a position.
-	Country* locateCountry(double lon, double lat) const;
-	/// Locate a country containing a Target.
-	Country* locateCountry(const Target& target) const;
 	/// Select a soldier nationality based on mod rules and location on the globe.
 	int selectSoldierNationalityByLocation(const Mod* mod, const RuleSoldier* rule, const Target* target) const;
 	/// Return the month counter.
@@ -466,16 +485,16 @@ public:
 	void increaseVehiclesLost() { _vehiclesLost++; }
 	/// Return the GraphRegionToggles.
 	const std::string &getGraphRegionToggles() const;
-	/// Return the GraphCountryToggles.
-	const std::string &getGraphCountryToggles() const;
 	/// Return the GraphFinanceToggles.
 	const std::string &getGraphFinanceToggles() const;
+	/// Return the GraphFactionToggles.
+	const std::string &getGraphFactionToggles() const;
 	/// Sets the GraphRegionToggles.
 	void setGraphRegionToggles(const std::string &value);
-	/// Sets the GraphCountryToggles.
-	void setGraphCountryToggles(const std::string &value);
 	/// Sets the GraphFinanceToggles.
 	void setGraphFinanceToggles(const std::string &value);
+	/// Sets the GraphFactionToggles.
+	void setGraphFactionToggles(const std::string &value);
 	/// Increment the month counter.
 	void addMonth();
 	/// add a research to the "popped up" array
@@ -510,8 +529,6 @@ public:
 	Base *getSelectedBase();
 	/// Set the last selected player base.
 	void setSelectedBase(size_t base);
-	/// Evaluate the score of a soldier based on all of his stats, missions and kills.
-	int getSoldierScore(Soldier *soldier);
 	/// Sets the last selected armor
 	void setLastSelectedArmor(const std::string &value);
 	/// Gets the last selected armor
@@ -540,10 +557,6 @@ public:
 	bool isUfoOnIgnoreList(int ufoId);
 	/// Handles a soldier's death.
 	std::vector<Soldier*>::iterator killSoldier(bool resetArmor, Soldier *soldier, BattleUnitKills *cause = 0);
-	/// enables/disables autosell for an item type
-	void setAutosell(const RuleItem *itype, const bool enabled);
-	/// get autosell state for an item type
-	bool getAutosell(const RuleItem *) const;
 	/// Removes all soldiers from a given craft.
 	void removeAllSoldiersFromXcomCraft(Craft *craft);
 	/// Stop hunting the given xcom craft.
@@ -554,16 +567,12 @@ public:
 	bool getDisableSoldierEquipment() const;
 	/// Sets the corresponding flag.
 	void setDisableSoldierEquipment(bool disableSoldierEquipment);
-	/// Is alien containment check finished?
-	bool getAlienContainmentChecked() const { return _alienContainmentChecked; }
-	/// Sets the corresponding flag.
-	void setAlienContainmentChecked(bool alienContainmentChecked) { _alienContainmentChecked = alienContainmentChecked; }
 	/// Is the mana feature already unlocked?
 	bool isManaUnlocked(Mod *mod) const;
 	/// Gets the current score based on research score and xcom/alien activity in regions.
 	int getCurrentScore(int monthsPassed) const;
 	/// Clear links for the given alien base. Use this before deleting the alien base.
-	void clearLinksForAlienBase(AlienBase* alienBase, const Mod* mod);
+	void clearLinksForAlienBase(AlienBase* alienBase);
 	/// Delete the given retaliation mission.
 	void deleteRetaliationMission(AlienMission* am, Base* base);
 	/// Spawn a Geoscape event from the event rules.
@@ -575,8 +584,6 @@ public:
 	bool handleResearchUnlockedByMissions(const RuleResearch* research, const Mod* mod);
 	/// Handles research side effects for primary research sources.
 	void handlePrimaryResearchSideEffects(const std::vector<const RuleResearch*> &topicsToCheck, const Mod* mod, Base* base);
-	/// Gets the list of user notes.
-	std::vector<std::string>& getUserNotes() { return _userNotes; }
 	/// Gets the list of geoscape debug log entries.
 	std::vector<std::string>& getGeoscapeDebugLog() { return _geoscapeDebugLog; }
 };

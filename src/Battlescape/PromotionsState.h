@@ -18,6 +18,8 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "../Engine/State.h"
+#include "../Savegame/Promotion.h"
+#include <vector>
 
 namespace OpenXcom
 {
@@ -40,10 +42,10 @@ private:
 	Text *_txtTitle, *_txtName, *_txtRank, *_txtBase;
 	TextList *_lstSoldiers;
 	std::vector<std::pair<Base*, Soldier*>> _filteredListOfSoldiers;
-	bool _fta = false;
+	void initUi(const PromotionBatch& promotions);
   public:
-	/// Creates the Promotions state.
-	PromotionsState(bool clearPromotions = false);
+	/// Creates the Promotions state for one exact, event-owned promotion batch.
+	explicit PromotionsState(const PromotionBatch& promotions);
 	/// Cleans up the Promotions state.
 	~PromotionsState();
 	/// Handler for clicking the OK button.

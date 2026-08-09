@@ -115,7 +115,7 @@ private:
 	void btnDiaryClick(Action *action);
 	/// Handler for changing the roles actions combo box.
 	void cbxRolesChange(Action *action);
-	/// Handler for clicking the flag.
+	/// Legacy name-pool selector, deliberately not bound to the flag UI.
 	void btnFlagClick(Action *action);
 	/// Handler for clicking the Rank button.
 	void btnRankClick(Action* action);

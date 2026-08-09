@@ -40,22 +40,12 @@ namespace OpenXcom
 		RuleCraftWeapon *weapon = _game->getMod()->getCraftWeapon(defs->id, true);
 
 		CraftWeaponCategory category = CWC_WEAPON;
-		int offset = 0;
 		if (weapon->getHidePediaInfo())
 		{
-			if (weapon->getTractorBeamPower() > 0)
-			{
-				category = CWC_TRACTOR_BEAM;
-				offset = 24; // 3 * 8
-			}
-			else
-			{
-				category = CWC_EQUIPMENT;
-				offset = 0;
-			}
+			category = CWC_EQUIPMENT;
 		}
 
-		_lstInfo = new TextList(150, 50 - offset, 168, 126 + offset);
+		_lstInfo = new TextList(150, 50, 168, 126);
 		add(_lstInfo);
 		_lstInfo->setVisible(category != CWC_EQUIPMENT);
 
@@ -80,15 +70,6 @@ namespace OpenXcom
 			_lstInfo->addRow(2, tr("STR_ROUNDS").c_str(), Unicode::formatNumber(weapon->getAmmoMax()).c_str());
 			_lstInfo->setCellColor(4, 1, _listColor2);
 		}
-		else if (category == CWC_TRACTOR_BEAM)
-		{
-			_lstInfo->addRow(2, tr("STR_TRACTOR_BEAM_POWER").c_str(), Unicode::formatNumber(weapon->getTractorBeamPower()).c_str());
-			_lstInfo->setCellColor(0, 1, _listColor2);
-
-			_lstInfo->addRow(2, tr("STR_RANGE").c_str(), tr("STR_KILOMETERS").arg(weapon->getRange()).c_str());
-			_lstInfo->setCellColor(1, 1, _listColor2);
-		}
-
 		centerAllSurfaces();
 	}
 

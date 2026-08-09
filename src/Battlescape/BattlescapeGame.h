@@ -82,6 +82,7 @@ struct BattleAction : BattleActionCost
 	bool run = false;
 	bool sneak = false;
 	bool ignoreSpottedEnemies = false;
+	bool reactionAttack = false;
 	bool kneel = false;
 	int diff;
 	int autoShotCounter;
@@ -124,13 +125,6 @@ struct BattlescapeTally
 	// number of live enemies on entrance tiles.
 	int liveAliensInEntrance = 0;
 
-
-	/// number of live VIPs on entrance tiles
-	int vipInEntrance = 0;
-	/// number of live VIPs on exit tiles.
-	int vipInExit = 0;
-	/// number of live VIPs in the middle of the battlefield.
-	int vipInField = 0;
 };
 
 /**
@@ -147,7 +141,6 @@ private:
 	BattleAction _currentAction;
 	bool _AISecondMove, _playedAggroSound;
 	bool _endTurnRequested;
-	bool _endConfirmationHandled;
 	bool _allEnemiesNeutralized;
 
 	helper::SingleRun _endTurnProcessed;
@@ -166,12 +159,10 @@ private:
 	void showInfoBoxQueue();
 	/// Process battlescripts.
 	void processBattleScripts(const std::vector<BattleScript*>* script);
-	/// Gets valid blocks to process the battlescript command.
-	std::vector<std::pair<int, int>> getValidBlocks(BattleScript* command);
 	/// Spawn units as part of battlescript commands.
 	bool scriptSpawnUnit(BattleScript* command);
-	/// Display message fro the battlescript
-	void displayScriptMessage(BattleScript* command);
+	/// Displays a message from a battlescript command and reports whether one was queued.
+	bool displayScriptMessage(BattleScript* command);
 public:
 	/// is debug mode enabled in the battlescape?
 	static bool _debugPlay;
@@ -212,7 +203,7 @@ public:
 	BattleUnit *convertUnit(BattleUnit *unit);
 	/// Spawns a new unit in the middle of battle.
 	void spawnNewUnit(BattleItem *item);
-	void spawnNewUnit(BattleActionAttack attack, Position position);
+	void spawnNewUnit(BattleActionAttack attack, Position position, bool checkSurrounding = true, bool spawnUnitChanceResolved = false);
 	void spawnNewSoldier(BattleActionAttack attack, Position position);
 	/// Spawns a new item in the middle of battle.
 	void spawnNewItem(BattleItem *item);
@@ -221,8 +212,6 @@ public:
 	void spawnFromPrimedItems();
 	/// Removes spawned units that belong to the player to avoid dealing with recovery
 	void removeSummonedPlayerUnits();
-	/// Tally summoned player-controlled VIPs. We may still need to correct this in the Debriefing.
-	void tallySummonedVIPs();
 	/// Handles kneeling action.
 	bool kneel(BattleUnit *bu);
 	/// Cancels the current action.
@@ -246,7 +235,7 @@ public:
 	/// Moves a unit up or down.
 	void moveUpDown(BattleUnit *unit, int dir);
 	/// Requests the end of the turn (wait for explosions etc to really end the turn).
-	void requestEndTurn(bool askForConfirmation);
+	void requestEndTurn();
 	/// Sets the TU reserved type.
 	void setTUReserved(BattleActionType tur);
 	/// Sets up the cursor taking into account the action.
@@ -298,13 +287,13 @@ public:
 	void playUnitResponseSound(BattleUnit *unit, int type);
 	/// Returns if we need to proceed battle and there would be more battle scripts to be processed.
 	bool scriptsToProcess();
-	/// Process weapon firing sound.
-	void processWeaponNoise();
+	/// Reveal an undercover actor to hostile observers of a committed suspicious action.
+	void processUndercoverAction(const BattleActionCost &action);
+	/// Process weapon firing sound once for a committed action.
+	void processWeaponNoise(const BattleActionCost &action);
 	/// Sets up a mission complete notification.
 	void missionComplete();
 	std::list<BattleState*> getStates();
-	/// Auto-end the battle if conditions are met.
-	void autoEndBattle();
 	/// Were all enemies neutralized?
 	bool areAllEnemiesNeutralized() const { return _allEnemiesNeutralized; }
 	/// Resets the flag.

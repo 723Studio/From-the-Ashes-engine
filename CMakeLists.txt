@@ -19,7 +19,7 @@ option ( EMBED_ASSETS "Embed common and standard into the executable" OFF )
 option ( FATAL_WARNING "Treat warnings as errors" OFF )
 option ( ENABLE_CLANG_ANALYSIS "When building with clang, enable the static analyzer" OFF )
 option ( CHECK_CCACHE "Check if ccache is installed and use it" OFF )
-option ( FTA_PRODUCT_BUILD "Build standalone FTA product layout without legacy UFO/TFTD data dirs" OFF )
+option ( FTA_PRODUCT_BUILD "Build standalone FTA product layout without the legacy TFTD data dir" OFF )
 set ( MSVC_WARNING_LEVEL 3 CACHE STRING "Visual Studio warning levels" )
 option ( FORCE_INSTALL_DATA_TO_BIN "Force installation of data to binary directory" OFF )
 set ( DATADIR "" CACHE STRING "Where to search for datafiles" )
@@ -151,43 +151,35 @@ endif()
 # Read version number
 set ( file "${CMAKE_SOURCE_DIR}/src/version.h" )
 file ( READ ${file} lines )
-string ( REGEX MATCH ".*_LONG \"([0-9]+)\\.([0-9]+)\\.([0-9]+)" version_line "${lines}" )
+string ( REGEX MATCH "#[ \t]*define[ \t]+FTA_PRODUCT_NAME[ \t]+\"([^\"]+)\"" product_name_line "${lines}" )
+if ( "${product_name_line}" STREQUAL "" )
+  message ( FATAL_ERROR "Could not read FTA_PRODUCT_NAME from src/version.h" )
+endif ()
+set ( FTA_CPACK_PRODUCT_NAME "${CMAKE_MATCH_1}" )
+
+string ( REGEX MATCH "#[ \t]*define[ \t]+FTA_PRODUCT_VERSION_LONG[ \t]+\"([0-9]+)\\.([0-9]+)\\.([0-9]+)\\.([0-9]+)\"" version_line "${lines}" )
+if ( "${version_line}" STREQUAL "" )
+  message ( FATAL_ERROR "Could not read FTA_PRODUCT_VERSION_LONG from src/version.h" )
+endif ()
 set ( CPACK_PACKAGE_VERSION_MAJOR ${CMAKE_MATCH_1} )
 set ( CPACK_PACKAGE_VERSION_MINOR ${CMAKE_MATCH_2} )
 set ( CPACK_PACKAGE_VERSION_PATCH "${CMAKE_MATCH_3}" )
 
-find_package ( Git )
-if ( GIT_FOUND )
-  execute_process ( COMMAND ${GIT_EXECUTABLE} describe --dirty
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE git_describe_out
-    ERROR_VARIABLE git_describe_error
-    RESULT_VARIABLE git_describe_result
-    )
-  string ( REGEX MATCH "([a-z|0-9|.]*)-([0-9]*)-g([a-z|0-9]*)([-|a-z]*)" git_commit "${git_describe_out}" )
-  set ( git_tag ${CMAKE_MATCH_1} )
-  set ( git_nb_commit ${CMAKE_MATCH_2} )
-  set ( git_commit ${CMAKE_MATCH_3} )
-  set ( git_dirty ${CMAKE_MATCH_4} )
-  execute_process ( COMMAND ${GIT_EXECUTABLE} show -s --format=%ci
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE git_show_out
-    ERROR_VARIABLE git_show_error
-    RESULT_VARIABLE git_show_result
-  )
-  string ( REGEX MATCH "[0-9-]+" git_date "${git_show_out}" )
-  set ( GIT_STATE "${git_commit}-${git_date}${git_dirty}" )
-else ()
-  message( WARNING "Git not found.")
-endif()
-
-set ( _GIT "${GIT_STATE}" CACHE STRING "Git version string (after x.x.x)" )
-
-configure_file("${CMAKE_SOURCE_DIR}/src/git_version.h.in" "${CMAKE_CURRENT_BINARY_DIR}/git_version.h" )
-include_directories ( "${CMAKE_CURRENT_BINARY_DIR}" )
+set ( FTA_BUILD_INFO_HEADER "${FTA_GENERATED_DIR}/FtaBuildInfo.generated.h" )
+add_custom_target ( fta_build_info
+  COMMAND "${CMAKE_COMMAND}"
+    "-DFTA_SOURCE_DIR=${CMAKE_SOURCE_DIR}"
+    "-DFTA_OUTPUT_FILE=${FTA_BUILD_INFO_HEADER}"
+    -P "${CMAKE_SOURCE_DIR}/cmake/GenerateFtaBuildInfo.cmake"
+  BYPRODUCTS "${FTA_BUILD_INFO_HEADER}"
+  COMMENT "Generating FTA build identifier"
+  VERBATIM
+)
 
 if ( BUILD_PACKAGE )
-  set ( CPACK_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}-${GIT_STATE}" )
+  # CPack uses the same release version as the complete FTA distribution.
+  # Build identity remains separate from the unified release version.
+  set ( CPACK_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}" )
   set ( CPACK_SOURCE_PACKAGE_FILE_NAME "FtA-${CPACK_PACKAGE_VERSION}-src" )
   set ( CPACK_PACKAGE_FILE_NAME "FtA-${CPACK_PACKAGE_VERSION}-unknown" ) # TODO: determine package suffix (osrelease+arch)
 
@@ -206,10 +198,10 @@ if ( BUILD_PACKAGE )
   # DMG-specific -- sets CPACK_GENERATOR to DragNDrop itself
   if (APPLE)
     set ( TARGET_PLATFORM "macos" )
-    set ( CPACK_BUNDLE_NAME "OpenXcom FtA" )
+    set ( CPACK_BUNDLE_NAME "${FTA_CPACK_PRODUCT_NAME}" )
     set ( CPACK_BUNDLE_ICON "${CMAKE_SOURCE_DIR}/res/mac/AppIcon.icns" )
     set ( CPACK_BUNDLE_PLIST "${CMAKE_BINARY_DIR}/openxcom.app/Contents/Info.plist" )
-    set ( CPACK_DMG_VOLUME_NAME "OpenXcom FtA" )
+    set ( CPACK_DMG_VOLUME_NAME "${FTA_CPACK_PRODUCT_NAME}" )
     set ( CPACK_DMG_BACKGROUND_IMAGE "${CMAKE_SOURCE_DIR}/res/openxcom_block.png" )
     set ( CPACK_GENERATOR "DragNDrop")
   else()
@@ -252,9 +244,9 @@ if ( BUILD_PACKAGE )
   endif ()
   # NSIS-specific -- set -DCPACK_GENERATOR=NSIS
   set ( CPACK_NSIS_MODIFY_PATH OFF )
-  set ( CPACK_NSIS_DISPLAY_NAME "OpenXcom FtA" )
+  set ( CPACK_NSIS_DISPLAY_NAME "${FTA_CPACK_PRODUCT_NAME}" )
   include ( CPack )
-  message ( STATUS "OpenXcom version: ${CPACK_PACKAGE_VERSION}")
+  message ( STATUS "FTA project package version: ${CPACK_PACKAGE_VERSION}")
 endif()
 
 if ( NOT WIN32 OR NOT CPACK_GENERATOR STREQUAL "7Z" ) # FIXME: that's to exclude DEB and RPM, but hacky.

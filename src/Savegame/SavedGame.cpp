@@ -23,6 +23,8 @@
 #include <algorithm>
 #include <functional>
 #include <ctime>
+#include <cmath>
+#include "../BuildInfo.h"
 #include "../Engine/Yaml.h"
 #include "../version.h"
 #include "../Engine/Logger.h"
@@ -33,11 +35,10 @@
 #include "../Engine/CrossPlatform.h"
 #include "../Engine/ScriptBind.h"
 #include "../Engine/Game.h"
-#include "../FTA/MasterMind.h"
+#include "../Geoscape/GeoscapeState.h"
 #include "SavedBattleGame.h"
 #include "SerializationHelper.h"
 #include "GameTime.h"
-#include "Country.h"
 #include "Base.h"
 #include "Craft.h"
 #include "EquipmentLayoutItem.h"
@@ -49,6 +50,9 @@
 #include "ItemContainer.h"
 #include "Soldier.h"
 #include "Transfer.h"
+#include "BasePrisoner.h"
+#include "BaseContainedAlien.h"
+#include "BaseContainedMonster.h"
 #include "../Mod/RuleManufacture.h"
 #include "../Mod/RuleBaseFacility.h"
 #include "../Mod/RuleCraft.h"
@@ -60,7 +64,10 @@
 #include "AlienMission.h"
 #include "GeoscapeEvent.h"
 #include "DiplomacyFaction.h"
-#include "../Mod/RuleCountry.h"
+#include "IntelProject.h"
+#include "XenoSpecies.h"
+#include "../Mod/RuleIntelProject.h"
+#include "../Mod/RuleXenoSpecies.h"
 #include "../Mod/RuleRegion.h"
 #include "../Mod/RuleSoldier.h"
 #include "../Mod/SoldierNamePool.h"
@@ -69,7 +76,6 @@
 #include "SoldierDeath.h"
 #include "SoldierDiary.h"
 #include "../Mod/AlienRace.h"
-#include "RankCount.h"
 
 namespace OpenXcom
 {
@@ -113,10 +119,10 @@ bool haveReserchVector(const std::vector<const RuleResearch*> &vec,  const std::
  */
 SavedGame::SavedGame() :
 	_difficulty(DIFF_BEGINNER), _end(END_NONE), _ironman(false), _globeLon(0.0), _globeLat(0.0), _globeZoom(0), _battleGame(0),
-	_previewBase(nullptr), _debug(false), _warned(false), _ftaGame(false),
-	_togglePersonalLight(true), _toggleNightVision(false), _toggleBrightness(0),
-	_monthsPassed(-1), _loyalty(0), _lastMonthsLoyalty(0), _daysPassed(0), _vehiclesLost(0), _selectedBase(0), _autosales(),
-	_disableSoldierEquipment(false), _alienContainmentChecked(false)
+	_previewBase(nullptr), _debug(false), _warned(false),
+	_toggleNightVision(false), _toggleBrightness(0),
+	_monthsPassed(-1), _loyalty(0), _lastMonthsLoyalty(0), _daysPassed(0), _vehiclesLost(0), _selectedBase(0),
+	_disableSoldierEquipment(false)
 {
 	_time = new GameTime(6, 1, 1, 1999, 12, 0, 0);
 	_alienStrategy = new AlienStrategy();
@@ -139,10 +145,6 @@ SavedGame::SavedGame() :
 SavedGame::~SavedGame()
 {
 	delete _time;
-	for (auto* country : _countries)
-	{
-		delete country;
-	}
 	for (auto* region : _regions)
 	{
 		delete region;
@@ -150,6 +152,14 @@ SavedGame::~SavedGame()
 	for (auto* xbase : _bases)
 	{
 		delete xbase;
+	}
+	for (auto* project : _intelProjects)
+	{
+		delete project;
+	}
+	for (auto* species : _xenoSpecies)
+	{
+		delete species;
 	}
 	delete _previewBase;
 	for (auto* ufo : _ufos)
@@ -350,6 +360,7 @@ SaveInfo SavedGame::getSaveInfo(const std::string &file, Language *lang)
 	save.isoDate = str.first;
 	save.isoTime = str.second;
 	reader.tryRead("mods", save.mods);
+	reader.tryRead("version", save.version);
 
 	std::ostringstream details;
 	if (reader["turn"])
@@ -368,6 +379,10 @@ SaveInfo SavedGame::getSaveInfo(const std::string &file, Language *lang)
 	if (reader["ironman"].readVal(false))
 	{
 		details << " (" << lang->getString("STR_IRONMAN") << ")";
+	}
+	if (!save.version.empty())
+	{
+		details << " [" << save.version << "]";
 	}
 	save.details = details.str();
 
@@ -391,7 +406,6 @@ void SavedGame::load(const std::string &filename, Mod *mod, Language *lang)
 	_time->load(header["time"]);
 	header.readNode("name", _name, filename);
 	header.tryRead("ironman", _ironman);
-	header.tryRead("ftaGame", _ftaGame);
 
 	// Get full save data
 	const auto& reader = documents[1].useIndex();
@@ -403,40 +417,28 @@ void SavedGame::load(const std::string &filename, Mod *mod, Language *lang)
 	reader.tryRead("daysPassed", _daysPassed);
 	reader.tryRead("vehiclesLost", _vehiclesLost);
 	reader.tryRead("graphRegionToggles", _graphRegionToggles);
-	reader.tryRead("graphCountryToggles", _graphCountryToggles);
 	reader.tryRead("graphFinanceToggles", _graphFinanceToggles);
+	reader.tryRead("graphFactionToggles", _graphFactionToggles);
 	reader.tryRead("funds", _funds);
 	reader.tryRead("loyalty", _loyalty);
+	reader.tryRead("loyaltyHistory", _loyaltyHistory);
+	if (_loyaltyHistory.size() > 11)
+	{
+		_loyaltyHistory.erase(_loyaltyHistory.begin(), _loyaltyHistory.end() - 11);
+	}
 	reader.tryRead("lastMonthsLoyalty", _lastMonthsLoyalty);
 	reader.tryRead("maintenance", _maintenance);
-	reader.tryRead("userNotes", _userNotes);
 	reader.tryRead("geoscapeDebugLog", _geoscapeDebugLog);
 	reader.tryRead("researchScores", _researchScores);
 	reader.tryRead("incomes", _incomes);
 	reader.tryRead("expenditures", _expenditures);
 	reader.tryRead("warned", _warned);
-	reader.tryRead("togglePersonalLight", _togglePersonalLight);
 	reader.tryRead("toggleNightVision", _toggleNightVision);
 	reader.tryRead("toggleBrightness", _toggleBrightness);
 	reader.tryRead("globeLon", _globeLon);
 	reader.tryRead("globeLat", _globeLat);
 	reader.tryRead("globeZoom", _globeZoom);
 	reader.tryRead("ids", _ids);
-
-	for (const auto& country : reader["countries"].children())
-	{
-		std::string type = country["type"].readVal<std::string>();
-		if (mod->getCountry(type))
-		{
-			Country *c = new Country(mod->getCountry(type), false);
-			c->load(country, mod->getScriptGlobal());
-			_countries.push_back(c);
-		}
-		else
-		{
-			Log(LOG_ERROR) << "Failed to load country " << type;
-		}
-	}
 
 	for (const auto& region : reader["regions"].children())
 	{
@@ -609,23 +611,95 @@ void SavedGame::load(const std::string &filename, Mod *mod, Language *lang)
 	reader.tryRead("generatedEvents", _generatedEvents);
 	reader.tryRead("missionScriptsTimers", _missionScriptsTimers);
 	reader.tryRead("eventScriptsTimers", _eventScriptsTimers);
-	loadUfopediaRuleStatus(reader["ufopediaRuleStatus"]);
-	reader.tryRead("manufactureRuleStatus", _manufactureRuleStatus);
 	reader.tryRead("researchRuleStatus", _researchRuleStatus);
+	for (auto it = _researchRuleStatus.begin(); it != _researchRuleStatus.end();)
+	{
+		if (it->second != RuleResearch::RESEARCH_STATUS_DISABLED)
+			it = _researchRuleStatus.erase(it);
+		else
+			++it;
+	}
 	reader.tryRead("monthlyPurchaseLimitLog", _monthlyPurchaseLimitLog);
-	reader.tryRead("hiddenPurchaseItems", _hiddenPurchaseItemsMap);
 	reader.tryRead("customRuleCraftDeployments", _customRuleCraftDeployments);
+
+	for (const auto& projectReader : reader["intelProjects"].children())
+	{
+		const std::string name = projectReader["name"].readVal<std::string>();
+		const RuleIntelProject* rules = mod->getIntelProject(name, false);
+		if (!rules)
+		{
+			throw Exception("Saved global intel project '" + name + "' does not exist in the ruleset");
+		}
+		if (getIntelProject(name))
+		{
+			throw Exception("Saved global intel project '" + name + "' is duplicated");
+		}
+		IntelProject* project = new IntelProject(rules);
+		project->load(projectReader);
+		_intelProjects.push_back(project);
+	}
+	for (const auto& speciesReader : reader["xenoSpecies"].children())
+	{
+		const std::string type = speciesReader["type"].readVal<std::string>();
+		const RuleXenoSpecies* rules = mod->getXenoSpecies(type, false);
+		if (!rules)
+		{
+			throw Exception("Saved xeno species '" + type + "' does not exist in the ruleset");
+		}
+		if (getXenoSpecies(type))
+		{
+			throw Exception("Saved xeno species '" + type + "' is duplicated");
+		}
+		auto* species = new XenoSpecies(rules);
+		species->load(speciesReader);
+		_xenoSpecies.push_back(species);
+	}
 
 	for (const auto& base : reader["bases"].children())
 	{
 		Base *b = new Base(mod);
-		b->load(base, this, false);
+		b->load(base, this);
 		_bases.push_back(b);
 	}
 
 	// Finish loading crafts after bases (more specifically after all crafts) are loaded, because of references between crafts (i.e. friendly escorts)
 	for (size_t i = 0; i < _bases.size(); ++i)
 		_bases[i]->finishLoading(reader["bases"][i], this);
+
+	validateCaptiveIdentities();
+
+	for (auto* base : _bases)
+	{
+		for (auto* soldier : *base->getSoldiers())
+		{
+			IntelProject* project = soldier->getIntelProject();
+			if (!project)
+			{
+				continue;
+			}
+			if (soldier->getRoleRank(ROLE_AGENT) < 1)
+			{
+				throw Exception("Base '" + base->getName() + "', soldier '" + soldier->getName() +
+					"': only agents can be assigned to intel project '" + project->getName() + "'");
+			}
+			if (project->isCompleted())
+			{
+				throw Exception("Base '" + base->getName() + "', soldier '" + soldier->getName() +
+					"': completed intel project '" + project->getName() + "' still has an assigned agent");
+			}
+			if (project->isCurrentMilestoneBlocked(this) || !project->getBlockedMilestone().empty())
+			{
+				throw Exception("Base '" + base->getName() + "', soldier '" + soldier->getName() +
+					"': blocked intel project '" + project->getName() + "' still has an assigned agent");
+			}
+		}
+		if (base->getUsedIntelSpace() > base->getAvailableIntelSpace())
+		{
+			throw Exception("Base '" + base->getName() + "': assigned intelligence agents use " +
+				std::to_string(base->getUsedIntelSpace()) + " spaces, but only " +
+				std::to_string(base->getAvailableIntelSpace()) + " intelSpace is available");
+		}
+	}
 
 	// Finish loading UFOs after all craft and all other UFOs are loaded
 	for (const auto& ufoReader : reader["ufos"].children())
@@ -668,7 +742,7 @@ void SavedGame::load(const std::string &filename, Mod *mod, Language *lang)
 		std::string type = weHardlyKnewYe["type"].readVal(mod->getSoldiersList().front());
 		if (mod->getSoldier(type))
 		{
-			Soldier *soldier = new Soldier(mod->getSoldier(type), nullptr, 0 /*nationality*/);
+			Soldier *soldier = new Soldier(mod->getSoldier(type), nullptr, 0 /*id*/);
 			soldier->load(weHardlyKnewYe, mod, this, mod->getScriptGlobal());
 			_deadSoldiers.push_back(soldier);
 		}
@@ -685,15 +759,6 @@ void SavedGame::load(const std::string &filename, Mod *mod, Language *lang)
 		MissionStatistics *ms = new MissionStatistics();
 		ms->load(missionStats);
 		_missionStatistics.push_back(ms);
-	}
-
-	for (const auto& autoSale : reader["autoSales"].children())
-	{
-		std::string itype = autoSale.readVal<std::string>();
-		if (mod->getItem(itype))
-		{
-			_autosales.insert(mod->getItem(itype));
-		}
 	}
 
 	if (const YAML::YamlNodeReader& battle = reader["battleGame"])
@@ -735,11 +800,6 @@ void SavedGame::loadTemplates(const YAML::YamlNodeReader& reader, const Mod* mod
 	}
 }
 
-void SavedGame::loadUfopediaRuleStatus(const YAML::YamlNodeReader& reader)
-{
-	reader.tryReadVal(_ufopediaRuleStatus);
-}
-
 template <typename T, typename... Args>
 void saveVector(YAML::YamlNodeWriter& writer, const std::vector<T*>& vector, const ryml::csubstr& key, Args... args)
 {
@@ -762,12 +822,8 @@ void SavedGame::save(const std::string &filename, Mod *mod) const
 	// Saves the brief game info used in the saves list
 
 	headerWriter.write("name", _name);
-	headerWriter.write("version", OPENXCOM_FTA_VERSION_SHORT);
-	headerWriter.write("engine", OPENXCOM_FTA_VERSION_ENGINE);
-	std::string git_sha = OPENXCOM_FTA_VERSION_GIT;
-	if (!git_sha.empty() && git_sha[0] == '.')
-		git_sha.erase(0, 1);
-	headerWriter.write("build", git_sha);
+	headerWriter.write("version", FTA_PRODUCT_VERSION_SHORT);
+	headerWriter.write("build", FTA_BUILD_ID);
 	_time->save(headerWriter["time"]);
 	if (_battleGame != 0)
 	{
@@ -785,9 +841,6 @@ void SavedGame::save(const std::string &filename, Mod *mod) const
 
 	if (_ironman)
 		headerWriter.write("ironman", _ironman);
-	if (_ftaGame)
-		headerWriter.write("ftaGame", _ftaGame);
-
 	// Saves the full game data to the save
 	YAML::YamlRootNodeWriter writer(1000000); //1MB starting buffer
 	writer.setAsMap();
@@ -797,14 +850,14 @@ void SavedGame::save(const std::string &filename, Mod *mod) const
 	writer.write("daysPassed", _daysPassed);
 	writer.write("vehiclesLost", _vehiclesLost);
 	writer.write("graphRegionToggles", _graphRegionToggles);
-	writer.write("graphCountryToggles", _graphCountryToggles);
 	writer.write("graphFinanceToggles", _graphFinanceToggles);
+	writer.write("graphFactionToggles", _graphFactionToggles);
 	writer.write("rng", RNG::getSeed());
 	writer.write("funds", _funds);
 	writer.write("loyalty", _loyalty);
+	writer.write("loyaltyHistory", _loyaltyHistory);
 	writer.write("lastMonthsLoyalty", _lastMonthsLoyalty);
 	writer.write("maintenance", _maintenance);
-	writer.write("userNotes", _userNotes);
 	if (Options::oxceGeoscapeDebugLogMaxEntries > 0 && _geoscapeDebugLog.size() > 0)
 	{
 		auto geoDebugLog = writer["geoscapeDebugLog"];
@@ -818,7 +871,6 @@ void SavedGame::save(const std::string &filename, Mod *mod) const
 	writer.write("incomes", _incomes);
 	writer.write("expenditures", _expenditures);
 	writer.write("warned", _warned);
-	writer.write("togglePersonalLight", _togglePersonalLight);
 	writer.write("toggleNightVision", _toggleNightVision);
 	writer.write("toggleBrightness", _toggleBrightness);
 	writer.write("globeLon", _globeLon);
@@ -826,8 +878,9 @@ void SavedGame::save(const std::string &filename, Mod *mod) const
 	writer.write("globeZoom", _globeZoom);
 	writer.write("ids", _ids);
 
-	saveVector(writer, _countries, "countries", mod->getScriptGlobal());
 	saveVector(writer, _regions, "regions");
+	saveVector(writer, _intelProjects, "intelProjects");
+	saveVector(writer, _xenoSpecies, "xenoSpecies");
 	saveVector(writer, _bases, "bases");
 	saveVector(writer, _waypoints, "waypoints");
 	saveVector(writer, _missionSites, "missionSites");
@@ -860,11 +913,8 @@ void SavedGame::save(const std::string &filename, Mod *mod) const
 	writer.write("generatedEvents", _generatedEvents);
 	writer.write("missionScriptsTimers", _missionScriptsTimers);
 	writer.write("eventScriptsTimers", _eventScriptsTimers);
-	writer.write("ufopediaRuleStatus", _ufopediaRuleStatus);
-	writer.write("manufactureRuleStatus", _manufactureRuleStatus);
 	writer.write("researchRuleStatus", _researchRuleStatus);
 	writer.write("monthlyPurchaseLimitLog", _monthlyPurchaseLimitLog);
-	writer.write("hiddenPurchaseItems", _hiddenPurchaseItemsMap);
 	writer.write("customRuleCraftDeployments", _customRuleCraftDeployments);
 	_alienStrategy->save(writer["alienStrategy"]);
 
@@ -888,20 +938,6 @@ void SavedGame::save(const std::string &filename, Mod *mod) const
 	if (Options::soldierDiaries)
 		saveVector(writer, _missionStatistics, "missionStatistics");
 
-	if (!_autosales.empty())
-	{
-		auto autoSales = writer["autoSales"];
-		autoSales.setAsSeq();
-		{
-			std::vector<const RuleItem*> autosalesVector(_autosales.begin(), _autosales.end());
-			std::sort(autosalesVector.begin(), autosalesVector.end(), [&](const RuleItem* a, const RuleItem* b)
-				{ return a->getType().compare(b->getType()) < 0; });
-			for (const auto* sale : autosalesVector)
-			{
-				autoSales.write(sale->getType());
-			}
-		}
-	}
 	// snapshot of the user options (just for debugging purposes)
 	auto optionsWriter = writer["options"];
 	optionsWriter.setAsMap();
@@ -1124,39 +1160,17 @@ void SavedGame::setGlobeZoom(int zoom)
 }
 
 /**
- * Gives the player his monthly funds, taking in account
- * all maintenance and profit costs.
- */
-void SavedGame::monthlyFunding()
-{
-	int countryFunding = getCountryFunding();
-	int baseMaintenance = getBaseMaintenance();
-	_funds.back() += (countryFunding - baseMaintenance);
-	_funds.push_back(_funds.back());
-	_maintenance.back() = baseMaintenance;
-	_maintenance.push_back(0);
-	_incomes.push_back(countryFunding);
-	_expenditures.push_back(baseMaintenance);
-	_researchScores.push_back(0);
-
-	if (_incomes.size() > 12)
-		_incomes.erase(_incomes.begin());
-	if (_expenditures.size() > 12)
-		_expenditures.erase(_expenditures.begin());
-	if (_researchScores.size() > 12)
-		_researchScores.erase(_researchScores.begin());
-	if (_funds.size() > 12)
-		_funds.erase(_funds.begin());
-	if (_maintenance.size() > 12)
-		_maintenance.erase(_maintenance.begin());
-}
-
-/**
  * Calculate monthly score and calcualte funds
  * for FtA Game
  */
 void SavedGame::monthlyScoring()
 {
+	_loyaltyHistory.push_back(_loyalty);
+	if (_loyaltyHistory.size() > 11)
+		_loyaltyHistory.erase(_loyaltyHistory.begin());
+	for (auto* faction : _diplomacyFactions)
+		faction->recordMonthlyHistory();
+
 	auto baseMaintenance = getBaseMaintenance();
 	_funds.back() -= baseMaintenance;
 	_funds.push_back(_funds.back());
@@ -1179,19 +1193,18 @@ void SavedGame::monthlyScoring()
 }
 
 /**
- *	Clears promotion flag on soldiers after revealing it to the player.
+ * Finalizes the current month's Loyalty for the next comparison and graph history.
  */
-void SavedGame::handlePromotionsPostprocessing()
+void SavedGame::finalizeMonthlyLoyalty()
 {
-	for (auto* base : _bases)
+	_lastMonthsLoyalty = _loyalty;
+	if (_loyaltyHistory.empty())
 	{
-		for (auto* soldier : *base->getSoldiers())
-		{
-			if (soldier->isPromoted())
-			{
-				soldier->setPromoted(false);
-			}
-		}
+		_loyaltyHistory.push_back(_loyalty);
+	}
+	else
+	{
+		_loyaltyHistory.back() = _loyalty;
 	}
 }
 
@@ -1233,6 +1246,109 @@ int SavedGame::getId(const std::string &name)
 	}
 }
 
+std::string SavedGame::generateCaptiveDesignation() const
+{
+	std::set<std::string> used;
+	for (const auto* base : _bases)
+	{
+		for (const auto* prisoner : base->getPrisoners())
+		{
+			used.insert(prisoner->getDesignation());
+		}
+		for (const auto* alien : base->getContainedAliens())
+		{
+			used.insert(alien->getDesignation());
+		}
+		for (const auto* monster : base->getContainedMonsters())
+		{
+			used.insert(monster->getDesignation());
+		}
+		for (const auto* transfer : *base->getTransfers())
+		{
+			if (const auto* prisoner = transfer->getPrisoner())
+			{
+				used.insert(prisoner->getDesignation());
+			}
+			if (const auto* alien = transfer->getContainedAlien())
+			{
+				used.insert(alien->getDesignation());
+			}
+			if (const auto* monster = transfer->getContainedMonster())
+			{
+				used.insert(monster->getDesignation());
+			}
+		}
+	}
+	for (int attempts = 0; attempts < 10000; ++attempts)
+	{
+		std::string designation = RNG::randomString(8);
+		if (!designation.empty() && used.insert(designation).second)
+		{
+			return designation;
+		}
+	}
+	throw Exception("Unable to generate a unique captive designation after 10000 attempts");
+}
+
+void SavedGame::validateCaptiveIdentities() const
+{
+	std::set<int> ids;
+	std::set<std::string> designations;
+	auto validate = [&](int id, const std::string& designation, const std::string& context)
+	{
+		if (id <= 0)
+		{
+			throw Exception(context + ": captive id must be a positive integer");
+		}
+		if (!ids.insert(id).second)
+		{
+			throw Exception(context + ": duplicate captive id " + std::to_string(id));
+		}
+		if (designation.empty())
+		{
+			throw Exception(context + ": captive designation must not be empty");
+		}
+		if (!designations.insert(designation).second)
+		{
+			throw Exception(context + ": duplicate captive designation '" + designation + "'");
+		}
+	};
+
+	for (const auto* base : _bases)
+	{
+		const std::string baseContext = "Base '" + base->getName() + "'";
+		for (const auto* prisoner : base->getPrisoners())
+		{
+			validate(prisoner->getId(), prisoner->getDesignation(), baseContext + " prisoner");
+		}
+		for (const auto* alien : base->getContainedAliens())
+		{
+			validate(alien->getId(), alien->getDesignation(), baseContext + " contained alien");
+		}
+		for (const auto* monster : base->getContainedMonsters())
+		{
+			validate(monster->getId(), monster->getDesignation(),
+				baseContext + " contained monster");
+		}
+		for (const auto* transfer : *base->getTransfers())
+		{
+			if (const auto* prisoner = transfer->getPrisoner())
+			{
+				validate(prisoner->getId(), prisoner->getDesignation(), baseContext + " prisoner transfer");
+			}
+			if (const auto* alien = transfer->getContainedAlien())
+			{
+				validate(alien->getId(), alien->getDesignation(), baseContext + " contained alien transfer");
+			}
+			if (const auto* monster = transfer->getContainedMonster())
+			{
+				validate(monster->getId(), monster->getDesignation(),
+					baseContext + " contained monster transfer");
+			}
+		}
+	}
+}
+
 /**
  * Returns the last used ID for the specified object.
  * @param name Object name.
@@ -1243,7 +1359,7 @@ int SavedGame::getLastId(const std::string& name)
 	auto i = _ids.find(name);
 	if (i != _ids.end())
 	{
-		return std::max(1, i->second - 1);
+		return i->second - 1;
 	}
 	else
 	{
@@ -1266,7 +1382,8 @@ void SavedGame::increaseCustomCounter(const std::string& name, int value)
 		}
 		else
 		{
-			_ids[name] = 2; // not a typo
+			// Custom counters are stored as value + 1, like other entries in _ids.
+			_ids[name] = value + 1;
 		}
 	}
 }
@@ -1282,15 +1399,13 @@ void SavedGame::decreaseCustomCounter(const std::string& name, int value)
 		auto i = _ids.find(name);
 		if (i != _ids.end())
 		{
-			// don't go below "zero" (which is saved as one)
-			if (i->second > value)
-			{
-				i->second -= value;
-			}
+			i->second -= value;
 		}
 		else
 		{
-			_ids[name] = 1; // not a typo
+			// Custom counters are stored as value + 1. An absent counter has
+			// logical value zero, so its first decrease must preserve the full delta.
+			_ids[name] = 1 - value;
 		}
 	}
 }
@@ -1311,29 +1426,6 @@ const std::map<std::string, int> &SavedGame::getAllIds() const
 void SavedGame::setAllIds(const std::map<std::string, int> &ids)
 {
 	_ids = ids;
-}
-
-/**
- * Returns the list of countries in the game world.
- * @return Pointer to country list.
- */
-std::vector<Country*> *SavedGame::getCountries()
-{
-	return &_countries;
-}
-
-/**
- * Adds up the monthly funding of all the countries.
- * @return Total funding.
- */
-int SavedGame::getCountryFunding() const
-{
-	int total = 0;
-	for (auto* country : _countries)
-	{
-		total += country->getFunding().back();
-	}
-	return total;
 }
 
 /**
@@ -1387,6 +1479,186 @@ void SavedGame::setSelectedBase(size_t base)
 const std::vector<Base*> *SavedGame::getBases() const
 {
 	return &_bases;
+}
+
+IntelProject* SavedGame::getIntelProject(const std::string& name) const
+{
+	for (auto* project : _intelProjects)
+	{
+		if (project->getName() == name)
+		{
+			return project;
+		}
+	}
+	return nullptr;
+}
+
+IntelProject* SavedGame::addIntelProject(const RuleIntelProject* rules)
+{
+	if (!rules)
+	{
+		throw Exception("Cannot add a global intelligence project without rules");
+	}
+	if (IntelProject* existing = getIntelProject(rules->getName()))
+	{
+		return existing;
+	}
+	IntelProject* project = new IntelProject(rules);
+	_intelProjects.push_back(project);
+	return project;
+}
+
+XenoSpecies* SavedGame::getXenoSpecies(const std::string& type) const
+{
+	for (auto* species : _xenoSpecies)
+	{
+		if (species->getType() == type)
+		{
+			return species;
+		}
+	}
+	return nullptr;
+}
+
+XenoSpecies* SavedGame::addXenoSpecies(const RuleXenoSpecies* rules)
+{
+	if (!rules)
+	{
+		throw Exception("Cannot add xeno-species campaign state without rules");
+	}
+	if (XenoSpecies* existing = getXenoSpecies(rules->getType()))
+	{
+		return existing;
+	}
+	auto* species = new XenoSpecies(rules);
+	_xenoSpecies.push_back(species);
+	return species;
+}
+
+bool SavedGame::completeIntelProject(const std::string& name)
+{
+	IntelProject* project = getIntelProject(name);
+	if (!project || project->isCompleted())
+	{
+		return false;
+	}
+	project->complete();
+	for (auto* base : _bases)
+	{
+		for (auto* soldier : *base->getSoldiers())
+		{
+			if (soldier->getIntelProject() == project)
+			{
+				soldier->setIntelProject(nullptr);
+			}
+		}
+	}
+	Log(LOG_INFO) << "Completed global intelligence project: " << project->getName();
+	return true;
+}
+
+std::map<Soldier*, int> SavedGame::getIntelProjectAgents(const IntelProject* project) const
+{
+	std::map<Soldier*, int> result;
+	if (!project)
+	{
+		return result;
+	}
+	for (auto* base : _bases)
+	{
+		for (auto* soldier : *base->getSoldiers())
+		{
+			if (soldier->getIntelProject() == project && soldier->getRoleRank(ROLE_AGENT) > 0)
+			{
+				result.emplace(soldier, 100);
+			}
+		}
+	}
+	return result;
+}
+
+size_t SavedGame::getIntelProjectAgentCount(const IntelProject* project, const Base* base) const
+{
+	size_t result = 0;
+	for (auto* currentBase : _bases)
+	{
+		if (base && currentBase != base)
+		{
+			continue;
+		}
+		for (auto* soldier : *currentBase->getSoldiers())
+		{
+			if (soldier->getIntelProject() == project && soldier->getRoleRank(ROLE_AGENT) > 0)
+			{
+				result++;
+			}
+		}
+	}
+	return result;
+}
+
+int SavedGame::getIntelProjectEffort(IntelProject* project, const Mod* mod, bool estimate) const
+{
+	if (!project || project->isCompleted() || project->isCurrentMilestoneBlocked(this) ||
+		!project->getBlockedMilestone().empty())
+	{
+		return 0;
+	}
+	auto agents = getIntelProjectAgents(project);
+	std::string description;
+	return project->getStepProgress(agents, mod, getLoyaltyPerformanceBonus(), description, estimate);
+}
+
+int SavedGame::getIntelEffect(IntelProjectEffectType type, const Mod* mod) const
+{
+	if (type == INTEL_EFFECT_NONE)
+	{
+		return 0;
+	}
+	IntelProject* project = nullptr;
+	for (auto* candidate : _intelProjects)
+	{
+		if (!candidate->isCompleted() && candidate->getRules()->getEffectType() == type)
+		{
+			project = candidate;
+			break;
+		}
+	}
+	if (!project)
+	{
+		return 0;
+	}
+
+	const int effort = getIntelProjectEffort(project, mod, true);
+	if (effort <= 0)
+	{
+		return 0;
+	}
+
+	switch (type)
+	{
+	case INTEL_EFFECT_UFO_TRACKING:
+		return static_cast<int>(std::ceil(-0.6 + 2.1 * std::log10(effort)));
+	case INTEL_EFFECT_COVERT_OPERATIONS:
+	case INTEL_EFFECT_DEPLOYMENT_HINTS:
+		return effort;
+	default:
+		throw Exception("Unsupported intelligence effect type " + std::to_string(static_cast<int>(type)));
+	}
+}
+
+int SavedGame::getLoyaltyPerformanceBonus() const
+{
+	int performance = 100;
+	if (_loyalty > 100)
+	{
+		performance += static_cast<int>(std::ceil(-9.79 + (2.23 * std::log(std::abs(_loyalty)))));
+	}
+	else if (_loyalty < 0)
+	{
+		performance -= static_cast<int>(std::ceil(0.271 * std::pow(-_loyalty, 0.537)));
+	}
+	return performance;
 }
 
 /**
@@ -1459,52 +1731,16 @@ void SavedGame::setBattleGame(SavedBattleGame *battleGame)
 }
 
 /**
- * Sets the status of a ufopedia rule
- * @param ufopediaRule The rule ID
- * @param newStatus Status to be set
- */
-void SavedGame::setUfopediaRuleStatus(const std::string &ufopediaRule, int newStatus)
-{
-	_ufopediaRuleStatus[ufopediaRule] = newStatus;
-}
-
-/**
- * Sets the status of a manufacture rule
- * @param manufactureRule The rule ID
- * @param newStatus Status to be set
- */
-void SavedGame::setManufactureRuleStatus(const std::string &manufactureRule, int newStatus)
-{
-	_manufactureRuleStatus[manufactureRule] = newStatus;
-}
-
-/**
-* Sets the status of a research rule
+* Enables or permanently disables a research rule.
 * @param researchRule The rule ID
-* @param newStatus Status to be set
+* @param disabled Whether the rule is disabled
 */
-void SavedGame::setResearchRuleStatus(const std::string &researchRule, int newStatus)
+void SavedGame::setResearchRuleDisabled(const std::string &researchRule, bool disabled)
 {
-	_researchRuleStatus[researchRule] = newStatus;
-}
-
-/**
- * Sets the hidden status of a purchase item
- * @param purchase item name
- * @param hidden
- */
-void SavedGame::setHiddenPurchaseItemsStatus(const std::string &itemName, bool hidden)
-{
-	_hiddenPurchaseItemsMap[itemName] = hidden;
-}
-
-/**
- * Get the map of hidden items
- * @return map
- */
-const std::map<std::string, bool> &SavedGame::getHiddenPurchaseItems()
-{
-	return _hiddenPurchaseItemsMap;
+	if (disabled)
+		_researchRuleStatus[researchRule] = RuleResearch::RESEARCH_STATUS_DISABLED;
+	else
+		_researchRuleStatus.erase(researchRule);
 }
 
 /*
@@ -1513,12 +1749,9 @@ const std::map<std::string, bool> &SavedGame::getHiddenPurchaseItems()
  */
 void SavedGame::removePerformedCovertOperation(const std::string& operation)
 {
-	bool erased = false;
-	std::vector<std::string>::iterator r = std::find(_performedOperations.begin(), _performedOperations.end(), operation);
-	if (r != _performedOperations.end()) {
-		_performedOperations.erase(r);
-		erased = true; }
-	if (!erased) { Log(LOG_ERROR) << "Covert Operation named " << operation << " was not deleted from <performed operation> list!";	}
+	_performedOperations.erase(
+		std::remove(_performedOperations.begin(), _performedOperations.end(), operation),
+		_performedOperations.end());
 }
 
  /*
@@ -1528,6 +1761,26 @@ void SavedGame::removePerformedCovertOperation(const std::string& operation)
  */
 const RuleResearch* SavedGame::selectGetOneFree(const RuleResearch* research)
 {
+	// Guaranteed conditional awards take priority over the ordinary random pool.
+	// Both map order and candidate order are significant.
+	for (const auto& pair : research->getGetOneFreeGuaranteed())
+	{
+		if (isResearched(pair.first, false))
+		{
+			for (auto* res : pair.second)
+			{
+				if (isResearchRuleStatusDisabled(res->getName()))
+				{
+					continue; // skip disabled topics
+				}
+				if (!isResearched(res, false))
+				{
+					return res;
+				}
+			}
+		}
+	}
+
 	if (!research->getGetOneFree().empty() || !research->getGetOneFreeProtected().empty())
 	{
 		std::vector<const RuleResearch*> possibilities;
@@ -1571,6 +1824,68 @@ const RuleResearch* SavedGame::selectGetOneFree(const RuleResearch* research)
 		}
 	}
 	return nullptr;
+}
+
+/**
+ * Updates necessary data to process unlocking multiple researches.
+ */
+void SavedGame::helpResearchDiscovery(std::vector<const RuleResearch*> projects, std::vector<const RuleResearch*> &possibilities, const Mod* mod, Base* base, std::string& researchName, std::string& bonusResearchName)
+{
+	for (auto rRule : projects)
+	{
+		if (!isResearched(rRule, false) || hasUndiscoveredGetOneFree(rRule, true))
+		{
+			possibilities.push_back(rRule);
+		}
+	}
+
+	std::vector<const RuleResearch*> topicsToCheck;
+	if (!possibilities.empty())
+	{
+		size_t pickResearch = RNG::generate(0, possibilities.size() - 1);
+		const RuleResearch* research = possibilities.at(pickResearch);
+
+		// we also delete chosen research from possibility list for future use
+		std::vector<const RuleResearch*>::const_iterator it = std::find(possibilities.begin(), possibilities.end(), research);
+		if (it != possibilities.end())
+		{
+			possibilities.erase(it);
+		}
+
+		bool alreadyResearched = false;
+		std::string name = research->getLookup().empty() ? research->getName() : research->getLookup();
+		if (isResearched(name, false))
+		{
+			alreadyResearched = true; // we have seen the pedia article already, don't show it again
+		}
+
+		addFinishedResearch(research, mod, base, true);
+		topicsToCheck.push_back(research);
+		researchName = alreadyResearched ? "" : research->getName();
+
+		if (!research->getLookup().empty())
+		{
+			const RuleResearch* lookupResearch = mod->getResearch(research->getLookup(), true);
+			addFinishedResearch(lookupResearch, mod, base, true);
+			researchName = alreadyResearched ? "" : lookupResearch->getName();
+		}
+
+		if (auto bonus = selectGetOneFree(research))
+		{
+			addFinishedResearch(bonus, mod, base, true);
+			topicsToCheck.push_back(bonus);
+			bonusResearchName = bonus->getName();
+
+			if (!bonus->getLookup().empty())
+			{
+				const RuleResearch* bonusLookup = mod->getResearch(bonus->getLookup(), true);
+				addFinishedResearch(bonusLookup, mod, base, true);
+				bonusResearchName = bonusLookup->getName();
+			}
+		}
+	}
+
+	handlePrimaryResearchSideEffects(topicsToCheck, mod, base);
 }
 
 /*
@@ -1646,13 +1961,13 @@ void SavedGame::addFinishedResearch(const RuleResearch * research, const Mod * m
 			if (score)
 			{
 				addResearchScore(currentQueueItem->getPoints());
-				_game->getMasterMind()->updateLoyalty(currentQueueItem->getPoints(), XCOM_RESEARCH);
+				_game->getGeoscapeState()->updateLoyalty(currentQueueItem->getPoints(), XCOM_RESEARCH);
 			}
 			// process "disables"
 			for (const auto* dis : currentQueueItem->getDisabled())
 			{
 				removeDiscoveredResearch(dis); // unresearch
-				setResearchRuleStatus(dis->getName(), RuleResearch::RESEARCH_STATUS_DISABLED); // mark as permanently disabled
+				setResearchRuleDisabled(dis->getName(), true);
 			}
 		}
 		else
@@ -1671,7 +1986,7 @@ void SavedGame::addFinishedResearch(const RuleResearch * research, const Mod * m
 		{
 			if (isResearchRuleStatusDisabled(ree->getName()))
 			{
-				setResearchRuleStatus(ree->getName(), RuleResearch::RESEARCH_STATUS_NEW); // reset status
+				setResearchRuleDisabled(ree->getName(), false);
 			}
 		}
 
@@ -1690,7 +2005,6 @@ void SavedGame::addFinishedResearch(const RuleResearch * research, const Mod * m
 			}
 			else
 			{
-				// Used in vanilla save converter only
 				getAvailableResearchProjects(availableResearch, mod, 0);
 			}
 
@@ -1738,6 +2052,97 @@ void SavedGame::addFinishedResearch(const RuleResearch * research, const Mod * m
 		// 4. process remaining items in the queue
 		++currentQueueIndex;
 	}
+}
+
+ResearchDiscoveryResult SavedGame::completeResearchDiscovery(const RuleResearch* research,
+	const Mod* mod, Base* base, bool score, bool repeatPrimarySideEffects,
+	bool applyPrimarySideEffects)
+{
+	ResearchDiscoveryResult result;
+	if (!research || isResearchRuleStatusDisabled(research->getName()))
+	{
+		return result;
+	}
+
+	result.primary = research;
+	const bool primaryWasKnown = isResearched(research, false);
+	result.primaryDisplay = research->getLookup().empty()
+		? research
+		: mod->getResearch(research->getLookup(), true);
+	const bool primaryDisplayWasKnown = isResearched(result.primaryDisplay, false);
+
+	const std::set<const RuleResearch*> discoveredBefore(_discovered.begin(), _discovered.end());
+
+	// The primary topic must be completed before selecting getOneFree. Its
+	// unlocks and zero-cost cascade may make protected choices available.
+	addFinishedResearch(research, mod, base, score);
+	result.primaryWasNew = !primaryWasKnown && isResearched(research, false);
+
+	result.bonus = selectGetOneFree(research);
+
+	if (result.primaryDisplay != research)
+	{
+		addFinishedResearch(result.primaryDisplay, mod, base, score);
+	}
+	result.primaryDisplayWasNew = !primaryDisplayWasKnown &&
+		isResearched(result.primaryDisplay, false);
+
+	if (result.bonus && !isResearchRuleStatusDisabled(result.bonus->getName()))
+	{
+		const bool bonusWasKnown = isResearched(result.bonus, false);
+		result.bonusDisplay = result.bonus->getLookup().empty()
+			? result.bonus
+			: mod->getResearch(result.bonus->getLookup(), true);
+		addFinishedResearch(result.bonus, mod, base, score);
+		if (result.bonusDisplay != result.bonus)
+		{
+			addFinishedResearch(result.bonusDisplay, mod, base, score);
+		}
+		result.bonusWasNew = !bonusWasKnown && isResearched(result.bonus, false);
+	}
+	else
+	{
+		result.bonus = nullptr;
+		result.bonusDisplay = nullptr;
+	}
+
+	for (const auto* discovered : _discovered)
+	{
+		if (discoveredBefore.find(discovered) == discoveredBefore.end())
+		{
+			result.newlyDiscovered.push_back(discovered);
+		}
+	}
+
+	for (auto* mission : _activeMissions)
+	{
+		const std::string& interruptName = mission->getRules().getInterruptResearch();
+		if (interruptName.empty())
+		{
+			continue;
+		}
+		const RuleResearch* interruptResearch = mod->getResearch(interruptName, true);
+		if (std::find(result.newlyDiscovered.begin(), result.newlyDiscovered.end(),
+			interruptResearch) != result.newlyDiscovered.end())
+		{
+			mission->setInterrupted(true);
+		}
+	}
+
+	if (repeatPrimarySideEffects || result.primaryWasNew)
+	{
+		result.primarySideEffects.push_back(result.primary);
+	}
+	if (result.bonus && (repeatPrimarySideEffects || result.bonusWasNew))
+	{
+		result.primarySideEffects.push_back(result.bonus);
+	}
+	if (applyPrimarySideEffects && !result.primarySideEffects.empty())
+	{
+		handlePrimaryResearchSideEffects(result.primarySideEffects, mod, base);
+	}
+
+	return result;
 }
 
 /**
@@ -1866,8 +2271,7 @@ void SavedGame::getAvailableResearchProjects(std::vector<RuleResearch *> &projec
 			{
 				// This research topic still has one or more undiscovered non-disabled "protected unlocks", keep it!
 			}
-			else if (isFtAGame()
-				&& research->needItem()
+			else if (research->needItem()
 				&& (!research->getRandomEvents().empty() || !research->getSpawnedEvent().empty()))
 			{
 				// FtA logic: also let the player research items that can spawn events on being researched.
@@ -1910,7 +2314,6 @@ void SavedGame::getAvailableResearchProjects(std::vector<RuleResearch *> &projec
 		}
 		else
 		{
-			// Used in vanilla save converter only
 			if (research->needItem() && research->getCost() == 0)
 			{
 				continue;
@@ -1943,6 +2346,30 @@ void SavedGame::getNewlyAvailableResearchProjects(std::vector<RuleResearch *> & 
 	sortReserchVector(before);
 	sortReserchVector(after);
 	std::set_difference(after.begin(), after.end(), before.begin(), before.end(), std::inserter(diff, diff.begin()), researchLess);
+}
+
+std::vector<std::string> SavedGame::getNewlyAvailableResearchIds(
+	const std::vector<RuleResearch*>& before, const Mod* mod, Base* base) const
+{
+	std::vector<std::string> result;
+	if (!base)
+	{
+		return result;
+	}
+	std::vector<RuleResearch*> after;
+	getAvailableResearchProjects(after, mod, base);
+	std::vector<RuleResearch*> delta;
+	std::vector<RuleResearch*> beforeCopy = before;
+	getNewlyAvailableResearchProjects(beforeCopy, after, delta);
+	std::set<std::string> unique;
+	for (const auto* research : delta)
+	{
+		if (research && unique.insert(research->getName()).second)
+		{
+			result.push_back(research->getName());
+		}
+	}
+	return result;
 }
 
 /**
@@ -2002,14 +2429,6 @@ void SavedGame::getDependableManufacture (std::vector<RuleManufacture *> & depen
 {
 	for (const auto& manuf : mod->getManufactureList())
 	{
-		// don't show previously unlocked (and seen!) manufacturing topics
-		auto i = _manufactureRuleStatus.find(manuf);
-		if (i != _manufactureRuleStatus.end())
-		{
-			if (i->second != RuleManufacture::MANU_STATUS_NEW)
-				continue;
-		}
-
 		RuleManufacture *m = mod->getManufacture(manuf);
 		const auto& reqs = m->getRequirements();
 		if (isResearched(reqs) && std::find(reqs.begin(), reqs.end(), research) != reqs.end())
@@ -2127,41 +2546,6 @@ void SavedGame::getDependableFacilities(std::vector<RuleBaseFacility *> & depend
 }
 
 /**
- * Gets the status of a ufopedia rule.
- * @param ufopediaRule Ufopedia rule ID.
- * @return Status (0=new, 1=normal).
- */
-int SavedGame::getUfopediaRuleStatus(const std::string &ufopediaRule)
-{
-	return _ufopediaRuleStatus[ufopediaRule];
-}
-
-/**
- * Gets the status of a manufacture rule.
- * @param manufactureRule Manufacture rule ID.
- * @return Status (0=new, 1=normal, 2=hidden).
- */
-int SavedGame::getManufactureRuleStatus(const std::string &manufactureRule)
-{
-	return _manufactureRuleStatus[manufactureRule];
-}
-
-/**
- * Gets the status of a research rule.
- * @param researchRule Research rule ID.
- * @return Status (0=new, 1=normal, 2=disabled, 3=hidden).
- */
-int SavedGame::getResearchRuleStatus(const std::string &researchRule) const
-{
-	auto it = _researchRuleStatus.find(researchRule);
-	if (it != _researchRuleStatus.end())
-	{
-		return it->second;
-	}
-	return RuleResearch::RESEARCH_STATUS_NEW; // no status = new
-}
-
-/**
  * Is the research permanently disabled?
  * @param researchRule Research rule ID.
  * @return True, if the research rule status is disabled.
@@ -2187,6 +2571,18 @@ bool SavedGame::isResearchRuleStatusDisabled(const std::string &researchRule) co
  */
 bool SavedGame::hasUndiscoveredGetOneFree(const RuleResearch * r, bool checkOnlyAvailableTopics) const
 {
+	for (const auto& pair : r->getGetOneFreeGuaranteed())
+	{
+		if (checkOnlyAvailableTopics && !isResearched(pair.first, false))
+		{
+			continue;
+		}
+		if (!isResearched(pair.second, false, true))
+		{
+			return true;
+		}
+	}
+
 	if (!isResearched(r->getGetOneFree(), false, true))
 	{
 		return true; // found something undiscovered (and NOT disabled) already, no need to search further
@@ -2408,92 +2804,6 @@ Soldier *SavedGame::getSoldier(int id) const
 }
 
 /**
- * Handles the higher promotions (not the rookie-squaddie ones).
- * @param participants a list of soldiers that were actually present at the battle.
- * @param mod the Game Mod
- * @return Whether or not some promotions happened - to show the promotions screen.
- */
-bool SavedGame::handlePromotions(std::vector<Soldier*> &participants, const Mod *mod)
-{
-	int soldiersPromoted = 0;
-	Soldier *highestRanked = 0;
-	std::vector<Soldier*> soldiers = getAllActiveSoldiers();
-	RankCount rankCounts = RankCount(soldiers);
-
-	int totalSoldiers = rankCounts.getTotalSoldiers();
-
-	if (rankCounts[RANK_COMMANDER] == 0 && totalSoldiers >= mod->getSoldiersPerRank(RANK_COMMANDER))
-	{
-		highestRanked = inspectSoldiers(soldiers, participants, RANK_COLONEL);
-		if (highestRanked)
-		{
-			// only promote one colonel to commander
-			highestRanked->promoteRank();
-			soldiersPromoted++;
-			rankCounts[RANK_COMMANDER]++;
-			rankCounts[RANK_COLONEL]--;
-		}
-	}
-
-	for (SoldierRank rank : { RANK_COLONEL, RANK_CAPTAIN, RANK_SERGEANT })
-	{
-		while ((totalSoldiers / mod->getSoldiersPerRank(rank)) > rankCounts[rank])
-		{
-			highestRanked = inspectSoldiers(soldiers, participants, rank - 1);
-			if (highestRanked)
-			{
-				highestRanked->promoteRank();
-				soldiersPromoted++;
-				rankCounts[rank]++;
-				rankCounts[(SoldierRank)(rank - 1)]--;
-			}
-			else
-			{
-				break;
-			}
-		}
-	}
-
-	return (soldiersPromoted > 0);
-}
-
-/**
- * Checks how many soldiers of a rank exist and which one has the highest score.
- * @param soldiers full list of live soldiers.
- * @param participants list of participants on this mission.
- * @param rank Rank to inspect.
- * @return the highest ranked soldier
- */
-Soldier *SavedGame::inspectSoldiers(std::vector<Soldier*> &soldiers, std::vector<Soldier*> &participants, int rank)
-{
-	int highestScore = 0;
-	Soldier *highestRanked = 0;
-	for (auto* soldier : soldiers)
-	{
-		const auto& rankStrings = soldier->getRules()->getRankStrings();
-		bool rankIsMatching = (soldier->getRank() == rank);
-		if (!rankStrings.empty())
-		{
-			// if rank is matching, but there are no more higher ranks defined for this soldier type, skip this soldier
-			if (rankIsMatching && (rank >= (int)rankStrings.size() - 1))
-			{
-				rankIsMatching = false;
-			}
-		}
-		if (rankIsMatching)
-		{
-			int score = getSoldierScore(soldier);
-			if (score > highestScore && (!Options::fieldPromotions || std::find(participants.begin(), participants.end(), soldier) != participants.end()))
-			{
-				highestScore = score;
-				highestRanked = soldier;
-			}
-		}
-	}
-	return highestRanked;
-}
-
-/**
  * Gets the (approximate) number of idle days since the soldier's last mission.
  */
 int SavedGame::getSoldierIdleDays(const Soldier *soldier)
@@ -2525,21 +2835,6 @@ int SavedGame::getSoldierIdleDays(const Soldier *soldier)
 		idleDays = 999;
 
 	return idleDays;
-}
-
-/**
- * Evaluate the score of a soldier based on all of his stats, missions and kills.
- * @param soldier the soldier to get a score for.
- * @return this soldier's score.
- */
-int SavedGame::getSoldierScore(Soldier *soldier)
-{
-	const UnitStats *s = soldier->getCurrentStats();
-	int v1 = 2 * s->health + 2 * s->stamina + 4 * s->reactions + 4 * s->bravery;
-	int v2 = v1 + 3*( s->tu + 2*( s->firing ) );
-	int v3 = v2 + s->melee + s->throwing + s->strength;
-	if (s->psiSkill > 0) v3 += s->psiStrength + 2 * s->psiSkill;
-	return v3 + 10 * ( soldier->getMissions() + soldier->getKills() );
 }
 
 /**
@@ -2711,66 +3006,15 @@ Region *SavedGame::locateRegion(const Target &target) const
 }
 
 /**
- * Find the country containing this location.
- * @param lon The longitude.
- * @param lat The latitude.
- * @return Pointer to the country, or 0.
- */
-Country* SavedGame::locateCountry(double lon, double lat) const
-{
-	Country* found = nullptr;
-	for (auto* country : _countries)
-	{
-		if (country->getRules()->insideCountry(lon, lat))
-		{
-			found = country;
-			break;
-		}
-	}
-	if (found)
-	{
-		return found;
-	}
-	//Log(LOG_DEBUG) << "Failed to find a country at location [" << lon << ", " << lat << "].";
-	return 0;
-}
-
-/**
- * Find the country containing this target.
- * @param target The target to locate.
- * @return Pointer to the country, or 0.
- */
-Country* SavedGame::locateCountry(const Target& target) const
-{
-	return locateCountry(target.getLongitude(), target.getLatitude());
-}
-
-/**
  * Select a soldier nationality based on mod rules and location on the globe.
  */
 int SavedGame::selectSoldierNationalityByLocation(const Mod* mod, const RuleSoldier* rule, const Target* target) const
 {
+	// TODO(FTA RulePersonnelOrigin): remove this legacy location-based nationality
+	// helper when personnel origins replace nationality-derived identity pools and flags.
 	if (!target)
 	{
 		return -1;
-	}
-
-	if (mod->getHireByCountryOdds() > 0 && RNG::percent(mod->getHireByCountryOdds()))
-	{
-		Country* country = locateCountry(*target);
-		if (country)
-		{
-			int nationality = 0;
-			for (auto* namepool : rule->getNames())
-			{
-				// we assume there is only one such name pool (or none), thus we stop searching on the first hit
-				if (country->getRules()->getType() == namepool->getCountry())
-				{
-					return nationality;
-				}
-				++nationality;
-			}
-		}
 	}
 
 	if (mod->getHireByRegionOdds() > 0 && RNG::percent(mod->getHireByRegionOdds()))
@@ -2831,19 +3075,19 @@ const std::string &SavedGame::getGraphRegionToggles() const
 }
 
 /*
- * @return the GraphCountryToggles.
- */
-const std::string &SavedGame::getGraphCountryToggles() const
-{
-	return _graphCountryToggles;
-}
-
-/*
  * @return the GraphFinanceToggles.
  */
 const std::string &SavedGame::getGraphFinanceToggles() const
 {
 	return _graphFinanceToggles;
+}
+
+/*
+ * @return the GraphFactionToggles.
+ */
+const std::string &SavedGame::getGraphFactionToggles() const
+{
+	return _graphFactionToggles;
 }
 
 /**
@@ -2856,21 +3100,21 @@ void SavedGame::setGraphRegionToggles(const std::string &value)
 }
 
 /**
- * Sets the GraphCountryToggles.
- * @param value The new value for GraphCountryToggles.
- */
-void SavedGame::setGraphCountryToggles(const std::string &value)
-{
-	_graphCountryToggles = value;
-}
-
-/**
  * Sets the GraphFinanceToggles.
  * @param value The new value for GraphFinanceToggles.
  */
 void SavedGame::setGraphFinanceToggles(const std::string &value)
 {
 	_graphFinanceToggles = value;
+}
+
+/**
+ * Sets the GraphFactionToggles.
+ * @param value The new value for GraphFactionToggles.
+ */
+void SavedGame::setGraphFactionToggles(const std::string &value)
+{
+	_graphFactionToggles = value;
 }
 
 /*
@@ -3199,32 +3443,6 @@ std::vector<Soldier*>::iterator SavedGame::killSoldier(bool resetArmor, Soldier 
 }
 
 /**
- * enables/disables autosell for an item type
- */
-void SavedGame::setAutosell(const RuleItem *itype, const bool enabled)
-{
-	if (enabled)
-	{
-		_autosales.insert(itype);
-	}
-	else
-	{
-		_autosales.erase(itype);
-	}
-}
-/**
- * get autosell state for an item type
- */
-bool SavedGame::getAutosell(const RuleItem *itype) const
-{
-	if (!Options::oxceAutoSell)
-	{
-		return false;
-	}
-	return _autosales.find(itype) != _autosales.end();
-}
-
-/**
  * Removes all soldiers from a given craft.
  */
 void SavedGame::removeAllSoldiersFromXcomCraft(Craft *craft)
@@ -3314,7 +3532,7 @@ int SavedGame::getCurrentScore(int monthsPassed) const
 /**
  * Clear links for the given alien base. Use this before deleting the alien base.
  */
-void SavedGame::clearLinksForAlienBase(AlienBase* alienBase, const Mod* mod)
+void SavedGame::clearLinksForAlienBase(AlienBase* alienBase)
 {
 	// Take care to remove supply missions for this base.
 	for (auto* am : _activeMissions)
@@ -3327,18 +3545,6 @@ void SavedGame::clearLinksForAlienBase(AlienBase* alienBase, const Mod* mod)
 			if (am->getRules().getOperationType() != AMOT_SPACE)
 			{
 				am->setInterrupted(true);
-			}
-		}
-	}
-	// If there was a pact with this base, cancel it?
-	if (mod->getAllowCountriesToCancelAlienPact() && !alienBase->getPactCountry().empty())
-	{
-		for (auto* country : _countries)
-		{
-			if (country->getRules()->getType() == alienBase->getPactCountry())
-			{
-				country->setCancelPact();
-				break;
 			}
 		}
 	}
@@ -3763,16 +3969,6 @@ void isResearchedScript(const SavedGame* sg, int& val, const RuleResearch* name)
 	val = 0;
 }
 
-bool filterCountryConstScript(const SavedGame*, const Country*)
-{
-	return true;
-}
-
-bool filterCountryScript(SavedGame*, Country*)
-{
-	return true;
-}
-
 std::string debugDisplayScript(const SavedGame* p)
 {
 	if (p)
@@ -3800,8 +3996,6 @@ std::string debugDisplayScript(const SavedGame* p)
  */
 void SavedGame::ScriptRegister(ScriptParserBase* parser)
 {
-	parser->registerPointerType<Country>();
-
 	{
 		const auto name = std::string{ "RandomState" };
 		parser->registerRawPointerType<RNG::RandomState>(name);
@@ -3840,9 +4034,6 @@ void SavedGame::ScriptRegister(ScriptParserBase* parser)
 	sgg.add<&difficultyLevelScript>("difficultyLevel", "Get difficulty level");
 	sgg.add<&SavedGame::getMonthsPassed>("getMonthsPassed", "Number of months passed from start");
 	sgg.add<&SavedGame::getDaysPassed>("getDaysPassed", "Number of days passed from start");
-
-	sgg.addList<&filterCountryConstScript, &SavedGame::_countries>("getCountries");
-	sgg.addList<&filterCountryScript, &SavedGame::_countries>("getCountries");
 
 	sgg.add<&isResearchedScript>("isResearched");
 

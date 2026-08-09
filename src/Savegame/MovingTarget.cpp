@@ -19,7 +19,6 @@
 #include "MovingTarget.h"
 #include "../fmath.h"
 #include "SerializationHelper.h"
-#include "../Engine/Options.h"
 
 namespace OpenXcom
 {
@@ -27,7 +26,7 @@ namespace OpenXcom
 /**
  * Initializes a moving target with blank coordinates.
  */
-MovingTarget::MovingTarget() : Target(), _dest(0), _speedLon(0.0), _speedLat(0.0), _speedRadian(0.0), _meetPointLon(0.0), _meetPointLat(0.0), _speed(0), _meetCalculated(false)
+MovingTarget::MovingTarget() : Target(), _dest(0), _speedLon(0.0), _speedLat(0.0), _speedRadian(0.0), _targetLon(0.0), _targetLat(0.0), _speed(0)
 {
 }
 
@@ -83,7 +82,6 @@ Target *MovingTarget::getDestination() const
  */
 void MovingTarget::setDestination(Target *dest)
 {
-	_meetCalculated = false;
 	// Remove moving target from old destination's followers
 	if (_dest != 0)
 	{
@@ -101,11 +99,6 @@ void MovingTarget::setDestination(Target *dest)
 	if (_dest != 0)
 	{
 		_dest->getFollowers()->push_back(this);
-	}
-	// Recalculate meeting point for any followers
-	for (auto* mt : *getFollowers())
-	{
-		mt->resetMeetPoint();
 	}
 	calculateSpeed();
 }
@@ -150,11 +143,6 @@ void MovingTarget::setSpeed(int speed)
 {
 	_speed = speed;
 	_speedRadian = calculateRadianSpeed(_speed);
-	// Recalculate meeting point for any followers
-	for (auto* mt : *getFollowers())
-	{
-		mt->resetMeetPoint();
-	}
 	calculateSpeed();
 }
 
@@ -165,12 +153,12 @@ void MovingTarget::setSpeed(int speed)
  */
 void MovingTarget::calculateSpeed()
 {
-	calculateMeetPoint();
+	updateTargetCoordinates();
 	if (_dest != 0)
 	{
 		double dLon, dLat, length;
-		dLon = sin(_meetPointLon - _lon) * cos(_meetPointLat);
-		dLat = cos(_lat) * sin(_meetPointLat) - sin(_lat) * cos(_meetPointLat) * cos(_meetPointLon - _lon);
+		dLon = sin(_targetLon - _lon) * cos(_targetLat);
+		dLat = cos(_lat) * sin(_targetLat) - sin(_lat) * cos(_targetLat) * cos(_targetLon - _lon);
 		length = sqrt(dLon * dLon + dLat * dLat);
 		_speedLat = dLat / length * _speedRadian;
 		_speedLon = dLon / length * _speedRadian / cos(_lat + _speedLat);
@@ -210,7 +198,7 @@ void MovingTarget::move()
 	calculateSpeed();
 	if (_dest != 0)
 	{
-		if (getDistance(_meetPointLon, _meetPointLat) > _speedRadian)
+		if (getDistance(_targetLon, _targetLat) > _speedRadian)
 		{
 			setLongitude(_lon + _speedLon);
 			setLatitude(_lat + _speedLat);
@@ -219,120 +207,33 @@ void MovingTarget::move()
 		{
 			if (getDistance(_dest) > _speedRadian)
 			{
-				setLongitude(_meetPointLon);
-				setLatitude(_meetPointLat);
+				setLongitude(_targetLon);
+				setLatitude(_targetLat);
 			}
 			else
 			{
 				setLongitude(_dest->getLongitude());
 				setLatitude(_dest->getLatitude());
 			}
-			resetMeetPoint();
 		}
 	}
 }
 
 /**
- * Calculate meeting point with the target.
+ * Updates the coordinates used for movement toward the current destination.
  */
-void MovingTarget::calculateMeetPoint()
+void MovingTarget::updateTargetCoordinates()
 {
-#if 0
-	if (!Options::meetingPoint) _meetCalculated = false;
-	if (_meetCalculated) return;
-#endif
-	_meetCalculated = false;
-
-	// Initialize
 	if (_dest != 0)
 	{
-		_meetPointLat = _dest->getLatitude();
-		_meetPointLon = _dest->getLongitude();
+		_targetLat = _dest->getLatitude();
+		_targetLon = _dest->getLongitude();
 	}
 	else
 	{
-		_meetPointLat = _lat;
-		_meetPointLon = _lon;
+		_targetLat = _lat;
+		_targetLon = _lon;
 	}
-
-	// ***IMPORTANT*** this functionality has been disabled until further notice, most probably forever
-#if 0
-
-	if (!_dest || !Options::meetingPoint || reachedDestination()) return;
-
-	MovingTarget *t = dynamic_cast<MovingTarget*>(_dest);
-	if (!t || !t->getDestination()) return;
-
-	// Speed ratio
-	if (AreSame(t->getSpeedRadian(), 0.0)) return;
-	const double speedRatio = _speedRadian/ t->getSpeedRadian();
-
-	// The direction pseudovector
-	double	nx = cos(t->getLatitude())*sin(t->getLongitude())*sin(t->getDestination()->getLatitude()) -
-					sin(t->getLatitude())*cos(t->getDestination()->getLatitude())*sin(t->getDestination()->getLongitude()),
-			ny = sin(t->getLatitude())*cos(t->getDestination()->getLatitude())*cos(t->getDestination()->getLongitude()) -
-					cos(t->getLatitude())*cos(t->getLongitude())*sin(t->getDestination()->getLatitude()),
-			nz = cos(t->getLatitude())*cos(t->getDestination()->getLatitude())*sin(t->getDestination()->getLongitude() - t->getLongitude());
-	// Normalize and multiplex with radian speed
-	double	nk = _speedRadian/sqrt(nx*nx+ny*ny+nz*nz);
-	nx *= nk;
-	ny *= nk;
-	nz *= nk;
-
-	// Finding the meeting point. Don't search further than halfway across the
-	// globe (distance from interceptor's current point >= 1), as that may
-	// cause the interceptor to go the wrong way later.
-	for (double path = 0, distance = 1;
-		path < M_PI && distance - path*speedRatio > 0 && path*speedRatio < 1;
-		path += _speedRadian)
-	{
-		_meetPointLat += nx*sin(_meetPointLon) - ny*cos(_meetPointLon);
-		if (std::abs(_meetPointLat) < M_PI_2) _meetPointLon += nz - (nx*cos(_meetPointLon) + ny*sin(_meetPointLon))*tan(_meetPointLat); else _meetPointLon += M_PI;
-
-		distance = acos(cos(_lat) * cos(_meetPointLat) * cos(_meetPointLon - _lon) + sin(_lat) * sin(_meetPointLat));
-	}
-
-	// Correction overflowing angles
-	double lonSign = Sign(_meetPointLon);
-	double latSign = Sign(_meetPointLat);
-	while (std::abs(_meetPointLon) > M_PI) _meetPointLon -= lonSign * 2 * M_PI;
-	while (std::abs(_meetPointLat) > M_PI) _meetPointLat -= latSign * 2 * M_PI;
-	if (std::abs(_meetPointLat) > M_PI_2) { _meetPointLat = latSign * std::abs(2 * M_PI - std::abs(_meetPointLat)); _meetPointLon -= lonSign * M_PI; }
-
-	_meetCalculated = true;
-#endif
-}
-
-/**
- * Returns the latitude of the meeting point.
- * @return Angle in rad.
- */
-double MovingTarget::getMeetLatitude() const
-{
-	return _meetPointLat;
-}
-
-/**
- * Returns the longitude of the meeting point.
- * @return Angle in rad.
- */
-double MovingTarget::getMeetLongitude() const
-{
-	return _meetPointLon;
-}
-
-/**
- * Forces the meeting point to be recalculated in the event
- * that the target has changed direction.
- */
-void MovingTarget::resetMeetPoint()
-{
-	_meetCalculated = false;
-}
-
-bool MovingTarget::isMeetCalculated() const
-{
-	return _meetCalculated;
 }
 
 }

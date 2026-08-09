@@ -69,7 +69,8 @@ InterceptState::InterceptState(Globe *globe, bool useCustomSound, Base *base, Ta
 		}
 	}
 
-	int extraRows = Clamp(Options::oxceInterceptTableSize, 8, 80) - 8;
+	constexpr int INTERCEPT_TABLE_SIZE = 8; // Former option oxceInterceptTableSize, fixed to its default value.
+	int extraRows = INTERCEPT_TABLE_SIZE - 8;
 	int extraHeight = 8 * extraRows;
 	int offset = extraHeight / 2;
 

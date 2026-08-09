@@ -17,7 +17,8 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include<deque>
+#include <climits>
+#include <deque>
 #include "HackingState.h"
 #include "HackingView.h"
 #include "TileEngine.h"
@@ -120,8 +121,8 @@ HackingState::HackingState(BattleAction* action, Tile* targetTile, TileEngine* t
 	_sourceHacking = _sourceUnit->getBaseStats()->hacking;
 	double hackingTuModifier = mod->getHackingStatToTuCoef();
 	hackingTuModifier /= 100;
-	double hackingHpMidifier = mod->getHackingStatToHpCoef();
-	hackingHpMidifier /= 100;
+	double hackingHpModifier = mod->getHackingStatToHpCoef();
+	hackingHpModifier /= 100;
 	if (_targetUnit)
 	{
 		_targetHacking = _targetUnit->getBaseStats()->hacking;
@@ -130,8 +131,16 @@ HackingState::HackingState(BattleAction* action, Tile* targetTile, TileEngine* t
 	{
 		_targetHacking = _targetObject->getHackingDefence();
 	}
-	_maxTimeUnits = _action->weapon->getRules()->getHackingTU() + ceil(_sourceHacking / hackingTuModifier) - ceil(_targetHacking / hackingTuModifier);
-	_maxHealth = _action->weapon->getRules()->getHackingHP() + ceil(_sourceHacking / hackingHpMidifier) - ceil(_targetHacking / hackingHpMidifier);
+	const double calculatedTimeUnits = _action->weapon->getRules()->getHackingTU()
+		+ ceil(_sourceHacking / hackingTuModifier)
+		- ceil(_targetHacking / hackingTuModifier);
+	const double calculatedHealth = _action->weapon->getRules()->getHackingHP()
+		+ ceil(_sourceHacking / hackingHpModifier)
+		- ceil(_targetHacking / hackingHpModifier);
+	_maxTimeUnits = calculatedTimeUnits < 1.0 ? 1
+		: (calculatedTimeUnits > INT_MAX ? INT_MAX : static_cast<int>(calculatedTimeUnits));
+	_maxHealth = calculatedHealth < 1.0 ? 1
+		: (calculatedHealth > INT_MAX ? INT_MAX : static_cast<int>(calculatedHealth));
 
 	_bg = new Surface(320, 200);
 	_hackingView = new HackingView(164, 121, 41, 26);
@@ -213,6 +222,7 @@ HackingState::HackingState(BattleAction* action, Tile* targetTile, TileEngine* t
 HackingState::~HackingState()
 {
 	delete _timerAnimate;
+	delete _consoleManager;
 }
 
 /**
@@ -299,14 +309,10 @@ void HackingState::onExitClick(Action*)
 	if (_result)
 	{
 		_action->actor->addHackingExp();
-		if (soldier)
+		if (soldier && soldier->canGainExperience())
 		{
-			if (soldier->getBestRole() == ROLE_ENGINEER && soldier->isRookieEngineer())
-			{
-				soldier->addExperience(ROLE_ENGINEER, RNG::generate(5, 10), "hacking");
-				soldier->setRookieEngineer(false);
-			}
-			else if (soldier->getBestRole() == ROLE_AGENT && soldier->isRookieAgent())
+			const SoldierRole hackingRole = soldier->getHackingExperienceRole();
+			if (hackingRole == ROLE_AGENT && soldier->isRookieAgent())
 			{
 				soldier->addExperience(ROLE_AGENT, RNG::generate(5, 10), "hacking");
 				soldier->setRookieAgent(false);
@@ -438,21 +444,21 @@ void HackingState::revealNeighbours(HackingNode* node)
 			// show the node to the upper/lower left
 			if (col >= 0)
 			{
-				HackingNode* node = _hackingView->getNode(currRow, col);
-				if (node && !node->getVisible())
+				HackingNode* neighbour = _hackingView->getNode(currRow, col);
+				if (neighbour && !neighbour->getVisible())
 				{
-					node->setVisible(true);
-					notifyState(node);
+					neighbour->setVisible(true);
+					notifyState(neighbour);
 				}
 			}
 			// show the node to the upper/lower right
 			if (col < maxCol)
 			{
-				HackingNode* node = _hackingView->getNode(currRow, col + 1);
-				if (node && !node->getVisible())
+				HackingNode* neighbour = _hackingView->getNode(currRow, col + 1);
+				if (neighbour && !neighbour->getVisible())
 				{
-					node->setVisible(true);
-					notifyState(node);
+					neighbour->setVisible(true);
+					notifyState(neighbour);
 				}
 			}
 		}

@@ -18,6 +18,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "../Engine/State.h"
+#include "../Savegame/Promotion.h"
 
 namespace OpenXcom
 {
@@ -37,11 +38,15 @@ namespace OpenXcom
 	private:
 		Window* _window;
 		Text* _txtTitle, *_txtResult, *_txtBase, *_txtMessage;
-		TextButton* _btnOk, * _btnDetails;
+		TextButton* _btnOk, *_btnDetails, *_btnReport, *_btnPromotions;
 
-		std::string _researchName, _music;
+		std::string _music;
+		std::vector<std::string> _researchArticleIds;
 		CovertOperation* _operation;
 		const RuleCovertOperation* _rule;
+		PromotionBatch _promotions;
+		std::vector<std::string> _newResearchNotifications;
+		bool _containedAlienStudiesUnblocked = false;
 
 	public:
 		/// Creates the FinishedCoverOperationState.
@@ -54,6 +59,10 @@ namespace OpenXcom
 		void btnOkClick(Action* action);
 		/// Handler for clicking the DETAILS button.
 		void btnDetailsClick(Action* action);
+		/// Handler for clicking the VIEW REPORT button.
+		void btnReportClick(Action* action);
+		/// Handler for clicking the PROMOTIONS button.
+		void btnPromotionsClick(Action* action);
 	};
 
 }

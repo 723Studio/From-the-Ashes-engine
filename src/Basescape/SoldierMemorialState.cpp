@@ -25,14 +25,12 @@
 #include "../Interface/TextButton.h"
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
-#include "../Interface/TextEdit.h"
 #include "../Interface/TextList.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/Soldier.h"
 #include "../Savegame/SoldierDeath.h"
 #include "../Savegame/GameTime.h"
-#include "SoldierInfoState.h"
 #include "SoldierInfoStateFtA.h"
 #include "../Menu/StatisticsState.h"
 
@@ -47,7 +45,6 @@ SoldierMemorialState::SoldierMemorialState()
 {
 	// Create objects
 	_window = new Window(this, 320, 200, 0, 0);
-	_btnQuickSearch = new TextEdit(this, 48, 9, 16, 10);
 	_btnOk = new TextButton(148, 16, 164, 176);
 	_btnStatistics = new TextButton(148, 16, 8, 176);
 	_txtTitle = new Text(310, 17, 5, 8);
@@ -62,7 +59,6 @@ SoldierMemorialState::SoldierMemorialState()
 	setInterface("soldierMemorial");
 
 	add(_window, "window", "soldierMemorial");
-	add(_btnQuickSearch, "button", "soldierMemorial");
 	add(_btnOk, "button", "soldierMemorial");
 	add(_btnStatistics, "button", "soldierMemorial");
 	add(_txtTitle, "text", "soldierMemorial");
@@ -112,11 +108,6 @@ SoldierMemorialState::SoldierMemorialState()
 	_lstSoldiers->setMargin(8);
 	_lstSoldiers->onMouseClick((ActionHandler)&SoldierMemorialState::lstSoldiersClick);
 
-	_btnQuickSearch->setText(""); // redraw
-	_btnQuickSearch->onEnter((ActionHandler)&SoldierMemorialState::btnQuickSearchApply);
-	_btnQuickSearch->setVisible(Options::oxceQuickSearchButton);
-
-	_btnOk->onKeyboardRelease((ActionHandler)&SoldierMemorialState::btnQuickSearchToggle, Options::keyToggleQuickSearch);
 }
 
 /**
@@ -148,34 +139,6 @@ void SoldierMemorialState::btnOkClick(Action *)
 }
 
 /**
- * Quick search toggle.
- * @param action Pointer to an action.
- */
-void SoldierMemorialState::btnQuickSearchToggle(Action *action)
-{
-	if (_btnQuickSearch->getVisible())
-	{
-		_btnQuickSearch->setText("");
-		_btnQuickSearch->setVisible(false);
-		btnQuickSearchApply(action);
-	}
-	else
-	{
-		_btnQuickSearch->setVisible(true);
-		_btnQuickSearch->setFocus(true);
-	}
-}
-
-/**
- * Quick search.
- * @param action Pointer to an action.
- */
-void SoldierMemorialState::btnQuickSearchApply(Action *)
-{
-	fillMemorialList();
-}
-
-/**
 * Shows the Statistics screen.
 * @param action Pointer to an action.
 */
@@ -190,24 +153,14 @@ void SoldierMemorialState::btnStatisticsClick(Action *)
  */
 void SoldierMemorialState::lstSoldiersClick(Action *)
 {
-	if (_game->getMod()->isFTAGame())
-	{
-		_game->pushState(new SoldierInfoStateFtA(0, _indices[_lstSoldiers->getSelectedRow()]));
-	}
-	else
-	{
-		_game->pushState(new SoldierInfoState(0, _indices[_lstSoldiers->getSelectedRow()]));
-	}
+	_game->pushState(new SoldierInfoStateFtA(0, _indices[_lstSoldiers->getSelectedRow()]));
 }
 
 /**
- * Fills the list with filtered memorial entries.
+ * Fills the list with memorial entries.
  */
 void SoldierMemorialState::fillMemorialList()
 {
-	std::string searchString = _btnQuickSearch->getText();
-	Unicode::upperCase(searchString);
-
 	_lstSoldiers->clearList();
 	_indices.clear();
 
@@ -217,24 +170,13 @@ void SoldierMemorialState::fillMemorialList()
 		++index;
 		const Soldier* deadSoldier = (*i);
 
-		// quick search
-		if (!searchString.empty())
-		{
-			std::string soldierName = deadSoldier->getName();
-			Unicode::upperCase(soldierName);
-			if (soldierName.find(searchString) == std::string::npos)
-			{
-				continue;
-			}
-		}
-
 		const SoldierDeath *death = deadSoldier->getDeath();
 
 		std::ostringstream saveDay, saveMonth, saveYear;
 		saveDay << death->getTime()->getDayString(_game->getLanguage());
 		saveMonth << tr(death->getTime()->getMonthString());
 		saveYear << death->getTime()->getYear();
-		_lstSoldiers->addRow(5, deadSoldier->getName().c_str(), tr(deadSoldier->getRankString(_game->getMod()->isFTAGame())).c_str(), saveDay.str().c_str(), saveMonth.str().c_str(), saveYear.str().c_str());
+		_lstSoldiers->addRow(5, deadSoldier->getName().c_str(), tr(deadSoldier->getRankString()).c_str(), saveDay.str().c_str(), saveMonth.str().c_str(), saveYear.str().c_str());
 		_indices.push_back(index);
 	}
 }

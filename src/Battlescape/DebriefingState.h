@@ -21,7 +21,9 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 #include "../Savegame/SavedGame.h"
+#include "../Savegame/Promotion.h"
 
 namespace OpenXcom
 {
@@ -37,7 +39,6 @@ class Craft;
 class Base;
 class CovertOperation;
 class Region;
-class Country;
 class RuleItem;
 class RuleEvent;
 class BattleUnit;
@@ -67,7 +68,6 @@ private:
 
 	RuleEvent *_eventToSpawn;
 	Region *_region;
-	Country *_country;
 	Base *_base{};
 	AlienDeployment *_ruleDeploy;
 	std::vector<DebriefingStat*> _stats;
@@ -87,10 +87,11 @@ private:
 	/// 0 = score, 1 = stat improvement, 2 = recovered items
 	int _pageNumber;
 	std::map<int, RecoveryItem*> _recoveryStats;
-	bool _positiveScore, _destroyBase, _promotions{}, _showSellButton, _initDone, _fta, _hasNonCombatStats{};
+	bool _positiveScore, _destroyBase, _showSellButton, _initDone, _hasNonCombatStats{};
+	PromotionBatch _promotions;
 	std::map<int, int>  _containmentStateInfo;
+	std::set<const BattleUnit*> _recoveredCaptiveUnits;
 	int _totalEvacObjs{}, _savedEvacObjs{}, _recoveredItemObjs;
-	int _limitsEnforced;
 	MissionStatistics *_missionStatistics;
 	std::vector<Soldier*> _soldiersCommended, _deadSoldiersCommended;
 	/// Adds to the debriefing stats.
@@ -104,10 +105,10 @@ private:
 	void recoverItems(std::vector<BattleItem*> *from, Base *base, Craft* craft);
 	/// Recovers a civilian from the battlescape.
 	void recoverCivilian(BattleUnit *from, Base *base, Craft* craft);
-	/// Recovers an alien from the battlescape.
-	void recoverAlien(BattleUnit *from, Base *base, Craft* craft);
 	/// FTA method to recover prisners instead of items.
 	void recoverPrisoner(BattleUnit* from, Base* base);
+	void recoverContainedAlien(BattleUnit* from, Base* base);
+	void recoverContainedMonster(BattleUnit* from, Base* base);
 	/// Reequips a craft after a mission.
 	void reequipCraft(Base *base, Craft *craft, bool vehicleItemsCanBeDestroyed);
 	/// Sets the visibility according to the _pageNumber

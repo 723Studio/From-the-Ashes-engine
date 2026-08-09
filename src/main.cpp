@@ -120,7 +120,7 @@ int main(int argc, char *argv[])
 	if (!Options::init())
 		return EXIT_SUCCESS;
 	std::ostringstream title;
-	title << "OpenXcom " << OPENXCOM_FTA_VERSION_SHORT << OPENXCOM_FTA_VERSION_GIT;
+	title << FTA_PRODUCT_WINDOW_TITLE;
 	Options::baseXResolution = Options::displayWidth;
 	Options::baseYResolution = Options::displayHeight;
 
@@ -153,7 +153,7 @@ namespace OpenXcom
 }
 
 #ifdef __MORPHOS__
-const char Version[] = "$VER: OpenXCom " OPENXCOM_FTA_VERSION_SHORT " (" __AMIGADATE__  ")";
+const char Version[] = "$VER: " FTA_PRODUCT_NAME " " FTA_PRODUCT_VERSION_SHORT " (" __AMIGADATE__  ")";
 #endif
 
 

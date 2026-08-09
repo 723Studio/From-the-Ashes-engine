@@ -36,13 +36,39 @@
 namespace OpenXcom
 {
 
+namespace
+{
+
+std::vector<std::string> getNextManufactures(
+	const std::unordered_map<std::string, std::vector<std::string>>& dependencies,
+	const std::unordered_map<std::string, std::vector<std::string>>& outputs,
+	const std::string& manufacture)
+{
+	std::vector<std::string> result;
+	const auto outputSet = outputs.find(manufacture);
+	if (outputSet == outputs.end())
+	{
+		return result;
+	}
+	for (const auto& output : outputSet->second)
+	{
+		const auto dependents = dependencies.find(output);
+		if (dependents != dependencies.end())
+		{
+			result.insert(result.end(), dependents->second.begin(), dependents->second.end());
+		}
+	}
+	return result;
+}
+
+}
+
 /**
  * Initializes all the elements on the UI.
  */
 ManufactureDependenciesTreeState::ManufactureDependenciesTreeState(const std::string &selectedItem) : _selectedItem(selectedItem), _showAll(false)
 {
 	_screen = false;
-	_ftaGame = _game->getMod()->isFTAGame();
 
 	_window = new Window(this, 222, 144, 49, 32);
 	_txtTitle = new Text(182, 9, 53, 42);
@@ -88,12 +114,9 @@ ManufactureDependenciesTreeState::ManufactureDependenciesTreeState(const std::st
 		_lstTopics->setVisible(false);
 		return;
 	}
-	if (_ftaGame)
-	{
-		_btnShowAll->setVisible(false);
-		_btnOk->setWidth(_btnOk->getX() - _btnShowAll->getX() + _btnOk->getWidth());
-		_btnOk->setX(_btnShowAll->getX());
-	}
+	_btnShowAll->setVisible(false);
+	_btnOk->setWidth(_btnOk->getX() - _btnShowAll->getX() + _btnOk->getWidth());
+	_btnOk->setX(_btnShowAll->getX());
 }
 
 ManufactureDependenciesTreeState::~ManufactureDependenciesTreeState()
@@ -107,11 +130,7 @@ void ManufactureDependenciesTreeState::init()
 {
 	State::init();
 
-	if (!Options::oxceDisableProductionDependencyTree && !_ftaGame)
-	{
-		initList();
-	}
-	else if (_ftaGame)
+	if (!Options::oxceDisableProductionDependencyTree)
 	{
 		initFtAList();
 	}
@@ -148,6 +167,7 @@ void ManufactureDependenciesTreeState::initList()
 
 	// dependency map (item -> vector of items that needs this item)
 	std::unordered_map< std::string, std::vector<std::string> > deps;
+	std::unordered_map<std::string, std::vector<std::string> > outputs;
 
 	for (auto& manufName : _game->getMod()->getManufactureList())
 	{
@@ -155,6 +175,10 @@ void ManufactureDependenciesTreeState::initList()
 		for (auto& pair : rule->getRequiredItems())
 		{
 			deps[pair.first->getType()].push_back(manufName);
+		}
+		for (auto& pair : rule->getProducedItems())
+		{
+			outputs[manufName].push_back(pair.first->getType());
 		}
 	}
 
@@ -226,7 +250,7 @@ void ManufactureDependenciesTreeState::initList()
 		}
 		++row;
 
-		for (const auto& goDeeper : deps[name])
+		for (const auto& goDeeper : getNextManufactures(deps, outputs, name))
 		{
 			if (alreadyVisited.find(goDeeper) == alreadyVisited.end())
 			{
@@ -263,7 +287,7 @@ void ManufactureDependenciesTreeState::initList()
 		}
 		++row;
 
-		for (const auto& goDeeper : deps[name])
+		for (const auto& goDeeper : getNextManufactures(deps, outputs, name))
 		{
 			if (alreadyVisited.find(goDeeper) == alreadyVisited.end())
 			{
@@ -300,7 +324,7 @@ void ManufactureDependenciesTreeState::initList()
 		}
 		++row;
 
-		for (const auto& goDeeper : deps[name])
+		for (const auto& goDeeper : getNextManufactures(deps, outputs, name))
 		{
 			if (alreadyVisited.find(goDeeper) == alreadyVisited.end())
 			{
@@ -337,7 +361,7 @@ void ManufactureDependenciesTreeState::initList()
 		}
 		++row;
 
-		for (const auto& goDeeper : deps[name])
+		for (const auto& goDeeper : getNextManufactures(deps, outputs, name))
 		{
 			if (alreadyVisited.find(goDeeper) == alreadyVisited.end())
 			{
@@ -368,6 +392,7 @@ void ManufactureDependenciesTreeState::initFtAList()
 
 	// dependency map (item -> vector of items that needs this item)
 	std::unordered_map<std::string, std::vector<std::string> > deps;
+	std::unordered_map<std::string, std::vector<std::string> > outputs;
 
 	const std::vector<std::string> &manufactureItems = _game->getMod()->getManufactureList();
 	for (std::vector<std::string>::const_iterator i = manufactureItems.begin(); i != manufactureItems.end(); ++i)
@@ -378,6 +403,10 @@ void ManufactureDependenciesTreeState::initFtAList()
 			for (auto &j : rule->getRequiredItems())
 			{
 				deps[j.first->getType()].push_back((*i));
+			}
+			for (auto &j : rule->getProducedItems())
+			{
+				outputs[(*i)].push_back(j.first->getType());
 			}
 		}
 	}
@@ -439,7 +468,7 @@ void ManufactureDependenciesTreeState::initFtAList()
 		_lstTopics->addRow(1, tr((*i)).c_str());
 		++row;
 
-		const std::vector<std::string> goDeeper = deps[(*i)];
+		const std::vector<std::string> goDeeper = getNextManufactures(deps, outputs, *i);
 		for (std::vector<std::string>::const_iterator j = goDeeper.begin(); j != goDeeper.end(); ++j)
 		{
 			if (alreadyVisited.find((*j)) == alreadyVisited.end())
@@ -470,7 +499,7 @@ void ManufactureDependenciesTreeState::initFtAList()
 		_lstTopics->addRow(1, tr((*i)).c_str());
 		++row;
 
-		const std::vector<std::string> goDeeper = deps[(*i)];
+		const std::vector<std::string> goDeeper = getNextManufactures(deps, outputs, *i);
 		for (std::vector<std::string>::const_iterator j = goDeeper.begin(); j != goDeeper.end(); ++j)
 		{
 			if (alreadyVisited.find((*j)) == alreadyVisited.end())
@@ -501,7 +530,7 @@ void ManufactureDependenciesTreeState::initFtAList()
 		_lstTopics->addRow(1, tr((*i)).c_str());
 		++row;
 
-		const std::vector<std::string> goDeeper = deps[(*i)];
+		const std::vector<std::string> goDeeper = getNextManufactures(deps, outputs, *i);
 		for (std::vector<std::string>::const_iterator j = goDeeper.begin(); j != goDeeper.end(); ++j)
 		{
 			if (alreadyVisited.find((*j)) == alreadyVisited.end())
@@ -532,7 +561,7 @@ void ManufactureDependenciesTreeState::initFtAList()
 		_lstTopics->addRow(1, tr((*i)).c_str());
 		++row;
 
-		const std::vector<std::string> goDeeper = deps[(*i)];
+		const std::vector<std::string> goDeeper = getNextManufactures(deps, outputs, *i);
 		for (std::vector<std::string>::const_iterator j = goDeeper.begin(); j != goDeeper.end(); ++j)
 		{
 			if (alreadyVisited.find((*j)) == alreadyVisited.end())

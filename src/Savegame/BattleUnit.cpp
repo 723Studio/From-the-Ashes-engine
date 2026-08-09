@@ -74,44 +74,38 @@ BattleUnit::BattleUnit(const Mod *mod, Soldier *soldier, int depth, const RuleSt
 	_statistics(), _murdererId(0), _mindControllerID(0), _fatalShotSide(SIDE_FRONT), _fatalShotBodyPart(BODYPART_HEAD), _armor(0),
 	_geoscapeSoldier(soldier), _roles(0), _unitRules(0), _rankInt(0), _turretType(-1), _hidingForTurn(false), _floorAbove(false), _respawn(false), _alreadyRespawned(false),
 	_isLeeroyJenkins(false), _summonedPlayerUnit(false), _resummonedFakeCivilian(false), _pickUpWeaponsMoreActively(false), _disableIndicators(false),
-	_capturable(true), _vip(false), _bannedInNextStage(false), _skillMenuCheck(false)
+	_capturable(true), _bannedInNextStage(false), _skillMenuCheck(false)
 {
 	_name = soldier->getName(true);
 	_id = soldier->getId();
 
 	_type = "SOLDIER";
-	_rank = soldier->getRankString(mod->isFTAGame());
+	_rank = soldier->getRankString();
+	for (const auto* role : soldier->getRoles())
+	{
+		if (role && role->rank > 0)
+		{
+			_roles.push_back(role->role);
+		}
+	}
 	_intelligence = 2;
 	_aggression = 1;
 	_faceDirection = -1;
 	_floorAbove = false;
 	_breathing = false;
 
+	// Only military training grants battlescape command authority. A high rank
+	// in a support, pilot or agent role must not create a leadership aura.
+	const int soldierRank = soldier->getRoleRank(ROLE_SOLDIER);
 	int rankbonus = 0;
-
-	switch (soldier->getRank())
-	{
-	case RANK_SERGEANT:  rankbonus =  1; break;
-	case RANK_CAPTAIN:   rankbonus =  3; break;
-	case RANK_COLONEL:   rankbonus =  6; break;
-	case RANK_COMMANDER: rankbonus = 10; break;
-	default:             rankbonus =  0; break;
-	}
-
-	int roleRank = soldier->getBestRoleRank().second;
-	if (roleRank > 0)
-	{
-		if (roleRank >= 5)
-			rankbonus = 10;
-		else if (roleRank == 4)
-			rankbonus = 6;
-		else if (roleRank == 3)
-			rankbonus = 3;
-		else if (roleRank == 2)
-			rankbonus = 1;
-		else
-			rankbonus = 0;
-	}
+	if (soldierRank >= 5)
+		rankbonus = 10;
+	else if (soldierRank == 4)
+		rankbonus = 6;
+	else if (soldierRank == 3)
+		rankbonus = 3;
+	else if (soldierRank == 2)
+		rankbonus = 1;
 
 	_value = soldier->getRules()->getValue() + soldier->getMissions() + rankbonus;
 
@@ -128,7 +122,7 @@ BattleUnit::BattleUnit(const Mod *mod, Soldier *soldier, int depth, const RuleSt
 
 	_statistics = new BattleUnitStatistics();
 
-	deriveSoldierRank();
+	deriveTacticalRankFromSoldierRole();
 
 	updateArmorFromSoldier(mod, soldier, soldier->getArmor(), depth, false, sc);
 
@@ -440,7 +434,7 @@ BattleUnit::BattleUnit(const Mod *mod, Unit *unit, UnitFaction faction, int id, 
 	_fatalShotBodyPart(BODYPART_HEAD), _armor(armor), _geoscapeSoldier(0), _roles(0), _unitRules(unit),
 	_rankInt(0), _turretType(-1), _hidingForTurn(false), _respawn(false), _alreadyRespawned(false),
 	_isLeeroyJenkins(false), _summonedPlayerUnit(false), _resummonedFakeCivilian(false), _pickUpWeaponsMoreActively(false), _disableIndicators(false),
-	_vip(false), _bannedInNextStage(false), _skillMenuCheck(false)
+	_bannedInNextStage(false), _skillMenuCheck(false)
 {
 	if (enviro)
 	{
@@ -476,11 +470,6 @@ BattleUnit::BattleUnit(const Mod *mod, Unit *unit, UnitFaction faction, int id, 
 		else
 			_pickUpWeaponsMoreActively = mod->getAIPickUpWeaponsMoreActivelyCiv();
 	}
-	if (_unitRules && _unitRules->isVIP())
-	{
-		_vip = true;
-	}
-
 	_value = unit->getValue();
 
 
@@ -645,7 +634,10 @@ void BattleUnit::load(const YAML::YamlNodeReader& node, const Mod *mod, const Sc
 	reader.tryRead("expFiring", _exp.firing);
 	reader.tryRead("expThrowing", _exp.throwing);
 	reader.tryRead("expPsiSkill", _exp.psiSkill);
-	reader.tryRead("expPsiStrength", _exp.psiStrength); // #FINNIKTODO save hacking and sampling exp too!!!
+	reader.tryRead("expPsiStrength", _exp.psiStrength);
+	reader.tryRead("expHacking", _exp.hacking);
+	reader.tryRead("expBiology", _exp.biology);
+	reader.tryRead("expPhysics", _exp.physics);
 	reader.tryRead("expMana", _exp.mana);
 	reader.tryRead("expMelee", _exp.melee);
 	reader.tryRead("currStats", _stats);
@@ -653,6 +645,7 @@ void BattleUnit::load(const YAML::YamlNodeReader& node, const Mod *mod, const Sc
 	reader.tryRead("visible", _visible);
 	reader.tryRead("wasFriendlyFired", _wasFriendlyFired);
 	reader.tryRead("undercover", _undercover);
+	reader.tryRead("revealed", _revealed);
 
 	reader.tryReadAs<int>("turnsSinceSpotted", _turnsSinceSpotted[FACTION_HOSTILE]);
 	reader.tryReadAs<int>("turnsLeftSpottedForSnipers", _turnsLeftSpottedForSnipers[FACTION_HOSTILE]);
@@ -681,7 +674,12 @@ void BattleUnit::load(const YAML::YamlNodeReader& node, const Mod *mod, const Sc
 	}
 	reader.tryRead("motionPoints", _motionPoints);
 	reader.tryRead("specialObjective", _specialObjective);
-	reader.tryRead("roles", _roles);
+	if (reader["roles"])
+	{
+		std::vector<int> roles;
+		reader.tryRead("roles", roles);
+		loadRoles(roles);
+	}
 	reader.tryRead("customMarker", _customMarker);
 	reader.tryRead("alreadyRespawned", _alreadyRespawned);
 	reader.tryRead("activeHand", _activeHand);
@@ -715,7 +713,6 @@ void BattleUnit::load(const YAML::YamlNodeReader& node, const Mod *mod, const Sc
 		_moveCostBaseClimb.load(moveCost["baseClimbPercent"]);
 		_moveCostBaseNormal.load(moveCost["baseNormalPercent"]);
 	}
-	reader.tryRead("vip", _vip);
 	reader.tryRead("bannedInNextStage", _bannedInNextStage);
 	reader.tryRead("meleeAttackedBy", _meleeAttackedBy);
 	_scriptValues.load(reader, shared);
@@ -777,6 +774,9 @@ void BattleUnit::save(YAML::YamlNodeWriter writer, const ScriptGlobal *shared) c
 	writer.write("expThrowing", _exp.throwing);
 	writer.write("expPsiSkill", _exp.psiSkill);
 	writer.write("expPsiStrength", _exp.psiStrength);
+	writer.write("expHacking", _exp.hacking);
+	writer.write("expBiology", _exp.biology);
+	writer.write("expPhysics", _exp.physics);
 	writer.write("expMana", _exp.mana);
 	writer.write("expMelee", _exp.melee);
 	writer.write("currStats", _stats);
@@ -788,6 +788,8 @@ void BattleUnit::save(YAML::YamlNodeWriter writer, const ScriptGlobal *shared) c
 		writer.write("wasFriendlyFired", _wasFriendlyFired);
 	if (_undercover)
 		writer.write("undercover", _undercover);
+	if (_revealed)
+		writer.write("revealed", _revealed);
 	writer.writeAs<int>("turnsSinceSpotted", _turnsSinceSpotted[FACTION_HOSTILE]);
 	writer.writeAs<int>("turnsLeftSpottedForSnipers", _turnsLeftSpottedForSnipers[FACTION_HOSTILE]);
 	writer.tryWriteAs<int>("turnsSinceSpottedByXcom", _turnsSinceSpotted[FACTION_PLAYER], 255);
@@ -889,8 +891,6 @@ void BattleUnit::save(YAML::YamlNodeWriter writer, const ScriptGlobal *shared) c
 		if (_moveCostBaseNormal != _armor->getMoveCostBaseNormal())
 			_moveCostBaseNormal.save(moveCostWriter, "baseNormalPercent");
 	}
-	if (_vip)
-		writer.write("vip", _vip);
 	if (_bannedInNextStage)
 		writer.write("bannedInNextStage", _bannedInNextStage);
 	if (!_meleeAttackedBy.empty())
@@ -1274,23 +1274,9 @@ int BattleUnit::getDiagonalWalkingPhase() const
  * Gets if the unit can be uncovered.
  * @return if unit is not undercovered anymore for checking unit.
  */
-bool BattleUnit::tryUncover()
+bool BattleUnit::tryUncover() const
 {
-	if (!_undercover)
-	{
-		return true;
-	}
-	else
-	{
-		if (getRightHandWeapon() == nullptr && getLeftHandWeapon() == nullptr)
-		{
-			return _revealed;
-		}
-		else
-		{
-			return true;
-		}
-	}
+	return !_undercover || _revealed || getRightHandWeapon() != nullptr || getLeftHandWeapon() != nullptr;
 }
 
 /**
@@ -1654,12 +1640,12 @@ int BattleUnit::damage(Position relative, int damage, const RuleDamageType *type
 	if (attack.attacker != nullptr)
 	{
 		if ((attack.attacker->getFaction() == FACTION_PLAYER && this->getFaction() == FACTION_PLAYER)
-			&& (attack.type == BA_AUTOSHOT || attack.type == BA_SNAPSHOT || attack.type == BA_AIMEDSHOT || attack.type == BA_HIT) 
-			&& save->getGeoscapeSave()->isFtAGame())
+			&& (attack.type == BA_AUTOSHOT || attack.type == BA_SNAPSHOT || attack.type == BA_AIMEDSHOT || attack.type == BA_HIT))
 		{
-			int baseChange = -5;
-			this->moraleChange(baseChange - (2 * save->getGeoscapeSave()->getDifficultyCoefficient()) - RNG::generate(0, 5));
-			attack.attacker->moraleChange(baseChange + (2 * save->getGeoscapeSave()->getDifficultyCoefficient()) + RNG::generate(0, 5));
+			const int baseChange = -5;
+			const int difficultyPenalty = 2 * save->getGeoscapeSave()->getDifficultyCoefficient();
+			this->moraleChange(baseChange - difficultyPenalty - RNG::generate(0, 5));
+			attack.attacker->moraleChange(baseChange - difficultyPenalty - RNG::generate(0, 5));
 
 			this->setFrienlyFired(true);
 		}
@@ -1970,7 +1956,7 @@ int BattleUnit::damage(Position relative, int damage, const RuleDamageType *type
 			std::get<arg_attackerTurnsSinceSpotted>(args.data) = attack.attacker->getTurnsSinceSpottedByFaction(getFaction());
 			std::get<arg_attackerTurnsLeftSpottedForSnipers>(args.data) = attack.attacker->getTurnsLeftSpottedForSnipersByFaction(getFaction());
 
-			if (getFaction() != attack.attacker->getFaction() &&
+			if ((getFaction() != attack.attacker->getFaction() || hasTreatedByAIHostility(attack.attacker)) &&
 				(attack.type == BA_AIMEDSHOT || attack.type == BA_SNAPSHOT || attack.type == BA_AUTOSHOT) &&
 				attack.damage_item != nullptr &&
 				(relative == Position(0,0,0) || (attack.damage_item->getRules()->getExplosionRadius(attack) == 0)))
@@ -2477,9 +2463,9 @@ bool BattleUnit::removeFromVisibleUnits(BattleUnit *unit)
 */
 bool BattleUnit::hasVisibleUnit(const BattleUnit *unit) const
 {
-	if (getFaction() == unit->getFaction())
+	if (getFaction() == unit->getFaction() && !hasTreatedByAIHostility(unit))
 	{
-		//Units of same faction are always visible, but not stored in the visible unit list
+		// Units of the same faction are always visible unless treatedByAI makes them enemies.
 		return true;
 	}
 	return std::find(_visibleUnits.begin(), _visibleUnits.end(), unit) != _visibleUnits.end();
@@ -2820,15 +2806,19 @@ void BattleUnit::prepareStun(int stun)
 
 /**
  * Helper function preparing Morale recovery at beginning of turn.
- * @param morale Morale grain this turn.
+ * @param morale Morale gain this turn.
+ * @param loyaltyPerformance Loyalty performance percentage used by the panic check.
  */
-void BattleUnit::prepareMorale(int morale)
+void BattleUnit::prepareMorale(int morale, int loyaltyPerformance)
 {
 	if (!isOut())
 	{
 		moraleChange(morale);
-		int chance = 100 - (2 * getMorale());
-		if (RNG::percent(chance))
+		const int currentMorale = getMorale();
+		// Loyalty fades with morale so reaching zero still guarantees panic.
+		const int loyaltyPanicModifier = (loyaltyPerformance - 100) * std::min(currentMorale, 50) / 50;
+		const int panicChance = 100 - (2 * currentMorale) - loyaltyPanicModifier;
+		if (RNG::percent(panicChance))
 		{
 			int berserkChance = _unitRules ? _unitRules->getBerserkChance() : -1; // -1 represents true 1/3 (33.33333...%)
 			bool berserk = false;
@@ -2847,7 +2837,7 @@ void BattleUnit::prepareMorale(int morale)
 		{
 			// successfully avoided panic
 			// increase bravery experience counter
-			if (chance > 1)
+			if (panicChance > 1)
 				addBraveryExp();
 		}
 	}
@@ -2861,7 +2851,7 @@ void BattleUnit::prepareMorale(int morale)
 /**
  * Prepare for a new turn.
  */
-void BattleUnit::prepareNewTurn(bool fullProcess)
+void BattleUnit::prepareNewTurn(bool fullProcess, int loyaltyPerformance)
 {
 	if (isIgnored())
 	{
@@ -2910,15 +2900,16 @@ void BattleUnit::prepareNewTurn(bool fullProcess)
 		return;
 	}
 
-	updateUnitStats(false, true);
+	updateUnitStats(false, true, loyaltyPerformance);
 }
 
 /**
  * Update stats of unit.
  * @param tuAndEnergy
  * @param rest
+ * @param loyaltyPerformance Loyalty performance percentage for panic chance.
  */
-void BattleUnit::updateUnitStats(bool tuAndEnergy, bool rest)
+void BattleUnit::updateUnitStats(bool tuAndEnergy, bool rest, int loyaltyPerformance)
 {
 	// snapshot of current stats
 	int TURecovery = 0;
@@ -2962,7 +2953,7 @@ void BattleUnit::updateUnitStats(bool tuAndEnergy, bool rest)
 		// update stats
 		prepareHealth(_armor->getHealthRecovery(this, HPRecovery));
 		prepareMana(_armor->getManaRecovery(this, MNRecovery));
-		prepareMorale(_armor->getMoraleRecovery(this, MRRecovery));
+		prepareMorale(_armor->getMoraleRecovery(this, MRRecovery), loyaltyPerformance);
 		prepareStun(_armor->getStunRegeneration(this, STRecovery));
 	}
 
@@ -3110,11 +3101,24 @@ void BattleUnit::loadRoles(const std::vector<int>& r)
 	_roles.clear();
 	for (auto i : r)
 	{
-		SoldierRole role = static_cast<SoldierRole>(i);
-		if (_roles.empty() || std::find(_roles.begin(), _roles.end(), role) == _roles.end())
+		if (i < ROLE_NONE || i > ROLE_ENGINEER)
 		{
-			_roles.push_back(role);
+			throw Exception("Battle unit '" + _type + "' contains an invalid role value.");
 		}
+		SoldierRole role = static_cast<SoldierRole>(i);
+		if (std::find(_roles.begin(), _roles.end(), role) != _roles.end())
+		{
+			throw Exception("Battle unit '" + _type + "' contains a duplicate role.");
+		}
+		_roles.push_back(role);
+	}
+	if (_roles.size() > 1 && std::find(_roles.begin(), _roles.end(), ROLE_NONE) != _roles.end())
+	{
+		throw Exception("Battle unit '" + _type + "' cannot combine ROLE_NONE with a real role.");
+	}
+	if (_roles.size() > 1 && std::find(_roles.begin(), _roles.end(), ROLE_ROBOT) != _roles.end())
+	{
+		throw Exception("Battle unit '" + _type + "' cannot combine a non-sapient ROLE_ROBOT with another role.");
 	}
 }
 
@@ -3167,15 +3171,15 @@ bool BattleUnit::fitItemToInventory(const RuleInventory *slot, BattleItem *item)
 }
 
 /**
- * Adds an item to an XCom soldier (auto-equip).
+ * Adds an item to a unit during loadout generation.
  * @param item Pointer to the Item.
  * @param mod Pointer to the Mod.
  * @param allowSecondClip allow the unit to take a second clip or not. (only applies to xcom soldiers, aliens are allowed regardless of this flag)
- * @param allowAutoLoadout allow auto equip of weapons for solders.
+ * @param allowPlayerEquipment allow automatic placement on player soldiers.
  * @param allowUnloadedWeapons allow equip of weapons without ammo.
  * @return if the item was placed or not.
  */
-bool BattleUnit::addItem(BattleItem *item, const Mod *mod, bool allowSecondClip, bool allowAutoLoadout, bool allowUnloadedWeapons)
+bool BattleUnit::addItem(BattleItem *item, const Mod *mod, bool allowSecondClip, bool allowPlayerEquipment, bool allowUnloadedWeapons)
 {
 	RuleInventory *rightHand = mod->getInventoryRightHand();
 	RuleInventory *leftHand = mod->getInventoryLeftHand();
@@ -3200,7 +3204,7 @@ bool BattleUnit::addItem(BattleItem *item, const Mod *mod, bool allowSecondClip,
 			{
 				if (rule->getType() == bi->getRules()->getType())
 				{
-					if (mod->isFTAGame() && rule->getStackSize() > 1) // FtA logic
+					if (rule->getStackSize() > 1)
 					{
 						++tally;
 						if (allowSecondClip && rule->getBattleType() == BT_AMMO)
@@ -3211,15 +3215,6 @@ bool BattleUnit::addItem(BattleItem *item, const Mod *mod, bool allowSecondClip,
 							}
 						}
 						else if(tally == rule->getStackSize())
-						{
-							return false;
-						}
-					}
-					else // standard logic
-					if (allowSecondClip && rule->getBattleType() == BT_AMMO)
-					{
-						tally++;
-						if (tally == 2)
 						{
 							return false;
 						}
@@ -3277,7 +3272,7 @@ bool BattleUnit::addItem(BattleItem *item, const Mod *mod, bool allowSecondClip,
 
 	if (rule->isManaRequired() && getOriginalFaction() == FACTION_PLAYER)
 	{
-		// don't auto-equip items that require mana for now, maybe reconsider in the future
+		// don't automatically place items that require mana for now, maybe reconsider in the future
 		return false;
 	}
 
@@ -3291,7 +3286,7 @@ bool BattleUnit::addItem(BattleItem *item, const Mod *mod, bool allowSecondClip,
 			loaded = true;
 		}
 
-		if (loaded && (getGeoscapeSoldier() == 0 || allowAutoLoadout))
+		if (loaded && (getGeoscapeSoldier() == 0 || allowPlayerEquipment))
 		{
 			if (getBaseStats()->strength * 0.66 >= weight) // weight is always considered 0 for aliens
 			{
@@ -3306,7 +3301,7 @@ bool BattleUnit::addItem(BattleItem *item, const Mod *mod, bool allowSecondClip,
 					placed = true;
 				}
 				// if we have a stackable weapon i.e. throwing knife in one of the hands, put spare items in the inventory
-				if (!placed && mod->isFTAGame()
+				if (!placed
 					&& item->getRules()->getStackSize() > 1
 					&&((getRightHandWeapon() && getRightHandWeapon()->getRules()->getType() == item->getRules()->getType())
 						||(getLeftHandWeapon() && getLeftHandWeapon()->getRules()->getType() == item->getRules()->getType())
@@ -3377,7 +3372,7 @@ bool BattleUnit::addItem(BattleItem *item, const Mod *mod, bool allowSecondClip,
 				placed = true;
 			}
 		}
-		else if ((getGeoscapeSoldier() == 0 || allowAutoLoadout))
+		else if ((getGeoscapeSoldier() == 0 || allowPlayerEquipment))
 		{
 			if (getBaseStats()->strength >= weight) // weight is always considered 0 for aliens
 			{
@@ -4161,7 +4156,8 @@ int BattleUnit::getHeight() const
  */
 void BattleUnit::addBraveryExp()
 {
-	_exp.bravery++;
+	if (canGainExperience())
+		_exp.bravery++;
 }
 
 /**
@@ -4169,7 +4165,8 @@ void BattleUnit::addBraveryExp()
  */
 void BattleUnit::addReactionExp()
 {
-	_exp.reactions++;
+	if (canGainExperience())
+		_exp.reactions++;
 }
 
 /**
@@ -4177,7 +4174,8 @@ void BattleUnit::addReactionExp()
  */
 void BattleUnit::addFiringExp()
 {
-	_exp.firing++;
+	if (canGainExperience())
+		_exp.firing++;
 }
 
 /**
@@ -4185,7 +4183,8 @@ void BattleUnit::addFiringExp()
  */
 void BattleUnit::addThrowingExp()
 {
-	_exp.throwing++;
+	if (canGainExperience())
+		_exp.throwing++;
 }
 
 /**
@@ -4193,7 +4192,8 @@ void BattleUnit::addThrowingExp()
  */
 void BattleUnit::addPsiSkillExp()
 {
-	_exp.psiSkill++;
+	if (canGainExperience())
+		_exp.psiSkill++;
 }
 
 /**
@@ -4201,7 +4201,8 @@ void BattleUnit::addPsiSkillExp()
  */
 void BattleUnit::addPsiStrengthExp()
 {
-	_exp.psiStrength++;
+	if (canGainExperience())
+		_exp.psiStrength++;
 }
 
 /**
@@ -4209,7 +4210,7 @@ void BattleUnit::addPsiStrengthExp()
  */
 void BattleUnit::addManaExp(int weaponStat)
 {
-	if (weaponStat > 0)
+	if (canGainExperience() && weaponStat > 0)
 	{
 		_exp.mana += weaponStat / 100;
 		if (RNG::percent(weaponStat % 100))
@@ -4224,7 +4225,8 @@ void BattleUnit::addManaExp(int weaponStat)
  */
 void BattleUnit::addMeleeExp()
 {
-	_exp.melee++;
+	if (canGainExperience())
+		_exp.melee++;
 }
 
 /**
@@ -4232,7 +4234,8 @@ void BattleUnit::addMeleeExp()
  */
 void BattleUnit::addHackingExp()
 {
-	_exp.hacking++;
+	if (canGainExperience())
+		_exp.hacking++;
 }
 
 /**
@@ -4240,7 +4243,8 @@ void BattleUnit::addHackingExp()
  */
 void BattleUnit::addBiologyExp()
 {
-	_exp.biology++;
+	if (canGainExperience())
+		_exp.biology++;
 }
 
 /**
@@ -4248,15 +4252,23 @@ void BattleUnit::addBiologyExp()
  */
 void BattleUnit::addPhysicsExp()
 {
-	_exp.physics++;
+	if (canGainExperience())
+		_exp.physics++;
+}
+
+bool BattleUnit::canGainExperience() const
+{
+	// Until sapient robots have a dedicated design, their development is limited
+	// to hardware/software transformations and no tactical XP may be accumulated.
+	return !_geoscapeSoldier || _geoscapeSoldier->canGainExperience();
 }
 
 /**
  * Did the unit gain any experience yet?
  */
-bool BattleUnit::hasGainedAnyExperience()
+bool BattleUnit::hasGainedAnyExperience() const
 {
-	return !_exp.empty();
+	return canGainExperience() && !_exp.empty();
 }
 
 void BattleUnit::updateGeoscapeStats(Soldier *soldier) const
@@ -4302,14 +4314,10 @@ bool BattleUnit::postMissionProcedures(const Mod *mod, SavedGame *geoscape, Save
 	auto recovery = (int)RNG::generate((healthLossOriginal*0.5),(healthLossOriginal*1.5));
 
 	bool hasImproved = false;
-	if (hasGainedAnyExperience())
+	if (hasGainedAnyExperience() && s->canGainExperience())
 	{
 		hasImproved = true;
-		if (s->getRank() == RANK_ROOKIE && !mod->isFTAGame())
-		{
-			s->promoteRank();
-		}
-		else if (s->isRookieSoldier())
+		if (s->isRookieSoldier())
 		{
 			s->addExperience(ROLE_SOLDIER, RNG::generate(5, 10), "experience for completing first mission");
 			s->setRookieSoldier(false);
@@ -4357,7 +4365,7 @@ bool BattleUnit::postMissionProcedures(const Mod *mod, SavedGame *geoscape, Save
 				default: ;
 			}
 
-			int maxExp = (int)std::ceil(_kills * killExpMod / 100);
+			int maxExp = static_cast<int>(std::ceil(static_cast<double>(_kills) * killExpMod / 100.0));
 			s->addExperience(ROLE_SOLDIER, RNG::generate(0, maxExp), "experience from enemy kills");
 		}
 	}
@@ -4700,7 +4708,7 @@ int BattleUnit::getMoveSound() const
  */
 bool BattleUnit::isWoundable() const
 {
-	return !_armor->getBleedImmune(!(_type=="SOLDIER" || (Options::alienBleeding && _originalFaction != FACTION_PLAYER)));
+	return !_armor->getBleedImmune(!(_type=="SOLDIER" || _originalFaction != FACTION_PLAYER));
 }
 
 /**
@@ -5209,23 +5217,14 @@ int BattleUnit::getRankInt() const
 }
 
 /**
- * Derive the numeric unit rank from the string rank
- * (for soldier units).
+ * Derive the generic tactical rank used by battlescape modifiers from the
+ * personnel member's ROLE_SOLDIER rank; no separate geoscape rank is stored.
  */
-void BattleUnit::deriveSoldierRank()
+void BattleUnit::deriveTacticalRankFromSoldierRole()
 {
 	if (_geoscapeSoldier)
 	{
-		switch (_geoscapeSoldier->getRank())
-		{
-		case RANK_ROOKIE:    _rankInt = 0; break;
-		case RANK_SQUADDIE:  _rankInt = 1; break;
-		case RANK_SERGEANT:  _rankInt = 2; break;
-		case RANK_CAPTAIN:   _rankInt = 3; break;
-		case RANK_COLONEL:   _rankInt = 4; break;
-		case RANK_COMMANDER: _rankInt = 5; break;
-		default:             _rankInt = 0; break;
-		}
+		_rankInt = std::min(5, std::max(0, _geoscapeSoldier->getRoleRank(ROLE_SOLDIER) - 1));
 	}
 	_rankIntUnified = _rankInt;
 }
@@ -5988,6 +5987,23 @@ bool BattleUnit::isIgnoredByAI() const
 }
 
 /**
+ * Should this unit currently be treated as an enemy by AI units regardless of its faction?
+ * Mind control and other faction conversion temporarily suspend the rule-defined behavior.
+ */
+bool BattleUnit::isTreatedByAI() const
+{
+	return _unitRules && _unitRules->isTreatedByAI() && _faction == _originalFaction;
+}
+
+/**
+ * Does treatedByAI make this unit and the other unit hostile to each other?
+ */
+bool BattleUnit::hasTreatedByAIHostility(const BattleUnit *unit) const
+{
+	return unit && unit != this && (isTreatedByAI() || unit->isTreatedByAI());
+}
+
+/**
  * Is the unit afraid to pathfind through fire?
  * @return True if this unit has a penalty when pathfinding through fire.
  */
@@ -6025,7 +6041,7 @@ bool BattleUnit::canBeHacked() const
  */
 void BattleUnit::hackingPostProcess(bool result)
 {
-	if (getOriginalFaction() != FACTION_PLAYER || getOriginalFaction() != FACTION_NEUTRAL) // just in case
+	if (getOriginalFaction() != FACTION_PLAYER && getOriginalFaction() != FACTION_NEUTRAL) // just in case
 	{
 		_stats.hacking += ceil(_stats.hacking * RNG::generate(0.3, 0.7));
 		if (!result)

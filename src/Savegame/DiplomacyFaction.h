@@ -17,7 +17,9 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <cstdint>
 #include <string>
+#include <vector>
 #include "../Engine/Yaml.h"
 
 namespace OpenXcom
@@ -36,7 +38,6 @@ class RuleDiplomacyFaction;
 class Game;
 class SavedGame;
 class Mod;
-class MasterMind;
 class GeoscapeEvent;
 class RuleEvent;
 class RuleMissionScript;
@@ -45,9 +46,24 @@ class RuleSoldier;
 class RuleCraft;
 class RuleItem;
 class ItemContainer;
-class FactionalResearch;
 class RuleDiplomacyFactionEvent;
 class SoldierPool;
+
+/**
+ * A completed month's graph values for a diplomacy faction.
+ */
+struct FactionHistoryEntry
+{
+	int reputation;
+	int power;
+	int vigilance;
+	int64_t funds;
+	bool known;
+
+	FactionHistoryEntry() : reputation(0), power(0), vigilance(0), funds(0), known(false) {}
+	FactionHistoryEntry(int reputation_, int power_, int vigilance_, int64_t funds_, bool known_) :
+		reputation(reputation_), power(power_), vigilance(vigilance_), funds(funds_), known(known_) {}
+};
 
 /**
  * Represents a custom Diplomacy Faction, spawned at the game start and waiting to be discovered.
@@ -61,15 +77,15 @@ private:
 	std::vector<std::string> _avoidRepeatVars;
 	int64_t _funds;
 	std::vector<int> _dailyRepScore;
+	std::vector<FactionHistoryEntry> _history;
 	bool _discovered, _thisMonthDiscovered, _repLvlChanged;
 	std::vector<std::string> _treaties;
 	std::string _reputationName;
 	std::vector<std::string> _commandsToProcess, _eventsToProcess;
 	std::vector<RuleMissionScript*> _availableMissionScripts;
-	std::vector<std::string> _unlockedResearches;
+	std::vector<const RuleResearch*> _unlockedResearches;
 	ItemContainer* _items;
 	SoldierPool* _staffPool;
-	std::vector<FactionalResearch*> _research;
 
 	/// Handle daily reputation change and immidiate reaction to it.
 	void processDailyReputation(Game& engine);
@@ -85,12 +101,8 @@ private:
 	void manageStaff(Game& engine);
 	/// Process Faction's power management and returns required funds for further use.
 	void managePower();
-	/// Handle researching.
-	void handleResearch(Game& engine);
 	/// Get if research article is unlocked by faction.
-	bool isResearched(const std::string& name) const;
 	bool isResearched(const RuleResearch* rule) const;
-	bool isResearched(const std::vector<std::string>& names) const;
 	bool isResearched(const std::vector<const RuleResearch*>& rules) const;
 
 public:
@@ -110,6 +122,8 @@ public:
 	void setReputationScore(int reputation) { _reputationScore = reputation; }
 	/// Updates reputation score based on incoming value and handle simple reaction to it.
 	void updateReputationScore(int change);
+	/// Updates reputation level based on current score, rules and discovery state.
+	bool updateReputationLvl(const Mod& mod, bool initial = false);
 	/// Gets corrent reputation level.
 	int getReputationLevel() const { return _reputationLvL;}
 	/// Gets corrent reputation level name.
@@ -118,10 +132,18 @@ public:
 	void setReputationLevel(int level) { _reputationLvL = level; }
 	/// Sets new reputation level of the faction.
 	void setReputationName(const std::string& reputationName) { _reputationName = reputationName; }
-	/// Adds research projet's name to a faction's list of unlocked researches.
-	void unlockResearch(const std::string& research) { _unlockedResearches.push_back(research); }
-	/// Removes research projet's name to a faction's list of unlocked researches.
-	void disableResearch(const std::string& research);
+	/// Gets the completed-month graph history.
+	const std::vector<FactionHistoryEntry>& getHistory() const { return _history; }
+	/// Gets the current graph values.
+	FactionHistoryEntry getCurrentHistoryEntry() const;
+	/// Stores the current values as a completed month.
+	void recordMonthlyHistory();
+	/// Adds an ordinary research rule to the faction's known technologies.
+	void unlockResearch(const RuleResearch* research);
+	/// Removes an ordinary research rule from the faction's known technologies.
+	void disableResearch(const RuleResearch* research);
+	/// Checks whether faction technology permits acquiring an item.
+	bool canAcquireItem(const RuleItem* item) const;
 	/// Gets the faction power value.
 	int getPower() const { return _power; }
 	/// Sets a new power value for the faction.

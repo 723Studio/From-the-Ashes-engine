@@ -23,6 +23,8 @@
 #include "LoadYaml.h"
 #include "Mod.h"
 #include "Armor.h"
+#include "RuleContainedAlien.h"
+#include "RuleContainedMonster.h"
 
 namespace OpenXcom
 {
@@ -32,12 +34,12 @@ namespace OpenXcom
  * @param type String defining the type.
  */
 Unit::Unit(const std::string &type) :
-	_type(type), _liveAlienName(Mod::STR_NULL), _showFullNameInAlienInventory(-1), _armor(nullptr), _standHeight(0), _kneelHeight(0), _floatHeight(0), _value(0),
+	_type(type), _showFullNameInAlienInventory(-1), _armor(nullptr), _standHeight(0), _kneelHeight(0), _floatHeight(0), _value(0),
 	_moraleLossWhenKilled(100), _moveSound(-1), _intelligence(0), _aggression(0),
 	_spotter(0), _sniper(0), _energyRecovery(30), _specab(SPECAB_NONE), _specialObjective(SPECOBJ_NONE), _livingWeapon(false),
 	_psiWeapon("ALIEN_PSI_WEAPON"), _capturable(true), _canSurrender(false), _autoSurrender(false),
 	_isLeeroyJenkins(false), _waitIfOutsideWeaponRange(false), _pickUpWeaponsMoreActively(-1), _avoidsFire(defBoolNullable),
-	_vip(false), _cosmetic(false), _ignoredByAI(false), _canPanic(true), _canBeMindControlled(true), _berserkChance(-1)
+	_cosmetic(false), _ignoredByAI(false), _treatedByAI(false), _canPanic(true), _canBeMindControlled(true), _berserkChance(-1)
 {
 }
 
@@ -67,7 +69,6 @@ void Unit::load(const YAML::YamlNodeReader& node, Mod *mod)
 
 	mod->loadNameNull(_type, _civilianRecoveryTypeName, reader["civilianRecoveryType"]);
 	mod->loadNameNull(_type, _spawnedPersonName, reader["spawnedPersonName"]);
-	mod->loadNameNull(_type, _liveAlienName, reader["liveAlien"]);
 	if (reader["spawnedSoldier"])
 	{
 		_spawnedSoldier = reader["spawnedSoldier"].emitDescendants(YAML::YamlRootNodeReader(_spawnedSoldier, "(spawned soldier template)"));
@@ -105,12 +106,13 @@ void Unit::load(const YAML::YamlNodeReader& node, Mod *mod)
 	reader.tryRead("meleeWeapon", _meleeWeapon);
 	reader.tryRead("psiWeapon", _psiWeapon);
 	reader.tryRead("capturable", _capturable);
-	reader.tryRead("altRecoveredUnit", _altRecoveredUnit);
 	reader.tryRead("specialObjective", _specialObjective); //FtA way to define special units
 	reader.tryRead("prisoner", _prisonerName);
-	reader.tryRead("vip", _vip); //OXCE variant
+	reader.tryRead("containedAlien", _containedAlienName);
+	reader.tryRead("containedMonster", _containedMonsterName);
 	reader.tryRead("cosmetic", _cosmetic);
 	reader.tryRead("ignoredByAI", _ignoredByAI);
+	reader.tryRead("treatedByAI", _treatedByAI);
 	reader.tryRead("canPanic", _canPanic);
 	reader.tryRead("canBeMindControlled", _canBeMindControlled);
 	reader.tryRead("berserkChance", _berserkChance);
@@ -154,30 +156,34 @@ void Unit::afterLoad(const Mod* mod)
 	mod->linkRule(_armor, _armorName);
 	mod->linkRule(_spawnUnit, _spawnUnitName);
 	mod->linkRule(_builtInWeapons, _builtInWeaponsNames);
-	mod->linkRule(_altUnit, _altRecoveredUnit);
 	mod->linkRule(_prisoner, _prisonerName);
-	if (_liveAlienName == Mod::STR_NULL)
+	mod->linkRule(_containedAlien, _containedAlienName);
+	mod->linkRule(_containedMonster, _containedMonsterName);
+	std::vector<std::string> captureProfiles;
+	if (_prisoner) captureProfiles.push_back("prisoner");
+	if (_containedAlien) captureProfiles.push_back("containedAlien");
+	if (_containedMonster) captureProfiles.push_back("containedMonster");
+	if (captureProfiles.size() > 1)
 	{
-		_liveAlien = mod->getItem(_type, false); // this is optional default behavior
-	}
-	else
-	{
-		mod->linkRule(_liveAlien, _liveAlienName);
+		std::string fields;
+		for (size_t i = 0; i < captureProfiles.size(); ++i)
+		{
+			if (i != 0) fields += ", ";
+			fields += "'" + captureProfiles[i] + "'";
+		}
+		throw Exception("Unit '" + _type + "' defines mutually exclusive capture profiles " + fields);
 	}
 
 	if (Mod::isEmptyRuleName(_civilianRecoveryTypeName) == false)
 	{
-		if (!isRecoverableAsEngineer() && !isRecoverableAsScientist())
+		_civilianRecoverySoldierType = mod->getSoldier(_civilianRecoveryTypeName, false);
+		if (_civilianRecoverySoldierType)
 		{
-			_civilianRecoverySoldierType = mod->getSoldier(_civilianRecoveryTypeName, false);
-			if (_civilianRecoverySoldierType)
-			{
-				_civilianRecoveryTypeName = "";
-			}
-			else
-			{
-				mod->linkRule(_civilianRecoveryItemType, _civilianRecoveryTypeName);
-			}
+			_civilianRecoveryTypeName = "";
+		}
+		else
+		{
+			mod->linkRule(_civilianRecoveryItemType, _civilianRecoveryTypeName);
 		}
 		assert(isRecoverableAsCivilian() && "Check missing some cases");
 	}
@@ -188,26 +194,11 @@ void Unit::afterLoad(const Mod* mod)
 		if (_capturable && _armor->getCorpseBattlescape().front()->isRecoverable() && _spawnUnit == nullptr)
 		{
 			mod->checkForSoftError(
-				_liveAlien == nullptr && !isRecoverableAsCivilian() && _altUnit == nullptr && _prisoner == nullptr,
+				!isRecoverableAsCivilian() && _prisoner == nullptr &&
+					_containedAlien == nullptr && _containedMonster == nullptr,
 				_type,
-				"This unit can be recovered (in theory), but there is no corresponding 'liveAlien:', 'civilianRecoveryType:', 'altUnit' or 'prisoner' property to recover.",
-				LOG_INFO
-			);
-		}
-		else
-		{
-			std::string s =
-				!_capturable ? "the unit is marked with 'capturable: false'" :
-				!_armor->getCorpseBattlescape().front()->isRecoverable() ? "the first 'corpseBattle' item of the unit's armor is marked with 'recover: false'" :
-				_spawnUnit != nullptr ? "the unit will be converted into another unit type on stun/kill/capture" :
-				"???";
-
-			mod->checkForSoftError(
-				_liveAlien
-				&& _liveAlien->getVehicleUnit() == nullptr
-				&& _spawnUnit == nullptr, // if unit is `_capturable` we can still get live species even if it can spawn unit
-				_type,
-				"This unit has a corresponding item to recover, but still isn't recoverable. Reason: (" + s + "). Consider marking the unit with 'liveAlien: \"\"'.",
+				"This unit can be recovered (in theory), but there is no corresponding "
+				"'civilianRecoveryType', 'prisoner', 'containedAlien' or 'containedMonster' profile.",
 				LOG_INFO
 			);
 		}
@@ -219,11 +210,24 @@ void Unit::loadRoles(const std::vector<int>& r)
 	_roles.clear();
 	for (auto i : r)
 	{
-		SoldierRole role = static_cast<SoldierRole>(i);
-		if (_roles.empty() || std::find(_roles.begin(), _roles.end(), role) == _roles.end())
+		if (i < ROLE_NONE || i > ROLE_ENGINEER)
 		{
-			_roles.push_back(role);
+			throw Exception("Unit '" + _type + "' contains an invalid role value.");
 		}
+		SoldierRole role = static_cast<SoldierRole>(i);
+		if (std::find(_roles.begin(), _roles.end(), role) != _roles.end())
+		{
+			throw Exception("Unit '" + _type + "' contains a duplicate role.");
+		}
+		_roles.push_back(role);
+	}
+	if (_roles.size() > 1 && std::find(_roles.begin(), _roles.end(), ROLE_NONE) != _roles.end())
+	{
+		throw Exception("Unit '" + _type + "' cannot combine ROLE_NONE with a real role.");
+	}
+	if (_roles.size() > 1 && std::find(_roles.begin(), _roles.end(), ROLE_ROBOT) != _roles.end())
+	{
+		throw Exception("Unit '" + _type + "' cannot combine a non-sapient ROLE_ROBOT with another role.");
 	}
 }
 

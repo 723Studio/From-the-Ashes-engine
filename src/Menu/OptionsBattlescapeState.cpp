@@ -50,20 +50,15 @@ OptionsBattlescapeState::OptionsBattlescapeState(OptionsOrigin origin) : Options
 	_txtFireSpeed = new Text(114, 9, 206, 40);
 	_slrFireSpeed = new Slider(104, 16, 206, 50);
 
-	_txtXcomSpeed = new Text(114, 9, 94, 72);
-	_slrXcomSpeed = new Slider(104, 16, 94, 82);
+	_txtPathPreview = new Text(114, 9, 94, 72);
+	_btnArrows = new ToggleTextButton(104, 16, 94, 82);
+	_btnTuCost = new ToggleTextButton(58, 16, 94, 100);
+	_btnEnergyCost = new ToggleTextButton(44, 16, 154, 100);
+	_btnTargetPreview = new ToggleTextButton(104, 16, 94, 118);
 
-	_txtAlienSpeed = new Text(114, 9, 206, 72);
-	_slrAlienSpeed = new Slider(104, 16, 206, 82);
-
-	_txtPathPreview = new Text(114, 9, 94, 100);
-	_btnArrows = new ToggleTextButton(104, 16, 94, 110);
-	_btnTuCost = new ToggleTextButton(58, 16, 94, 128);
-	_btnEnergyCost = new ToggleTextButton(44, 16, 154, 128);
-
-	_txtOptions = new Text(114, 9, 206, 100);
-	_btnTooltips = new ToggleTextButton(104, 16, 206, 110);
-	_btnDeaths = new ToggleTextButton(104, 16, 206, 128);
+	_txtOptions = new Text(114, 9, 206, 72);
+	_btnTooltips = new ToggleTextButton(104, 16, 206, 82);
+	_btnDeaths = new ToggleTextButton(104, 16, 206, 100);
 
 	add(_txtEdgeScroll, "text", "battlescapeMenu");
 	add(_txtDragScroll, "text", "battlescapeMenu");
@@ -74,16 +69,11 @@ OptionsBattlescapeState::OptionsBattlescapeState(OptionsOrigin origin) : Options
 	add(_txtFireSpeed, "text", "battlescapeMenu");
 	add(_slrFireSpeed, "button", "battlescapeMenu");
 
-	add(_txtXcomSpeed, "text", "battlescapeMenu");
-	add(_slrXcomSpeed, "button", "battlescapeMenu");
-
-	add(_txtAlienSpeed, "text", "battlescapeMenu");
-	add(_slrAlienSpeed, "button", "battlescapeMenu");
-
 	add(_txtPathPreview, "text", "battlescapeMenu");
 	add(_btnArrows, "button", "battlescapeMenu");
 	add(_btnTuCost, "button", "battlescapeMenu");
 	add(_btnEnergyCost, "button", "battlescapeMenu");
+	add(_btnTargetPreview, "button", "battlescapeMenu");
 
 	add(_txtOptions, "text", "battlescapeMenu");
 	add(_btnTooltips, "button", "battlescapeMenu");
@@ -142,24 +132,6 @@ OptionsBattlescapeState::OptionsBattlescapeState(OptionsOrigin origin) : Options
 	_slrFireSpeed->onMouseIn((ActionHandler)&OptionsBattlescapeState::txtTooltipIn);
 	_slrFireSpeed->onMouseOut((ActionHandler)&OptionsBattlescapeState::txtTooltipOut);
 
-	_txtXcomSpeed->setText(tr("STR_PLAYER_MOVEMENT_SPEED"));
-
-	_slrXcomSpeed->setRange(40, 1);
-	_slrXcomSpeed->setValue(Options::battleXcomSpeed);
-	_slrXcomSpeed->onChange((ActionHandler)&OptionsBattlescapeState::slrXcomSpeedChange);
-	_slrXcomSpeed->setTooltip("STR_PLAYER_MOVEMENT_SPEED_DESC");
-	_slrXcomSpeed->onMouseIn((ActionHandler)&OptionsBattlescapeState::txtTooltipIn);
-	_slrXcomSpeed->onMouseOut((ActionHandler)&OptionsBattlescapeState::txtTooltipOut);
-
-	_txtAlienSpeed->setText(tr("STR_COMPUTER_MOVEMENT_SPEED"));
-
-	_slrAlienSpeed->setRange(40, 1);
-	_slrAlienSpeed->setValue(Options::battleAlienSpeed);
-	_slrAlienSpeed->onChange((ActionHandler)&OptionsBattlescapeState::slrAlienSpeedChange);
-	_slrAlienSpeed->setTooltip("STR_COMPUTER_MOVEMENT_SPEED_DESC");
-	_slrAlienSpeed->onMouseIn((ActionHandler)&OptionsBattlescapeState::txtTooltipIn);
-	_slrAlienSpeed->onMouseOut((ActionHandler)&OptionsBattlescapeState::txtTooltipOut);
-
 	_txtPathPreview->setText(tr("STR_PATH_PREVIEW"));
 
 	_btnArrows->setText(tr("STR_PATH_ARROWS"));
@@ -182,6 +154,15 @@ OptionsBattlescapeState::OptionsBattlescapeState(OptionsOrigin origin) : Options
 	_btnEnergyCost->setTooltip("STR_PATH_ENERGY_COST_DESC");
 	_btnEnergyCost->onMouseIn((ActionHandler)&OptionsBattlescapeState::txtTooltipIn);
 	_btnEnergyCost->onMouseOut((ActionHandler)&OptionsBattlescapeState::txtTooltipOut);
+
+	_btnTargetPreview->setText(tr("STR_TARGET_PREVIEW"));
+	_btnTargetPreview->setPressed(Options::battleTargetPreview);
+	_btnTargetPreview->onMouseClick((ActionHandler)&OptionsBattlescapeState::btnPathPreviewClick);
+	_btnTargetPreview->setTooltip("STR_TARGET_PREVIEW_DESC");
+	_btnTargetPreview->onMouseIn((ActionHandler)&OptionsBattlescapeState::txtTooltipIn);
+	_btnTargetPreview->onMouseOut((ActionHandler)&OptionsBattlescapeState::txtTooltipOut);
+
+	updatePathPreviewButtons();
 
 	_txtOptions->setText(tr("STR_USER_INTERFACE_OPTIONS"));
 
@@ -245,24 +226,6 @@ void OptionsBattlescapeState::slrFireSpeedChange(Action *)
 }
 
 /**
- * Updates the X-COM movement speed.
- * @param action Pointer to an action.
- */
-void OptionsBattlescapeState::slrXcomSpeedChange(Action *)
-{
-	Options::battleXcomSpeed = _slrXcomSpeed->getValue();
-}
-
-/**
- * Updates the alien movement speed.
- * @param action Pointer to an action.
- */
-void OptionsBattlescapeState::slrAlienSpeedChange(Action *)
-{
-	Options::battleAlienSpeed = _slrAlienSpeed->getValue();
-}
-
-/**
  * Updates the path preview options.
  * @param action Pointer to an action.
  */
@@ -272,16 +235,29 @@ void OptionsBattlescapeState::btnPathPreviewClick(Action *)
 	if (_btnArrows->getPressed())
 	{
 		mode |= PATH_ARROWS;
-	}
-	if (_btnTuCost->getPressed())
-	{
-		mode |= PATH_TU_COST;
-	}
-	if (_btnEnergyCost->getPressed())
-	{
-		mode |= PATH_ENERGY_COST;
+		if (_btnTuCost->getPressed())
+		{
+			mode |= PATH_TU_COST;
+		}
+		if (_btnEnergyCost->getPressed())
+		{
+			mode |= PATH_ENERGY_COST;
+		}
 	}
 	Options::battleNewPreviewPath = (PathPreview)mode;
+	Options::battleTargetPreview = _btnTargetPreview->getPressed();
+	updatePathPreviewButtons();
+}
+
+/**
+ * Shows path-preview details only while path arrows are enabled.
+ */
+void OptionsBattlescapeState::updatePathPreviewButtons()
+{
+	const bool arrowsEnabled = _btnArrows->getPressed();
+	_btnTuCost->setVisible(arrowsEnabled);
+	_btnEnergyCost->setVisible(arrowsEnabled);
+	_btnTargetPreview->setVisible(arrowsEnabled);
 }
 
 /**

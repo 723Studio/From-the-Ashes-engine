@@ -29,6 +29,7 @@ namespace OpenXcom
 {
 
 class Mod;
+class RuleAlienMission;
 
 /**
  * Represents ruleset for a specific covert operation.
@@ -39,12 +40,11 @@ class Mod;
 class RuleCovertOperation
 {
 private:
-	std::string _name, _description, _successDescription, _failureDescription, _successBackground, _failureBackground, _successMusic, _failureMusic, _successEvent,  _failureEvent, _specialRule;
-	std::vector<std::string> _categories, _requires, _canceledBy, _allowedArmor, _successResearchList, _failureResearchList;
+	std::string _name, _description, _successDescription, _failureDescription, _cancelledDescription, _successBackground, _failureBackground, _successMusic, _failureMusic, _successEvent,  _failureEvent, _specialRule;
+	std::vector<std::string> _categories, _requires, _disabledByResearch, _allowedArmor, _successResearchList, _failureResearchList, _decreaseCounter, _increaseCounter;
 	RuleBaseFacilityFunctions _requiresBaseFunc;
-	int _soldiersMin, _soldiersMax, _optionalSoldierEffect, _itemSpaceEffect, _armorEffect;
-	double _itemSpaceLimit;
-	int _baseChances, _costs, _successScore, _failureScore, _successLoyalty, _failureLoyalty, _successFunds, _failureFunds;
+	int _soldiersMin, _soldiersMax, _optionalSoldierEffect, _armorEffect;
+	int _baseChances, _costs, _successScore, _failureScore, _successLoyalty, _failureLoyalty, _successFunds, _failureFunds, _counterValue;
 	int  _danger, _trapChance, _progressEventChance, _concealedItemsBonus, _bonusItemsEffect;
 	std::vector<int> _allowedRoles;
 	bool _repeatProgressEvent, _allowAllEquipment, _removeRequiredItemsOnSuccess, _removeRequiredItemsOnFailure;
@@ -54,6 +54,7 @@ private:
 	std::vector<std::pair<int, std::map<const RuleItem*, int> > > _successItems, _failureItems;
 	std::map<const RuleItem*, int> _requiredItems, _bonusItems;
 	std::map<const RuleSoldier*, int> _addSoldiers;
+	std::map<std::string, const RuleAlienMission*> _linkedAlienMissions;
 	int _listOrder;
 public:
 	/// Creates a blank craft ruleset.
@@ -74,6 +75,8 @@ public:
 	const std::string& getSuccessDescription() const { return _successDescription; }
 	/// Gets the operation's failure results description.
 	const std::string& getFailureDescription() const { return _failureDescription; }
+	/// Gets the operation's automatic cancellation description.
+	const std::string& getCancelledDescription() const { return _cancelledDescription; }
 	/// Gets the operation's success results background image.
 	const std::string& getSuccessBackground() const { return _successBackground; }
 	/// Gets the operation's failure results background image.
@@ -84,12 +87,12 @@ public:
 	const std::string& getFailureMusic() const { return _failureMusic; }
 	/// Gets the operation's requirements.
 	const std::vector<std::string>& getRequirements() const { return _requires; }
+	/// Gets research topics that make the operation obsolete.
+	const std::vector<std::string>& getDisabledByResearch() const { return _disabledByResearch; }
 	/// Gets the base functions required to start operation.
 	RuleBaseFacilityFunctions getRequiresBaseFunc() const { return _requiresBaseFunc; }
-	/// Gets the research name that would make this operation impossible to run.
+	/// Gets the soldier roles allowed to participate in this operation.
 	const std::vector<int> getAllowedRoles() const { return _allowedRoles; }
-	/// Gets the research name that would make this operation impossible to run.
-	const std::vector<std::string>& getCanceledBy() const { return _canceledBy; }
 	/// Gets the event name that would be spawned on success operation result.
 	const std::string& getSuccessEvent() const { return _successEvent; }
 	/// Gets the event name that would be spawned on failure operation result.
@@ -100,6 +103,12 @@ public:
 	const std::vector<std::string>& getSuccessResearchList() const { return _successResearchList; }
 	/// Gets the operation's list of projects that would be discovered on failure.
 	const std::vector<std::string>& getFailureResearchList() const { return _failureResearchList; }
+	/// Gets the custom counters decreased whenever the operation resolves.
+	const std::vector<std::string>& getDecreaseCounter() const { return _decreaseCounter; }
+	/// Gets the custom counters increased whenever the operation resolves.
+	const std::vector<std::string>& getIncreaseCounter() const { return _increaseCounter; }
+	/// Gets the amount applied to every operation counter.
+	int getCounterValue() const { return _counterValue; }
 	/// Gets the soldiers number that required by this operations.
 	int getSoldierSlotsMin() const { return _soldiersMin; }
 	/// Gets the optional soldiers slots for this operations.
@@ -131,18 +140,14 @@ public:
 	bool getRemoveRequiredItemsOnSuccess() const { return _removeRequiredItemsOnSuccess; }
 	bool getRemoveRequiredItemsOnFailure() const { return _removeRequiredItemsOnFailure; }
 
-	/// Gets operation item space limit.
-	double getItemSpaceLimit() const { return _itemSpaceLimit; }
-	/// Gets operation item space limit.
-	int getItemSpaceEffect() const { return _itemSpaceEffect; }
 	/// Gets operations trap chance.
 	int getTrapChance() const { return _trapChance; }
 	/// Gets operations danger level.
 	int getDanger() const { return _danger; }
 	/// Gets chosen alien mission to run as success resolve of covert operation.
-	std::string chooseGenSuccessMissionType() const;
+	const RuleAlienMission* chooseGenSuccessMission() const;
 	/// Gets chosen alien mission to run as failure resolve of covert operation.
-	std::string chooseGenFailureMissionType() const;
+	const RuleAlienMission* chooseGenFailureMission() const;
 	/// Gets chosen deployment that would run as failure resolve of covert operation.
 	std::string chooseGenInstantTrapDeploymentType() const;
 	/// Gets chosen deployment that would run as success resolve of covert operation.
@@ -183,3 +188,4 @@ public:
 	int getListOrder() const { return _listOrder; }
 };
 }
+

@@ -17,8 +17,10 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <assert.h>
+#include <algorithm>
 #include <vector>
 #include <climits>
+#include <set>
 #include "BattleItem.h"
 #include "BattleObject.h"
 #include "ItemContainer.h"
@@ -34,6 +36,7 @@
 #include "../Battlescape/TileEngine.h"
 #include "../Battlescape/BattlescapeState.h"
 #include "../Battlescape/BattlescapeGame.h"
+#include "../Battlescape/MapEditorState.h"
 #include "../Battlescape/Position.h"
 #include "../Battlescape/Inventory.h"
 #include "../Mod/Mod.h"
@@ -68,17 +71,16 @@ namespace OpenXcom
  */
 SavedBattleGame::SavedBattleGame(Mod *rule, Language *lang, bool isPreview) :
 	_isPreview(isPreview), _craftPos(), _craftZ(0), _craftForPreview(nullptr),
-	_battleState(0), _rule(rule), _mapsize_x(0), _mapsize_y(0), _mapsize_z(0), _selectedUnit(0), _undoUnit(nullptr),
+	_battleState(0), _mapEditorState(0), _rule(rule), _mapsize_x(0), _mapsize_y(0), _mapsize_z(0), _selectedUnit(0), _undoUnit(nullptr),
 	_lastSelectedUnit(0), _pathfinding(0), _tileEngine(0),
-	_reinforcementsItemLevel(0), _startingCondition(nullptr), _enviroEffects(nullptr), _ecEnabledFriendly(false), _ecEnabledHostile(false), _ecEnabledNeutral(false),
+	_startingCondition(nullptr), _enviroEffects(nullptr), _ecEnabledFriendly(false), _ecEnabledHostile(false), _ecEnabledNeutral(false),
 	_globalShade(0), _side(FACTION_PLAYER), _turn(0), _bughuntMinTurn(20), _animFrame(0), _nameDisplay(false),
 	_debugMode(false), _bughuntMode(false), _aborted(false), _stealthMission(false), _hackingObjective(false), _itemId(0),
-	_vipEscapeType(ESCAPE_NONE), _vipSurvivalPercentage(0), _vipsSaved(0), _vipsLost(0), _vipsWaitingOutside(0), _vipsSavedScore(0), _vipsLostScore(0), _vipsWaitingOutsideScore(0),
 	_objectiveType(-1), _objectivesDestroyed(0), _objectivesNeeded(0),
 	_unitsFalling(false), _cheating(false), _tuReserved(BA_NONE), _kneelReserved(false), _depth(0),
 	_ambience(-1), _ambientVolume(0.5), _minAmbienceRandomDelay(20), _maxAmbienceRandomDelay(60), _currentAmbienceDelay(0),
 	_turnLimit(0), _cheatTurn(20), _chronoTrigger(FORCE_LOSE), _alarmLvl(0), _beforeGame(true),
-	_togglePersonalLight(true), _toggleNightVision(false), _toggleBrightness(0)
+	_toggleNightVision(false), _toggleBrightness(0)
 {
 	_tileSearch.resize(11*11);
 	for (int i = 0; i < 121; ++i)
@@ -169,13 +171,10 @@ void SavedBattleGame::load(const YAML::YamlNodeReader& node, Mod *mod, SavedGame
 	reader.tryRead("ecEnabledNeutral", _ecEnabledNeutral);
 	reader.tryRead("alienCustomDeploy", _alienCustomDeploy);
 	reader.tryRead("alienCustomMission", _alienCustomMission);
+	reader.tryRead("activeDeployment", _activeDeployment);
 	reader.tryRead("alienItemLevel", _alienItemLevel);
 	reader.tryRead("lastUsedMapScript", _lastUsedMapScript);
-	reader.tryRead("reinforcementsDeployment", _reinforcementsDeployment);
-	reader.tryRead("reinforcementsRace", _reinforcementsRace);
-	reader.tryRead("reinforcementsItemLevel", _reinforcementsItemLevel);
-	reader.tryRead("reinforcementsMemory", _reinforcementsMemory);
-	reader.tryRead("reinforcementsBlocks", _reinforcementsBlocks);
+	reader.tryRead("scriptSpawnBlocks", _scriptSpawnBlocks);
 	reader.tryRead("flattenedMapTerrainNames", _flattenedMapTerrainNames);
 	reader.tryRead("flattenedMapBlockNames", _flattenedMapBlockNames);
 	reader.tryRead("globalshade", _globalShade);
@@ -433,16 +432,6 @@ void SavedBattleGame::load(const YAML::YamlNodeReader& node, Mod *mod, SavedGame
 
 		_battleObjects.push_back(object);
 	}
-	int vipEscapeType = static_cast<int>(_vipEscapeType);
-	reader.tryRead("vipEscapeType", vipEscapeType);
-	_vipEscapeType = static_cast<EscapeType>(vipEscapeType);
-	reader.tryRead("vipSurvivalPercentage", _vipSurvivalPercentage);
-	reader.tryRead("vipsSaved", _vipsSaved);
-	reader.tryRead("vipsLost", _vipsLost);
-	reader.tryRead("vipsWaitingOutside", _vipsWaitingOutside);
-	reader.tryRead("vipsSavedScore", _vipsSavedScore);
-	reader.tryRead("vipsLostScore", _vipsLostScore);
-	reader.tryRead("vipsWaitingOutsideScore", _vipsWaitingOutsideScore);
 	reader.tryRead("objectiveType", _objectiveType);
 	reader.tryRead("objectivesDestroyed", _objectivesDestroyed);
 	reader.tryRead("objectivesNeeded", _objectivesNeeded);
@@ -459,7 +448,6 @@ void SavedBattleGame::load(const YAML::YamlNodeReader& node, Mod *mod, SavedGame
 	reader.tryRead("turnLimit", _turnLimit);
 	reader.tryRead("chronoTrigger", _chronoTrigger);
 	reader.tryRead("cheatTurn", _cheatTurn);
-	reader.tryRead("togglePersonalLight", _togglePersonalLight);
 	reader.tryRead("toggleNightVision", _toggleNightVision);
 	reader.tryRead("toggleBrightness", _toggleBrightness);
 	_scriptValues.load(reader, _rule->getScriptGlobal());
@@ -528,17 +516,6 @@ void SavedBattleGame::loadMapResources(Mod *mod)
 void SavedBattleGame::save(YAML::YamlNodeWriter writer) const
 {
 	writer.setAsMap();
-	if (_vipSurvivalPercentage > 0)
-	{
-		writer.write("vipEscapeType", _vipEscapeType);
-		writer.write("vipSurvivalPercentage", _vipSurvivalPercentage);
-		writer.write("vipsSaved", _vipsSaved);
-		writer.write("vipsLost", _vipsLost);
-		writer.write("vipsWaitingOutside", _vipsWaitingOutside);
-		writer.write("vipsSavedScore", _vipsSavedScore);
-		writer.write("vipsLostScore", _vipsLostScore);
-		writer.write("vipsWaitingOutsideScore", _vipsWaitingOutsideScore);
-	}
 	if (_objectivesNeeded)
 	{
 		writer.write("objectivesDestroyed", _objectivesDestroyed);
@@ -565,13 +542,10 @@ void SavedBattleGame::save(YAML::YamlNodeWriter writer) const
 	writer.write("ecEnabledNeutral", _ecEnabledNeutral);
 	writer.write("alienCustomDeploy", _alienCustomDeploy);
 	writer.write("alienCustomMission", _alienCustomMission);
+	writer.write("activeDeployment", _activeDeployment);
 	writer.write("alienItemLevel", _alienItemLevel);
 	writer.write("lastUsedMapScript", _lastUsedMapScript);
-	writer.write("reinforcementsDeployment", _reinforcementsDeployment);
-	writer.write("reinforcementsRace", _reinforcementsRace);
-	writer.write("reinforcementsItemLevel", _reinforcementsItemLevel);
-	writer.write("reinforcementsMemory", _reinforcementsMemory);
-	writer.write("reinforcementsBlocks", _reinforcementsBlocks);
+	writer.write("scriptSpawnBlocks", _scriptSpawnBlocks);
 	writer.write("flattenedMapTerrainNames", _flattenedMapTerrainNames);
 	writer.write("flattenedMapBlockNames", _flattenedMapBlockNames);
 	writer.write("globalshade", _globalShade);
@@ -673,7 +647,6 @@ void SavedBattleGame::save(YAML::YamlNodeWriter writer) const
 	writer.write("turnLimit", _turnLimit);
 	writer.write("chronoTrigger", _chronoTrigger);
 	writer.write("cheatTurn", _cheatTurn);
-	writer.write("togglePersonalLight", _togglePersonalLight);
 	writer.write("toggleNightVision", _toggleNightVision);
 	writer.write("toggleBrightness", _toggleBrightness);
 	_scriptValues.save(writer, _rule->getScriptGlobal());
@@ -755,31 +728,110 @@ const std::string &SavedBattleGame::getMissionType() const
 }
 
 /**
-* Returns the alienDeployment rules for this battlescape game.
-* @return Pointer to the alien deployment rules.
-*/
-AlienDeployment* SavedBattleGame::getAlienDeploymet()
+ * Returns the unresolved deployment used by saves created before
+ * activeDeployment was serialized.
+ */
+AlienDeployment *SavedBattleGame::getLegacyDeployment() const
 {
-	SavedGame* save = this->getGeoscapeSave();
-	AlienDeployment* ruleDeploy = _rule->getDeployment(_missionType);
-	AlienDeployment* alienCustomMission = _rule->getDeployment(_alienCustomMission);
-	if (alienCustomMission)
+	AlienDeployment *deployment = _rule->getDeployment(_missionType);
+	if (AlienDeployment *customMission = _rule->getDeployment(_alienCustomMission))
 	{
-		ruleDeploy = alienCustomMission;
+		deployment = customMission;
 	}
-	if (!ruleDeploy)
+	if (!deployment)
 	{
-		for (auto& ufo : *save->getUfos())
+		SavedGame *save = getGeoscapeSave();
+		for (auto *ufo : *save->getUfos())
 		{
 			if (ufo->isInBattlescape())
 			{
-				// Note: fake underwater UFO deployment was already considered above (via alienCustomMission)
-				ruleDeploy = _rule->getDeployment(ufo->getRules()->getType());
+				// Fake underwater UFO deployments were already considered above.
+				deployment = _rule->getDeployment(ufo->getRules()->getType());
 				break;
 			}
 		}
 	}
-	return ruleDeploy;
+	return deployment;
+}
+
+/**
+ * Resolves the deployment variant unlocked by completed research.
+ *
+ * The result is selected once per tactical stage and then serialized. This
+ * keeps map generation, objectives, scripts, stealth and debriefing on the
+ * same rule even if the campaign state is later reloaded.
+ */
+const AlienDeployment *SavedBattleGame::resolveDeployment(const AlienDeployment *deployment, const SavedGame *campaign) const
+{
+	std::set<std::string> visited;
+	while (deployment)
+	{
+		if (!visited.insert(deployment->getType()).second)
+		{
+			throw Exception("Alternative deployment cycle reaches '" + deployment->getType() + "'.");
+		}
+
+		const std::string &alternative = deployment->getAlternativeDeploymentName();
+		const std::string &research = deployment->getAlternativeDeploymentResearchName();
+		if (alternative.empty())
+		{
+			if (!research.empty())
+			{
+				throw Exception("Alien deployment '" + deployment->getType() +
+					"' defines alternativeDeploymentResearch without alternativeDeployment.");
+			}
+			return deployment;
+		}
+		if (research.empty())
+		{
+			throw Exception("Alien deployment '" + deployment->getType() +
+				"' defines alternativeDeployment without alternativeDeploymentResearch.");
+		}
+		if (!campaign)
+		{
+			throw Exception("Cannot resolve alternative deployment '" + deployment->getType() +
+				"' without a campaign save.");
+		}
+		if (!campaign->isResearched(research))
+		{
+			return deployment;
+		}
+
+		AlienDeployment *next = _rule->getDeployment(alternative);
+		if (!next)
+		{
+			throw Exception("Alien deployment '" + deployment->getType() +
+				"' references missing alternative deployment '" + alternative + "'.");
+		}
+		deployment = next;
+	}
+	return nullptr;
+}
+
+/**
+ * Resolves and records the deployment actually used by the current stage.
+ */
+const AlienDeployment *SavedBattleGame::selectActiveDeployment(const AlienDeployment *deployment, const SavedGame *campaign)
+{
+	const AlienDeployment *selected = resolveDeployment(deployment, campaign);
+	_activeDeployment = selected ? selected->getType() : "";
+	return selected;
+}
+
+/**
+ * Returns the deployment actually used by the current tactical stage.
+ *
+ * Saves made before activeDeployment existed fall back to the legacy source
+ * lookup and resolve the alternative chain once on access.
+ */
+AlienDeployment *SavedBattleGame::getActiveDeployment()
+{
+	if (!_activeDeployment.empty())
+	{
+		return _rule->getDeployment(_activeDeployment, true);
+	}
+	const AlienDeployment *selected = selectActiveDeployment(getLegacyDeployment(), getGeoscapeSave());
+	return selected ? _rule->getDeployment(selected->getType(), true) : nullptr;
 }
 
 /**
@@ -1444,13 +1496,6 @@ void SavedBattleGame::updateAlarm()
 	if (riseAlarm)
 	{
 		_alarmLvl += 1;
-		for (auto& _unit : _units)
-		{
-			if (_unit->getFaction() == FACTION_PLAYER && !_unit->getUndercover())
-			{
-				_unit->setUndercover(false);
-			}
-		}
 	}
 }
 /**
@@ -1743,6 +1788,10 @@ void SavedBattleGame::endTurn()
 		}
 	}
 
+	const int loyaltyPerformance = _side == FACTION_PLAYER
+		? getGeoscapeSave()->getLoyaltyPerformanceBonus()
+		: 100;
+
 	// hide all aliens (VOF calculations below will turn them visible again)
 	for (auto* bu : _units)
 	{
@@ -1778,13 +1827,14 @@ void SavedBattleGame::endTurn()
 			continue;
 		}
 
+		const int unitLoyaltyPerformance = bu->getOriginalFaction() == FACTION_PLAYER ? loyaltyPerformance : 100;
 		if (bu->getFaction() == _side)
 		{
-			bu->prepareNewTurn();
+			bu->prepareNewTurn(true, unitLoyaltyPerformance);
 		}
 		else if (bu->getOriginalFaction() == _side)
 		{
-			bu->updateUnitStats(false, true);
+			bu->updateUnitStats(false, true, unitLoyaltyPerformance);
 		}
 		if (bu->getFaction() != FACTION_PLAYER)
 		{
@@ -2107,6 +2157,7 @@ void SavedBattleGame::initUnit(BattleUnit *unit, size_t itemLevel)
 {
 	if (_isPreview)
 	{
+		applyUndercoverStatus(unit);
 		return;
 	}
 
@@ -2162,6 +2213,11 @@ void SavedBattleGame::initUnit(BattleUnit *unit, size_t itemLevel)
 			ModScript::scriptCallback<ModScript::ApplySoldierBonuses>(bonus, unit, this, bonus);
 		}
 	}
+
+	// initUnit is the common finalizer for committed runtime spawns. Resolve
+	// stage-specific disguise eligibility after armor/scripts are initialized
+	// and before callers rebuild FOV.
+	applyUndercoverStatus(unit);
 }
 
 /**
@@ -2414,16 +2470,9 @@ void SavedBattleGame::addDestroyedObjective()
 	if (!allObjectivesDestroyed())
 	{
 		_objectivesDestroyed++;
-		if (allObjectivesDestroyed())
+		if (allObjectivesDestroyed() && getObjectiveType() != MUST_DESTROY)
 		{
-			if (getObjectiveType() == MUST_DESTROY)
-			{
-				_battleState->getBattleGame()->autoEndBattle();
-			}
-			else
-			{
-				_battleState->getBattleGame()->missionComplete();
-			}
+			_battleState->getBattleGame()->missionComplete();
 		}
 	}
 }
@@ -2472,15 +2521,7 @@ Node *SavedBattleGame::getSpawnNode(int nodeRank, BattleUnit *unit)
 			&& node->getPriority() > 0								// priority 0 is no spawn place
 			&& setUnitPosition(unit, node->getPosition(), true))	// check if not already occupied
 		{
-			bool civ = false;
-			if (unit->getGeoscapeSoldier())
-			{
-				auto s = unit->getGeoscapeSoldier();
-				if (s->getRoleRank(ROLE_SOLDIER) < 1 && s->getRoleRank(ROLE_AGENT) < 1)
-				{
-					civ = true;
-				}
-			}
+			const bool civ = unit->getGeoscapeSoldier() && !unit->getGeoscapeSoldier()->isDeployableCombatUnit();
 			if (!civ) //vanilla case
 			{
 				if (node->getPriority() > highestPriority)
@@ -2868,7 +2909,6 @@ bool SavedBattleGame::setUnitPosition(BattleUnit *bu, Position position, bool te
 
 	if (size > 0)
 	{
-		getPathfinding()->setUnit(bu); //TODO: remove as was required by `isBlockedDirection`
 		for (int dir = 2; dir <= 4; ++dir)
 		{
 			if (getPathfinding()->isBlockedDirection(bu, getTile(position + zOffset), dir))
@@ -3026,7 +3066,7 @@ int SavedBattleGame::getMoraleLossModifierWhenKilled(BattleUnit* unit)
 
 	if (unit->getGeoscapeSoldier())
 	{
-		result = unit->getGeoscapeSoldier()->getRules()->getTransferTime();
+		result = unit->getGeoscapeSoldier()->getRules()->getMoraleLossWhenKilled();
 	}
 	else if (unit->getUnitRules())
 	{
@@ -3330,6 +3370,7 @@ void SavedBattleGame::prepareForNextStage()
 	_stealthMission = false;
 	_hackingObjective = false;
 	_alarmLvl = 0;
+	_activeDeployment.clear();
 	_battleScriptVars.clear();
 	// _objectiveType = -1;
 	// _objectivesNeeded = 0;
@@ -3355,7 +3396,12 @@ void SavedBattleGame::prepareForNextStage()
 
 void SavedBattleGame::defineStealth()
 {
-	auto mission = getAlienDeploymet();
+	_stealthMission = false;
+	AlienDeployment *mission = getActiveDeployment();
+	if (!mission)
+	{
+		return;
+	}
 
 	if (!mission->getUndercoverArmors().empty())
 	{
@@ -3373,6 +3419,39 @@ void SavedBattleGame::defineStealth()
 			}
 		}
 	}
+}
+
+/**
+ * Re-evaluates whether a player unit's armor is eligible for disguise in the
+ * current deployment. This stores base eligibility only; alarm and reveal
+ * state are evaluated by isUndercoverActive().
+ */
+void SavedBattleGame::applyUndercoverStatus(BattleUnit *unit)
+{
+	if (!unit || unit->getOriginalFaction() != FACTION_PLAYER)
+	{
+		return;
+	}
+
+	unit->setUndercover(false);
+	AlienDeployment *mission = getActiveDeployment();
+	if (!mission)
+	{
+		return;
+	}
+
+	const auto &undercoverArmors = mission->getUndercoverArmors();
+	unit->setUndercover(std::find(undercoverArmors.begin(), undercoverArmors.end(), unit->getArmor()->getType()) != undercoverArmors.end());
+}
+
+/**
+ * Returns whether a unit's disguise currently prevents an unwarned hostile
+ * observer from treating it as a target.
+ */
+bool SavedBattleGame::isUndercoverActive(const BattleUnit *unit) const
+{
+	return unit && _stealthMission && _alarmLvl == 0 &&
+		unit->getOriginalFaction() == FACTION_PLAYER && !unit->tryUncover();
 }
 
 /**
@@ -3409,137 +3488,6 @@ const std::string &SavedBattleGame::getMusic() const
 void SavedBattleGame::setMusic(const std::string &track)
 {
 	_music = track;
-}
-
-/**
- * Sets the VIP escape type.
- */
-void SavedBattleGame::setVIPEscapeType(EscapeType vipEscapeType)
-{
-	_vipEscapeType = vipEscapeType;
-}
-
-/**
- * Gets the VIP escape type.
- */
-EscapeType SavedBattleGame::getVIPEscapeType() const
-{
-	return _vipEscapeType;
-}
-
-/**
- * Sets the percentage of VIPs that must survive in order to accomplish the mission.
- * If the mission has multiple stages, the biggest setting is used at the end.
- */
-void SavedBattleGame::setVIPSurvivalPercentage(int vipSurvivalPercentage)
-{
-	_vipSurvivalPercentage = std::max(_vipSurvivalPercentage, vipSurvivalPercentage);
-}
-
-/**
- * Gets the percentage of VIPs that must survive in order to accomplish the mission.
- */
-int SavedBattleGame::getVIPSurvivalPercentage() const
-{
-	return _vipSurvivalPercentage;
-}
-
-/**
- * Increase the saved VIPs counter and score.
- */
-void SavedBattleGame::addSavedVIP(int score)
-{
-	_vipsSaved++;
-	_vipsSavedScore += score;
-}
-
-/**
- * Gets the saved VIPs counter.
- */
-int SavedBattleGame::getSavedVIPs() const
-{
-	return _vipsSaved;
-}
-
-/**
- * Gets the saved VIPs total score.
- */
-int SavedBattleGame::getSavedVIPsScore() const
-{
-	return _vipsSavedScore;
-}
-
-/**
- * Increase the lost VIPs counter and score.
- */
-void SavedBattleGame::addLostVIP(int score)
-{
-	_vipsLost++;
-	_vipsLostScore -= score;
-}
-
-/**
- * Gets the lost VIPs counter.
- */
-int SavedBattleGame::getLostVIPs() const
-{
-	return _vipsLost;
-}
-
-/**
- * Gets the lost VIPs total score.
- */
-int SavedBattleGame::getLostVIPsScore() const
-{
-	return _vipsLostScore;
-}
-
-/**
- * Increase the waiting outside VIPs counter and score.
- */
-void SavedBattleGame::addWaitingOutsideVIP(int score)
-{
-	_vipsWaitingOutside++;
-	_vipsWaitingOutsideScore += score;
-}
-
-/**
- * Corrects the VIP stats based on the final mission outcome.
- */
-void SavedBattleGame::correctVIPStats(bool success, bool retreated)
-{
-	if (success)
-	{
-		// if we won, all waiting VIPs are saved
-		_vipsSaved += _vipsWaitingOutside;
-		_vipsWaitingOutside = 0;
-
-		_vipsSavedScore += _vipsWaitingOutsideScore;
-		_vipsWaitingOutsideScore = 0;
-	}
-	else
-	{
-		// if we lost, all waiting VIPs are lost
-		_vipsLost += _vipsWaitingOutside;
-		_vipsWaitingOutside = 0;
-
-		_vipsLostScore -= _vipsWaitingOutsideScore;
-		_vipsWaitingOutsideScore = 0;
-
-		if (retreated)
-		{
-			// if we retreated, keep all VIPs waiting in the craft alive
-		}
-		else
-		{
-			// if nobody from xcom survived, all VIPs are lost too
-			_vipsLost += _vipsSaved;
-			_vipsSaved = 0;
-
-			_vipsLostScore -= _vipsSavedScore;
-			_vipsSavedScore = 0;
-		}
-	}
 }
 
 /**
@@ -3693,6 +3641,23 @@ void SavedBattleGame::resetUnitHitStates()
 	}
 }
 
+/**
+ * Sets the pointer to the MapEditorState.
+ * @param mapEditorState Pointer to the MapEditorState.
+ */
+void SavedBattleGame::setMapEditorState(MapEditorState *mapEditorState)
+{
+	_mapEditorState = mapEditorState;
+}
+
+/**
+ * Gets the pointer to the MapEditorState.
+ */
+MapEditorState *SavedBattleGame::getMapEditorState()
+{
+	return _mapEditorState;
+}
+
 ////////////////////////////////////////////////////////////
 //					Script binding
 ////////////////////////////////////////////////////////////
@@ -3703,10 +3668,7 @@ namespace
 template<typename... Args>
 void flashMessageVariadicScriptImpl(SavedBattleGame* sbg, ScriptText message, Args... args)
 {
-	if (!sbg || !sbg->getBattleState() || sbg->getGeoscapeSave()->isFtAGame())
-	{
-		return;
-	}
+	return;
 	const Language *lang = sbg->getBattleState()->getGame()->getLanguage();
 	LocalizedText translated = lang->getString(message);
 	(translated.arg(args), ...);
@@ -3850,14 +3812,6 @@ void setAlienItemLevelScript(SavedBattleGame* sbg, int val)
 	}
 }
 
-void setReinforcementsItemLevelScript(SavedBattleGame* sbg, int val)
-{
-	if (sbg)
-	{
-		sbg->setReinforcementsItemLevel(Clamp(val, 0, (int)sbg->getMod()->getAlienItemLevels().size()));
-	}
-}
-
 void tryConcealUnitScript(SavedBattleGame* sbg, BattleUnit* bu, int& val)
 {
 	if (sbg && bu)
@@ -3955,8 +3909,6 @@ void SavedBattleGame::ScriptRegister(ScriptParserBase* parser)
 
 	sbg.add<&SavedBattleGame::getAlienItemLevel>("getAlienItemLevel");
 	sbg.add<&setAlienItemLevelScript>("setAlienItemLevel");
-	sbg.add<&SavedBattleGame::getReinforcementsItemLevel>("getReinforcementsItemLevel");
-	sbg.add<&setReinforcementsItemLevelScript>("setReinforcementsItemLevel");
 
 	sbg.addPair<SavedGame, &getGeoscapeSaveScript, &getGeoscapeSaveScript>("getGeoscapeGame");
 
@@ -4006,7 +3958,6 @@ void SavedBattleGame::ScriptRegisterUnitAnimations(ScriptParserBase* parser)
 	sbg.add<&isShiftPressedScript>("isShiftPressed");
 	sbg.addField<&SavedBattleGame::_toggleBrightnessTemp>("getDebugVisionMode");
 	sbg.addField<&SavedBattleGame::_toggleNightVisionTemp>("isNightVisionEnabled");
-	sbg.addField<&SavedBattleGame::_togglePersonalLightTemp>("isPersonalLightEnabled");
 	sbg.addField<&SavedBattleGame::_toggleNightVisionColorTemp>("getNightVisionColor");
 }
 

@@ -53,7 +53,6 @@ private:
 	std::vector<std::vector<char>> _occupiedSlotsCache;
 	Surface *_stunIndicator, *_woundIndicator, *_burnIndicator, *_shockIndicator;
 	NumberText *_stackNumber;
-	std::string _searchString;
 	Timer *_animTimer;
 	int _depth, _groundSlotsX, _groundSlotsY;
 	int _xMax;
@@ -101,8 +100,6 @@ public:
 	BattleItem *getSelectedItem() const;
 	/// Sets the currently selected item.
 	void setSelectedItem(BattleItem *item);
-	/// Sets the search string.
-	void setSearchString(const std::string &searchString);
 	/// Gets the mouse over item.
 	BattleItem *getMouseOverItem() const;
 	/// Sets the mouse over item.
@@ -119,8 +116,6 @@ public:
 	bool quickDrop();
 	/// Unloads the selected weapon.
 	bool unload(bool quickUnload = false);
-	/// Checks whether the given item is visible with the current search string.
-	bool isInSearchString(BattleItem *item);
 	/// Arranges items on the ground.
 	void arrangeGround(int alterOffset = 0);
 	/// Attempts to place an item in an inventory slot.

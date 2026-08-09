@@ -56,8 +56,8 @@ class RuleResearch
 	UnitStats _stats;
 	std::vector<const RuleResearch*> _dependencies, _unlocks, _disables, _reenables, _getOneFree, _requires;
 	bool _sequentialGetOneFree;
-	std::vector<std::pair<std::string, std::vector<std::string> > > _getOneFreeProtectedName;
-	std::vector<std::pair<const RuleResearch*, std::vector<const RuleResearch*> > > _getOneFreeProtected;
+	std::vector<std::pair<std::string, std::vector<std::string> > > _getOneFreeProtectedName, _getOneFreeGuaranteedName;
+	std::vector<std::pair<const RuleResearch*, std::vector<const RuleResearch*> > > _getOneFreeProtected, _getOneFreeGuaranteed;
 	std::string _neededItemName;
 	const RuleItem* _neededItem = nullptr;
 	bool _needItem, _destroyItem, _hidden, _unlockFinalMission;
@@ -71,10 +71,7 @@ public:
 	/// Register all useful function used by script.
 	static void ScriptRegister(ScriptParserBase* parser);
 
-	static const int RESEARCH_STATUS_NEW = 0;
-	static const int RESEARCH_STATUS_NORMAL = 1;
 	static const int RESEARCH_STATUS_DISABLED = 2;
-	static const int RESEARCH_STATUS_HIDDEN = 3;
 	RuleResearch(const std::string &name, int listOrder);
 
 	/// Loads the research from YAML.
@@ -116,6 +113,8 @@ public:
 	const std::vector<const RuleResearch*> &getGetOneFree() const;
 	/// Gets the list(s) of ResearchProjects granted at random for free by this research (if a defined prerequisite is met).
 	const std::vector<std::pair<const RuleResearch*, std::vector<const RuleResearch*> > > &getGetOneFreeProtected() const;
+	/// Gets the ordered ResearchProjects guaranteed for free before the random pool (if a defined prerequisite is met).
+	const std::vector<std::pair<const RuleResearch*, std::vector<const RuleResearch*> > > &getGetOneFreeGuaranteed() const;
 	/// Gets what to look up in the ufopedia.
 	const std::string &getLookup() const;
 	/// Gets the requirements for this ResearchProject.

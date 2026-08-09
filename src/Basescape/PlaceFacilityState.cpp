@@ -28,13 +28,11 @@
 #include "../Savegame/Base.h"
 #include "../Savegame/BaseFacility.h"
 #include "../Savegame/ItemContainer.h"
-#include "../Savegame/Production.h"
 #include "../Mod/RuleBaseFacility.h"
 #include "../Savegame/SavedGame.h"
 #include "../Menu/ErrorMessageState.h"
 #include "../Engine/Options.h"
 #include "../Engine/Unicode.h"
-#include "../FTA/MasterMind.h"
 #include "../Mod/RuleInterface.h"
 #include <algorithm>
 #include <climits>
@@ -252,8 +250,20 @@ void PlaceFacilityState::viewClick(Action *)
 				case BPE_Used_Gyms:
 					_game->pushState(new ErrorMessageState(tr("STR_FACILITY_IN_USE_GYMS"), _palette, errorColor1, "BACK01.SCR", errorColor2));
 					break;
+				case BPE_Used_IntelSpace:
+					_game->pushState(new ErrorMessageState(tr("STR_FACILITY_IN_USE_INTEL_SPACE"), _palette, errorColor1, "BACK01.SCR", errorColor2));
+					break;
+				case BPE_Used_ContainedAlienResearchSpace:
+					_game->pushState(new ErrorMessageState(tr("STR_FACILITY_IN_USE_CONTAINED_ALIEN_RESEARCH_SPACE"), _palette, errorColor1, "BACK01.SCR", errorColor2));
+					break;
 				case BPE_Used_AlienContainment:
+					_game->pushState(new ErrorMessageState(tr("STR_FACILITY_IN_USE_ALIEN_CONTAINMENT"), _palette, errorColor1, "BACK01.SCR", errorColor2));
+					break;
+				case BPE_Used_PrisonSpace:
 					_game->pushState(new ErrorMessageState(tr("STR_FACILITY_IN_USE_PRISONS"), _palette, errorColor1, "BACK01.SCR", errorColor2));
+					break;
+				case BPE_Used_MonsterContainment:
+					_game->pushState(new ErrorMessageState(tr("STR_FACILITY_IN_USE_MONSTER_CONTAINMENT"), _palette, errorColor1, "BACK01.SCR", errorColor2));
 					break;
 				case BPE_NotConnected:
 					_game->pushState(new ErrorMessageState(tr("STR_CANNOT_BUILD_HERE"), _palette, errorColor1, "BACK01.SCR", errorColor2));

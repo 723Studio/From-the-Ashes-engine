@@ -19,9 +19,9 @@
  */
 #include <string>
 #include <map>
-#include <vector>
 #include "../Engine/State.h"
 #include "../Savegame/Production.h"
+#include "../Savegame/Promotion.h"
 
 namespace OpenXcom
 {
@@ -32,7 +32,6 @@ class Text;
 class TextList;
 class Base;
 class GeoscapeState;
-class Soldier;
 
 /**
  * Window used to notify the player when
@@ -45,17 +44,16 @@ private:
 	GeoscapeState *_state;
 
 	std::map<std::string, int> _randomProductionInfo;
-	std::vector<std::string> _index;
 
 	TextButton *_btnOk, *_btnGotoBase, *_btnSummary, *_btnPromotions;
-	std::vector<Soldier*> _promotedSoldiers;
+	PromotionBatch _promotions;
 	Window *_window;
 	Text *_txtMessage, *_txtItem, *_txtQuantity;
 	TextList *_lstSummary;
 	productionProgress_e _endType;
 public:
 	/// Creates the Production Complete state.
-	ProductionCompleteState(Base *base, const std::string &item, GeoscapeState *state, std::vector<Soldier*> _promotedSoldiers, productionProgress_e endType = PROGRESS_COMPLETE, Production *production = nullptr);
+	ProductionCompleteState(Base *base, const std::string &item, GeoscapeState *state, const PromotionBatch& promotions = {}, productionProgress_e endType = PROGRESS_COMPLETE, Production *production = nullptr);
 	/// Cleans up the Production Complete state.
 	~ProductionCompleteState();
 	/// Handler for clicking the OK button.
@@ -64,8 +62,6 @@ public:
 	void btnGotoBaseClick(Action *action);
 	/// Handler for clicking the Summary button.
 	void btnSummaryClick(Action *action);
-	/// Handler for clicking the Summary list.
-	void lstSummaryClick(Action *action);
 	/// Handler for clicking the Promotions button.
 	void btnPromotionsClick(Action* action);
 };

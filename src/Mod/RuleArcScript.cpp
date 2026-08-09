@@ -80,7 +80,6 @@ void RuleArcScript::load(const YAML::YamlNodeReader& node)
 	reader.tryRead("facilityTriggers", _facilityTriggers);
 	reader.tryRead("soldierTypeTriggers", _soldierTypeTriggers);
 	reader.tryRead("xcomBaseInRegionTriggers", _xcomBaseInRegionTriggers);
-	reader.tryRead("xcomBaseInCountryTriggers", _xcomBaseInCountryTriggers);
 }
 
 }

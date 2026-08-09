@@ -37,7 +37,7 @@ private:
 	std::vector<int> _lookWeights;
 	int _totalWeight, _femaleFrequency;
 	int _globalWeight;
-	std::string _country, _region;
+	std::string _region;
 public:
 	/// Creates a blank pool.
 	SoldierNamePool();
@@ -53,8 +53,6 @@ public:
 	size_t genLook(size_t numLooks);
 	/// Gets a global weight of this name pool.
 	int getGlobalWeight() const { return _globalWeight; }
-	/// Gets the country assigned to this name pool.
-	const std::string& getCountry() const { return _country; }
 	/// Gets the region assigned to this name pool.
 	const std::string& getRegion() const { return _region; }
 };

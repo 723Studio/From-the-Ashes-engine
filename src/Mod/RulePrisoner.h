@@ -49,10 +49,10 @@ public:
 	void load(const YAML::YamlNodeReader& reader);
 	void afterLoad(const Mod* mod);
 
-	int getBaseResistance() { return _baseResistance; }
-	bool isDiesAfterInterrogation() { return _diesAfter; }
+	int getBaseResistance() const { return _baseResistance; }
+	bool isDiesAfterInterrogation() const { return _diesAfter; }
 	const RuleResearch* getReuiredResearch() const { return _requiredResearch; }
-	std::vector<const RuleResearch*> getUnlockedResearches() const { return _unlockResearches; }
+	const std::vector<const RuleResearch*>& getUnlockedResearches() const { return _unlockResearches; }
 
 };
 
@@ -73,11 +73,11 @@ public:
 	void load(const YAML::YamlNodeReader& reader);
 	void afterLoad(const Mod* mod);
 
-	int getDifficulty() { return _difficulty; }
-	int getEventChance() { return _eventChance; }
-	const std::vector<std::string>& getSpawnedEvents() { return _spawnEvents; }
+	int getDifficulty() const { return _difficulty; }
+	int getEventChance() const { return _eventChance; }
+	const std::vector<std::string>& getSpawnedEvents() const { return _spawnEvents; }
 	const RuleResearch* getReuiredResearch() const { return _requiredResearch; }
-	std::string &getSpawnedSoldier() { return _spawnedSoldierRuleName; }
+	const std::string& getSpawnedSoldier() const { return _spawnedSoldierRuleName; }
 };
 
 class PrisonerTortureRules
@@ -91,16 +91,18 @@ private:
 public:
 	PrisonerTortureRules();
 	~PrisonerTortureRules();
+	PrisonerTortureRules(const PrisonerTortureRules&) = delete;
+	PrisonerTortureRules& operator=(const PrisonerTortureRules&) = delete;
 
 	void load(const YAML::YamlNodeReader& reader);
 
-	int getDifficulty() { return _difficulty; }
-	int getLoyalty() { return _loyaltyChange; }
-	int getMorale() { return _moraleChange; }
-	int getCooperation() { return _cooperationChange; }
-	int getEventChance() { return _eventChance; }
-	bool isMultipleEventsPossible() { return _isMultipleEventsPossible; }
-	const std::vector<std::string>& getSpawnedEvents() { return _spawnEvents; }
+	int getDifficulty() const { return _difficulty; }
+	int getLoyalty() const { return _loyaltyChange; }
+	int getMorale() const { return _moraleChange; }
+	int getCooperation() const { return _cooperationChange; }
+	int getEventChance() const { return _eventChance; }
+	bool isMultipleEventsPossible() const { return _isMultipleEventsPossible; }
+	const std::vector<std::string>& getSpawnedEvents() const { return _spawnEvents; }
 	/// Generates an event based on the month.
 	std::string getWeightedEvent(const size_t monthsPassed) const;
 };
@@ -120,8 +122,8 @@ public:
 	void load(const YAML::YamlNodeReader& reader);
 	void afterLoad(const Mod* mod);
 
-	int getFunds() { return _funds; }
-	int getCooperation() { return _cooperationChange; }
+	int getFunds() const { return _funds; }
+	int getCooperation() const { return _cooperationChange; }
 	const RuleResearch* getReuiredResearch() const { return _requiredResearch; }
 };
 
@@ -144,6 +146,8 @@ public:
 	RulePrisoner(const std::string &type);
 	/// Cleans up the prisoner ruleset.
 	~RulePrisoner();
+	RulePrisoner(const RulePrisoner&) = delete;
+	RulePrisoner& operator=(const RulePrisoner&) = delete;
 	/// Loads the event definition from YAML.
 	void load(const YAML::YamlNodeReader& reader);
 	void afterLoad(const Mod* mod);

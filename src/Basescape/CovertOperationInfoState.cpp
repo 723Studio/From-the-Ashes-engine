@@ -27,9 +27,7 @@
 #include "../Interface/TextButton.h"
 #include "../Interface/TextList.h"
 #include "../Savegame/CovertOperation.h"
-#include "SoldierInfoState.h"
 #include <cmath>
-#include <unordered_set>
 
 namespace OpenXcom
 {
@@ -76,7 +74,7 @@ namespace OpenXcom
 		_txtTitle->setText(operationName);
 
 		_txtDungeonLevel->setText(tr("STR_DANGER_LEVEL").arg(_operation->getRules()->getDanger()));
-		_txtProgress->setText(tr("STR_OPERATION_PROGRESS").arg(ceil(_operation->getSpent() / 24)));
+		_txtProgress->setText(tr("STR_OPERATION_PROGRESS").arg(static_cast<int>(ceil(_operation->getSpent() / 24.0))));
 
 		_txtSoldiers->setText(tr("STR_SOLDIERS_N"));
 		_lstSoldiers->setColumns(1, 148);
@@ -132,7 +130,7 @@ namespace OpenXcom
 		{
 			return;
 		}
-		return; // _game->pushState(new SoldierInfoState(_operation->getBase(), _lstSoldiers->getSelectedRow())); #FINNIKTODO
+		return; // #FINNIKTODO: open agent details when the operation info screen supports it.
 	}
 
 	void CovertOperationInfoState::fillSoldiersList()

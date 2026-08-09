@@ -34,13 +34,11 @@ class TextList;
 class OptionsControlsState : public OptionsBaseState
 {
 private:
-	TextButton *_btnOXC, *_btnOXCE, *_btnOTHER;
-	TextButton *_owner;
 	TextList *_lstControls;
-	std::vector<OptionInfo> _controlsGeneral[OPTION_OWNER_MAX];
-	std::vector<OptionInfo> _controlsGeo[OPTION_OWNER_MAX];
-	std::vector<OptionInfo> _controlsBase[OPTION_OWNER_MAX];
-	std::vector<OptionInfo> _controlsBattle[OPTION_OWNER_MAX];
+	std::vector<OptionInfo> _controlsGeneral;
+	std::vector<OptionInfo> _controlsGeo;
+	std::vector<OptionInfo> _controlsBase;
+	std::vector<OptionInfo> _controlsBattle;
 	int _offsetGeneralMin = -1;
 	int _offsetGeneralMax = -1;
 	int _offsetGeoMin = -1;
@@ -70,8 +68,6 @@ public:
 	void lstControlsClick(Action *action);
 	/// Handler for pressing a key in the Controls list.
 	void lstControlsKeyPress(Action *action);
-	/// Handler for clicking buttons.
-	void btnGroupPress(Action* action);
 };
 
 }

@@ -17,16 +17,12 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <algorithm>
-#include <locale>
 #include "NewManufactureListState.h"
 #include "../Interface/Window.h"
 #include "../Interface/TextButton.h"
-#include "../Interface/ToggleTextButton.h"
 #include "../Interface/Text.h"
-#include "../Interface/TextEdit.h"
 #include "../Interface/TextList.h"
 #include "../Interface/ComboBox.h"
-#include "../Engine/CrossPlatform.h"
 #include "../Engine/Game.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Options.h"
@@ -40,7 +36,6 @@
 #include "../Ufopaedia/Ufopaedia.h"
 #include "../Basescape/ItemLocationsState.h"
 #include "ManufactureStartState.h"
-#include "TechTreeViewerState.h"
 
 namespace OpenXcom
 {
@@ -55,9 +50,7 @@ NewManufactureListState::NewManufactureListState(Base *base) : _base(base), _sho
 	_screen = false;
 
 	_window = new Window(this, 320, 156, 0, 22, POPUP_BOTH);
-	_btnQuickSearch = new TextEdit(this, 48, 9, 10, 35);
-	_btnOk = new TextButton(148, 16, 164, 154);
-	_btnShowOnlyNew = new ToggleTextButton(148, 16, 8, 154);
+	_btnOk = new TextButton(304, 16, 8, 154);
 	_txtTitle = new Text(320, 17, 0, 30);
 	_txtItem = new Text(156, 9, 10, 62);
 	_txtCategory = new Text(130, 9, 166, 62);
@@ -71,9 +64,7 @@ NewManufactureListState::NewManufactureListState(Base *base) : _base(base), _sho
 	setInterface("selectNewManufacture");
 
 	add(_window, "window", "selectNewManufacture");
-	add(_btnQuickSearch, "button", "selectNewManufacture");
 	add(_btnOk, "button", "selectNewManufacture");
-	add(_btnShowOnlyNew, "button", "selectNewManufacture");
 	add(_txtTitle, "text", "selectNewManufacture");
 	add(_txtItem, "text", "selectNewManufacture");
 	add(_txtCategory, "text", "selectNewManufacture");
@@ -83,9 +74,6 @@ NewManufactureListState::NewManufactureListState(Base *base) : _base(base), _sho
 
 	touchComponentsAdd("button2", "selectNewManufacture", _window);
 
-	_colorNormal = _lstManufacture->getColor();
-	_colorNew = Options::oxceHighlightNewTopics ? _lstManufacture->getSecondaryColor() : _colorNormal;
-	_colorHidden = _game->getMod()->getInterface("selectNewManufacture")->getElement("listExtended")->color;
 	_colorFacilityRequired = _game->getMod()->getInterface("selectNewManufacture")->getElement("listExtended")->color2;
 
 	centerAllSurfaces();
@@ -114,17 +102,12 @@ NewManufactureListState::NewManufactureListState(Base *base) : _base(base), _sho
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&NewManufactureListState::btnOkClick);
 	_btnOk->onKeyboardPress((ActionHandler)&NewManufactureListState::btnOkClick, Options::keyCancel);
-	_btnOk->onKeyboardPress((ActionHandler)&NewManufactureListState::btnMarkAllAsSeenClick, Options::keyMarkAllAsSeen);
-
-	_btnShowOnlyNew->setText(tr("STR_SHOW_ONLY_NEW"));
-	_btnShowOnlyNew->onMouseClick((ActionHandler)&NewManufactureListState::btnShowOnlyNewClick);
 
 	std::vector<std::string> filterOptions;
 	filterOptions.push_back("STR_FILTER_DEFAULT");
 	filterOptions.push_back("STR_FILTER_DEFAULT_SUPPLIES_OK");
 	filterOptions.push_back("STR_FILTER_DEFAULT_NO_SUPPLIES");
 	filterOptions.push_back("STR_FILTER_FACILITY_REQUIRED");
-	filterOptions.push_back("STR_FILTER_HIDDEN");
 	_cbxFilter->setOptions(filterOptions, true);
 	if (Options::oxceManufactureFilterSuppliesOK)
 	{
@@ -135,11 +118,6 @@ NewManufactureListState::NewManufactureListState(Base *base) : _base(base), _sho
 	_catStrings.push_back("STR_ALL_ITEMS");
 	_cbxCategory->setOptions(_catStrings, true);
 
-	_btnQuickSearch->setText(""); // redraw
-	_btnQuickSearch->onEnter((ActionHandler)&NewManufactureListState::btnQuickSearchApply);
-	_btnQuickSearch->setVisible(Options::oxceQuickSearchButton);
-
-	_btnOk->onKeyboardRelease((ActionHandler)&NewManufactureListState::btnQuickSearchToggle, Options::keyToggleQuickSearch);
 }
 
 /**
@@ -208,9 +186,10 @@ void NewManufactureListState::lstProdClickLeft(Action *)
 }
 
 /**
-* Changes the status (new -> normal -> hidden -> new).
-* @param action A pointer to an Action.
-*/
+ * Opens the produced item's locations on Ctrl+RMB, or toggles between
+ * category and requirement details in the missing-facilities filter.
+ * @param action A pointer to an Action.
+ */
 void NewManufactureListState::lstProdClickRight(Action *)
 {
 	if (_game->isCtrlPressed(true))
@@ -259,84 +238,52 @@ void NewManufactureListState::lstProdClickRight(Action *)
 				}
 			}
 		}
-		else
-		{
-			// change status
-			const std::string rule = _displayedStrings[_lstManufacture->getSelectedRow()];
-			int oldState = _game->getSavedGame()->getManufactureRuleStatus(rule);
-			int newState = (oldState + 1) % RuleManufacture::MANU_STATUSES;
-			if (!Options::oxceHighlightNewTopics)
-			{
-				// only switch between hidden and not hidden
-				newState = (oldState == RuleManufacture::MANU_STATUS_HIDDEN) ? RuleManufacture::MANU_STATUS_NORMAL : RuleManufacture::MANU_STATUS_HIDDEN;
-			}
-			_game->getSavedGame()->setManufactureRuleStatus(rule, newState);
+	}
+}
 
-			if (newState == RuleManufacture::MANU_STATUS_HIDDEN)
+/** Opens the most relevant Ufopaedia article for a manufacture output. */
+void NewManufactureListState::openUfopaediaArticle(Game* game, const RuleManufacture* manufacture)
+{
+	if (!manufacture)
+	{
+		return;
+	}
+	const auto& itemList = manufacture->getProducedItems();
+	if (itemList.size() == 1)
+	{
+		const RuleItem* ruleItem = itemList.begin()->first;
+		std::string article = ruleItem->getName();
+		if (ruleItem->getBattleType() == BT_AMMO)
+		{
+			for (const auto& itemId : game->getMod()->getItemsList())
 			{
-				_lstManufacture->setRowColor(_lstManufacture->getSelectedRow(), _colorHidden);
-			}
-			else if (newState == RuleManufacture::MANU_STATUS_NEW)
-			{
-				_lstManufacture->setRowColor(_lstManufacture->getSelectedRow(), _colorNew);
-			}
-			else
-			{
-				_lstManufacture->setRowColor(_lstManufacture->getSelectedRow(), _colorNormal);
+				const RuleItem* candidate = game->getMod()->getItem(itemId);
+				const auto& ammo = *candidate->getPrimaryCompatibleAmmo();
+				if (std::find(ammo.begin(), ammo.end(), ruleItem) != ammo.end())
+				{
+					article = candidate->getName();
+					break;
+				}
 			}
 		}
+		Ufopaedia::openArticle(game, article);
+		return;
+	}
+	if (manufacture->getProducedCraft())
+	{
+		Ufopaedia::openArticle(game, manufacture->getProducedCraft()->getType());
 	}
 }
 
 /**
-* Opens the TechTreeViewer for the corresponding topic.
+* Opens the Ufopaedia article for the corresponding production.
 * @param action Pointer to an action.
 */
 void NewManufactureListState::lstProdClickMiddle(Action *)
 {
 	_doInit = false;
-	const RuleManufacture *selectedTopic = _game->getMod()->getManufacture(_displayedStrings[_lstManufacture->getSelectedRow()]);
-
-	if (_game->isCtrlPressed(false))
-	{
-		auto itemList = selectedTopic->getProducedItems();
-		if (!itemList.empty())
-		{
-			if (itemList.size() == 1)
-			{
-				auto ruleItem = itemList.begin()->first;
-				auto article = ruleItem->getName();
-				if (ruleItem->getBattleType() == BT_AMMO)
-				{
-					for (std::vector<std::string>::const_iterator iter = _game->getMod()->getItemsList().begin(); iter != _game->getMod()->getItemsList().end(); ++iter)
-					{
-						auto ruleIter = _game->getMod()->getItem((*iter));
-						auto it = std::find(ruleIter->getPrimaryCompatibleAmmo()->begin(), ruleIter->getPrimaryCompatibleAmmo()->end(), ruleItem);
-						if (it != ruleIter->getPrimaryCompatibleAmmo()->end())
-						{
-							article = ruleIter->getName();
-							break;
-						}
-					}
-				}
-				Ufopaedia::openArticle(_game, article);
-			}
-			return;
-		}
-		if (selectedTopic->getProducedCraft() != nullptr)
-		{
-			Ufopaedia::openArticle(_game, selectedTopic->getProducedCraft()->getType());
-		}
-	}
-	else
-	{
-		if (_game->getMod()->getIsResearchTreeDisabled() && !_game->getSavedGame()->getDebugMode())
-		{
-			return;
-		}
-		_game->pushState(new TechTreeViewerState(0, selectedTopic));
-	}
-
+	openUfopaediaArticle(_game,
+		_game->getMod()->getManufacture(_displayedStrings[_lstManufacture->getSelectedRow()]));
 }
 
 /**
@@ -358,72 +305,10 @@ void NewManufactureListState::cbxCategoryChange(Action *)
 }
 
 /**
-* Quick search toggle.
-* @param action Pointer to an action.
-*/
-void NewManufactureListState::btnQuickSearchToggle(Action *action)
-{
-	if (_btnQuickSearch->getVisible())
-	{
-		_btnQuickSearch->setText("");
-		_btnQuickSearch->setVisible(false);
-		btnQuickSearchApply(action);
-	}
-	else
-	{
-		_btnQuickSearch->setVisible(true);
-		_btnQuickSearch->setFocus(true);
-	}
-}
-
-/**
-* Quick search.
-* @param action Pointer to an action.
-*/
-void NewManufactureListState::btnQuickSearchApply(Action *)
-{
-	fillProductionList(false);
-}
-
-/**
-* Filter to display only new items.
-* @param action Pointer to an action.
-*/
-void NewManufactureListState::btnShowOnlyNewClick(Action *)
-{
-	fillProductionList(false);
-}
-
-/**
-* Marks all items as seen
-* @param action Pointer to an action.
-*/
-void NewManufactureListState::btnMarkAllAsSeenClick(Action *)
-{
-	ManufacturingFilterType basicFilter = (ManufacturingFilterType)(_cbxFilter->getSelected());
-	if (basicFilter == MANU_FILTER_FACILITY_REQUIRED)
-		return;
-
-	for (const auto& name : _displayedStrings)
-	{
-		// mark all (new) manufacture items as normal
-		if (_game->getSavedGame()->getManufactureRuleStatus(name) != RuleManufacture::MANU_STATUS_HIDDEN)
-		{
-			_game->getSavedGame()->setManufactureRuleStatus(name, RuleManufacture::MANU_STATUS_NORMAL);
-		}
-	}
-
-	fillProductionList(false);
-}
-
-/**
  * Fills the list of possible productions.
  */
 void NewManufactureListState::fillProductionList(bool refreshCategories)
 {
-	std::string searchString = _btnQuickSearch->getText();
-	Unicode::upperCase(searchString);
-
 	if (refreshCategories)
 	{
 		_cbxCategory->onChange(0);
@@ -440,42 +325,10 @@ void NewManufactureListState::fillProductionList(bool refreshCategories)
 
 	ItemContainer * itemContainer (_base->getStorageItems());
 	int row = 0;
-	bool hasUnseen = false;
 	for (const auto* manuf : _possibleProductions)
 	{
 		if ((manuf->getCategory() == _catStrings[_cbxCategory->getSelected()]) || (_catStrings[_cbxCategory->getSelected()] == "STR_ALL_ITEMS"))
 		{
-			// filter
-			bool isHidden = _game->getSavedGame()->getManufactureRuleStatus(manuf->getName()) == RuleManufacture::MANU_STATUS_HIDDEN;
-			if (basicFilter == MANU_FILTER_DEFAULT && isHidden)
-				continue;
-			if (basicFilter == MANU_FILTER_DEFAULT_SUPPLIES_OK && isHidden)
-				continue;
-			if (basicFilter == MANU_FILTER_DEFAULT_NO_SUPPLIES && isHidden)
-				continue;
-			if (basicFilter == MANU_FILTER_HIDDEN && !isHidden)
-				continue;
-
-			bool isNew = _game->getSavedGame()->getManufactureRuleStatus(manuf->getName()) == RuleManufacture::MANU_STATUS_NEW;
-			if (_btnShowOnlyNew->getPressed())
-			{
-				if (!isNew)
-				{
-					continue;
-				}
-			}
-
-			// quick search
-			if (!searchString.empty())
-			{
-				std::string projectName = tr(manuf->getName());
-				Unicode::upperCase(projectName);
-				if (projectName.find(searchString) == std::string::npos)
-				{
-					continue;
-				}
-			}
-
 			// supplies calculation
 			int productionPossible = 10; // max
 			if (manuf->getManufactureCost() > 0)
@@ -490,6 +343,10 @@ void NewManufactureListState::fillProductionList(bool refreshCategories)
 			for (auto& iter : manuf->getRequiredItems())
 			{
 				productionPossible = std::min(productionPossible, itemContainer->getItem(iter.first) / iter.second);
+			}
+			for (auto& iter : manuf->getRequiredCrafts())
+			{
+				productionPossible = std::min(productionPossible, _base->getCraftCountForProduction(iter.first) / iter.second);
 			}
 			std::ostringstream ss;
 			if (productionPossible <= 0)
@@ -520,24 +377,10 @@ void NewManufactureListState::fillProductionList(bool refreshCategories)
 			{
 				_lstManufacture->setRowColor(row, _colorFacilityRequired);
 			}
-			else
-			{
-				if (isHidden)
-				{
-					_lstManufacture->setRowColor(row, _colorHidden);
-				}
-				else if (isNew)
-				{
-					_lstManufacture->setRowColor(row, _colorNew);
-					hasUnseen = true;
-				}
-			}
 			row++;
 		}
 	}
 
-	std::string label = tr("STR_SHOW_ONLY_NEW");
-	_btnShowOnlyNew->setText((hasUnseen ? "* " : "") + label);
 	if (_lstScroll > 0)
 	{
 		_lstManufacture->scrollTo(_lstScroll);

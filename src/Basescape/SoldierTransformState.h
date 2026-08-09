@@ -27,7 +27,6 @@ class ArrowButton;
 class Base;
 class Text;
 class TextButton;
-class TextEdit;
 class TextList;
 class Window;
 
@@ -58,7 +57,6 @@ private:
 	size_t _soldier;
 
 	TextButton *_btnCancel;
-	TextEdit *_btnQuickSearch;
 	Window *_window;
 	Text *_txtTitle, *_txtType;
 	TextList *_lstTransformations;
@@ -78,9 +76,6 @@ public:
 	void updateList();
 	/// Handler for clicking the Cancel button.
 	void btnCancelClick(Action* action);
-	/// Handlers for Quick Search.
-	void btnQuickSearchToggle(Action* action);
-	void btnQuickSearchApply(Action* action);
 	/// Handler for clicking the transformations list.
 	void lstTransformationClick(Action* action);
 	/// Handler for clicking the transformations list.

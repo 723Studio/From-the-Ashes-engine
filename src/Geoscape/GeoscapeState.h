@@ -18,8 +18,11 @@
  * along with OpenXcom.  If not, see <http:///www.gnu.org/licenses/>.
  */
 #include "../Engine/State.h"
+#include "../Savegame/SavedGame.h"
 #include <list>
 #include <map>
+#include <string>
+#include <vector>
 
 namespace OpenXcom
 {
@@ -40,7 +43,11 @@ class ResearchProject;
 class Soldier;
 class RuleMissionScript;
 class RuleEvent;
+class RuleAlienMission;
+class RuleResearch;
 class AlienBase;
+
+enum ProcessorSource {SCRIPT_MONTHLY, SCRIPT_FACTIONAL, SCRIPT_XCOM, OTHER_SCRIPT};
 
 /**
  * Geoscape screen which shows an overview of
@@ -51,24 +58,25 @@ class GeoscapeState : public State
 private:
 	Surface *_bg, *_sideLine, *_sidebar;
 	Globe *_globe;
-	TextButton *_btnIntercept, *_btnBases, *_btnGraphs, *_btnUfopaedia, *_btnOptions, *_btnFunding;
+	TextButton *_btnIntercept, *_btnBases, *_btnDiplomacy, *_btnUfopaedia, *_btnOptions, *_btnGraphs;
 	TextButton *_timeSpeed;
 	TextButton *_btn5Secs, *_btn1Min, *_btn5Mins, *_btn30Mins, *_btn1Hour, *_btn1Day;
 	TextButton *_sideTop, *_sideBottom;
 	InteractiveSurface *_btnRotateLeft, *_btnRotateRight, *_btnRotateUp, *_btnRotateDown, *_btnZoomIn, *_btnZoomOut;
-	Text *_txtFunds, *_txtHour, *_txtHourSep, *_txtMin, *_txtMinSep, *_txtSec, *_txtWeekday, *_txtDay, *_txtMonth, *_txtYear;
+	Text *_txtHour, *_txtHourSep, *_txtMin, *_txtMinSep, *_txtSec, *_txtWeekday, *_txtDay, *_txtMonth, *_txtYear;
 	Timer *_gameTimer, *_zoomInEffectTimer, *_zoomOutEffectTimer, *_dogfightStartTimer, *_dogfightTimer;
-	bool _pause, _zoomInEffectDone, _zoomOutEffectDone, _fta;
+	bool _pause, _zoomInEffectDone, _zoomOutEffectDone;
 	Text *_txtDebug;
 	ComboBox *_cbxRegion, *_cbxZone, *_cbxArea;
-	Text *_txtSlacking;
 	Text *_txtTraining;
 	std::list<State*> _popups;
 	std::list<DogfightState*> _dogfights, _dogfightsToBeStarted;
 	std::vector<Craft*> _activeCrafts;
+	std::map<Base*, std::vector<Craft*>> _returnedCrafts;
 	size_t _minimizedDogfights;
 	int _slowdownCounter;
-	std::vector<Soldier*> _promotedSoldiers;
+	std::map<ResearchProject*, std::map<Soldier*, int>> _hourlyResearchScientists;
+	std::map<ResearchProject*, int> _hourlyResearchProgress;
 
 	/// Update list of active crafts.
 	const std::vector<Craft*>* updateActiveCrafts();
@@ -77,6 +85,8 @@ private:
 	void cbxZoneChange(Action *action);
 	void cbxAreaChange(Action *action);
 	void updateZoneInfo();
+	void updateDogfightCoordinationBonuses();
+	void flushCraftReturnReports();
 
 public:
 	/// Creates the Geoscape state.
@@ -112,38 +122,31 @@ public:
 	void timerReset();
 	/// Displays a popup window.
 	void popup(State *state);
+	/// Resolves event-owned research ids against current state and displays one non-empty notification.
+	void showNewResearchNotifications(Base* base, const std::vector<std::string>& researchIds);
+	/// Checks whether a research discovery has just satisfied any current contained-alien gate.
+	bool hasNewlyUnblockedContainedAlienStudies(
+		const std::vector<std::string>& newlyDiscoveredResearchIds) const;
+	/// Registers a report-worthy craft that reached its base in the current processing pass.
+	void registerReturnedCraft(Craft *craft);
 	/// Gets the Geoscape globe.
 	Globe *getGlobe() const;
 	/// Handler for clicking the globe.
 	void globeClick(Action *action);
 	/// Handler for clicking the Intercept button.
 	void btnInterceptClick(Action *action);
-	/// Handler for clicking the UFO Tracker button.
-	void btnUfoTrackerClick(Action *action);
-	/// Handler for clicking the TechTreeViewer button.
-	void btnTechTreeViewerClick(Action *action);
-	/// Handler for clicking the [SelectMusicTrack] button.
-	void btnSelectMusicTrackClick(Action *action);
-	/// Handler for clicking the [GlobalProduction] key.
-	void btnGlobalProductionClick(Action *action);
-	/// Handler for clicking the [GlobalResearch] key.
-	void btnGlobalResearchClick(Action *action);
-	/// Handler for clicking the [GlobalAlienContainment] key.
-	void btnGlobalAlienContainmentClick(Action *action);
-	/// Handler for clicking the [DogfightExperience] key.
-	void btnDogfightExperienceClick(Action *action);
 	/// Handler for clicking the [Debug] key.
 	void btnDebugClick(Action *action);
 	/// Handler for clicking the Bases button.
 	void btnBasesClick(Action *action);
-	/// Handler for clicking the Graph button.
-	void btnGraphsClick(Action *action);
+	/// Handler for clicking the Diplomacy button.
+	void btnDiplomacyClick(Action *action);
 	/// Handler for clicking the Ufopaedia button.
 	void btnUfopaediaClick(Action *action);
 	/// Handler for clicking the Options button.
 	void btnOptionsClick(Action *action);
-	/// Handler for clicking the Funding button.
-	void btnFundingClick(Action *action);
+	/// Handler for clicking the Graphs button.
+	void btnGraphsClick(Action *action);
 	/// Handler for pressing the Rotate Left arrow.
 	void btnRotateLeftPress(Action *action);
 	/// Handler for releasing the Rotate Left arrow.
@@ -191,16 +194,30 @@ public:
 	void handleBaseDefense(Base *base, Ufo *ufo);
 	/// Update the resolution settings, we just resized the window.
 	void resize(int &dX, int &dY) override;
-	std::vector<Soldier*> getPromotedSolders() { return _promotedSoldiers; }
 	/// Handle alien mission generation.
 	void determineAlienMissions(bool isNewMonth = true, const RuleEvent* eventRules = nullptr);
+	/// Process event script from different sources.
+	void eventScriptProcessor(const std::vector<std::string>& scripts, ProcessorSource source);
+	/// Spawn the alien mission with given parameters.
+	bool spawnAlienMission(const RuleAlienMission* missionRules, const Globe& globe, Base* base = nullptr);
+	/// Loyalty update handler.
+	int updateLoyalty(int score, LoyaltySource source = XCOM_GEOSCAPE);
+	/// Return bonus applied to base service performance because of loyalty level.
+	int getLoyaltyPerformanceBonus();
 private:
 	bool attemptAlienRaceEvolution(int month, AlienBase* ab) const;
 	/// Process each individual mission script command.
 	bool processCommand(RuleMissionScript *command);
 	bool buttonsDisabled();
-	void updateSlackingIndicator();
+	void updateTrainingIndicator();
+	void handleIntelProjectUnblocks();
+	void prepareResearchHour();
 	void handleResearch(Base *base);
+	std::vector<RuleResearch*> captureResearchAvailability(Base* base) const;
+	std::vector<std::string> collectNewResearchNotifications(
+		Base* base, const std::vector<RuleResearch*>& before);
+	std::vector<RuleResearch*> resolveResearchNotifications(
+		Base* base, const std::vector<std::string>& researchIds);
 };
 
 }

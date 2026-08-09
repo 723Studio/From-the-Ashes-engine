@@ -18,8 +18,11 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <string>
+#include <vector>
+#include <utility>
 #include "../Engine/Yaml.h"
 #include "../Mod/Unit.h"
+#include "Promotion.h"
 
 namespace OpenXcom
 {
@@ -49,9 +52,13 @@ private:
 	int _successChance;
 	ItemContainer* _items;
 	CovertOperationResults* _results;
-	bool _inBattlescape, _hasBattlescapeResolve, _over, _hasPsi, _progressEventSpawned;
+	bool _inBattlescape, _hasBattlescapeResolve, _over, _hasPsi, _progressEventSpawned, _cancelled;
+	// UI state is intentionally transient. Saving while a tactical result is
+	// pending must allow Geoscape to recreate exactly one notification on load.
+	bool _resultNotificationClaimed;
 	bool _finishedResult = false;
 	std::string _generatedMission, _researchName;
+	void returnItemsToBase();
 public:
 	/// Creates a blank Covert Operation.
 	CovertOperation(const RuleCovertOperation* rule, const Mod* mod, Base* base, int cost = 0, int chances = 0);
@@ -104,10 +111,16 @@ public:
 
 	/// Is this covert operation over?
 	bool isOver() const { return _over; }
+	/// Was this operation cancelled because it became obsolete?
+	bool isCancelled() const { return _cancelled; }
 	/// Get the result of the operation (can be true only at the moment of success operation resolving)?
 	bool getFinishedResult() const { return _finishedResult; }
 	/// Is this covert operation is running in battlescape?
 	bool isInBattlescape() const { return _inBattlescape; }
+	/// Has tactical resolution finished while its strategic result is still waiting to be acknowledged?
+	bool hasPendingBattlescapeResults() const { return _hasBattlescapeResolve && !_inBattlescape && !_over; }
+	/// Claims the one result notification allowed for this in-memory operation.
+	bool claimResultNotification();
 	/// Sets if this operation is running in battlescape
 	void setInBattlescape(bool inBattle) { _inBattlescape = inBattle; }
 	/// Handle covert operation logic.
@@ -130,12 +143,20 @@ private:
 	std::map<std::string, int> _bountyItems, _reputation, _soldierDamage;
 	std::string _specialMessage;
 	std::vector<std::pair<std::string, UnitStats>> _soldierStats;
+	PromotionBatch _promotions;
+	std::vector<std::string> _newResearchNotifications;
+	bool _containedAlienStudiesUnblocked = false;
+	std::vector<std::string> _researchArticleIds;
 public:
 	/// Create base Covert Operation results
 	CovertOperationResults(const std::string& operationName, bool result, std::string finishDate) :
 		_operationName(operationName), _result(result), _finishDate(finishDate), _score(0), _funds(0) {}
 	/// Cleans up the Covert Operation results info.
 	~CovertOperationResults() {}
+	/// Loads persistent operation results.
+	void load(const YAML::YamlNodeReader& reader);
+	/// Saves persistent operation results.
+	void save(YAML::YamlNodeWriter writer) const;
 	bool getOperationResult() { return _result; }
 	/// Manipulate score
 	void addScore(int score) { _score += score; }
@@ -159,6 +180,20 @@ public:
 	void addSoldierImprovement(std::string soldier, UnitStats improvement)
 	{ _soldierStats.push_back(std::pair<std::string, UnitStats>(soldier, improvement)); }
 	std::vector<std::pair<std::string, UnitStats>> getSoldierImprovement() const { return _soldierStats; }
+	void addPromotion(const RolePromotion& promotion);
+	const PromotionBatch& getPromotions() const { return _promotions; }
+	void setNewResearchNotifications(std::vector<std::string> ids)
+	{ _newResearchNotifications = ids; }
+	const std::vector<std::string>& getNewResearchNotifications() const
+	{ return _newResearchNotifications; }
+	void setContainedAlienStudiesUnblocked(bool value)
+	{ _containedAlienStudiesUnblocked = value; }
+	bool getContainedAlienStudiesUnblocked() const
+	{ return _containedAlienStudiesUnblocked; }
+	void setResearchArticleIds(std::vector<std::string> ids)
+	{ _researchArticleIds = std::move(ids); }
+	const std::vector<std::string>& getResearchArticleIds() const
+	{ return _researchArticleIds; }
 };
 
 }

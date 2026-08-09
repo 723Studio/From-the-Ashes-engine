@@ -30,11 +30,11 @@ class Cursor;
 class Language;
 class SavedGame;
 class Mod;
-class MasterMind;
 class ModInfo;
 class FpsCounter;
 class Action;
 class GeoscapeState;
+class MapEditor;
 
 /**
  * The core of the game engine, manages the game's entire contents and structure.
@@ -52,7 +52,6 @@ private:
 	std::list<State*> _states, _deleted;
 	SavedGame *_save;
 	Mod *_mod;
-	MasterMind *_mind;
 	bool _quit, _init, _update;
 	bool _modifiedContentLoaded = false;
 	FpsCounter *_fpsCounter;
@@ -62,6 +61,7 @@ private:
 	bool _ctrl, _alt, _shift, _rmb, _mmb;
 	int _scrollStep;
 	static const double VOLUME_GRADIENT;
+	MapEditor *_mapEditor;
 
 public:
 	/// Creates a new game and initializes SDL.
@@ -94,15 +94,13 @@ public:
 	SavedGame *getSavedGame() const { return _save; }
 	/// Sets a new saved game for the game.
 	void setSavedGame(SavedGame *save);
-	/// Gets MasterMind for this game.
-	MasterMind* getMasterMind() const { return _mind; }
 	/// Gets the currently loaded mod.
 	Mod *getMod() const { return _mod; }
 	/// Loads the mods specified in the game options.
 	void loadMods();
 	/// Sets whether open/untrusted content is active in this runtime.
 	void setModifiedContentLoaded(bool value) { _modifiedContentLoaded = value; }
-	/// Returns whether achievements should be disabled for this runtime.
+	/// Returns whether open/untrusted content is active in this runtime.
 	bool isModifiedContentLoaded() const { return _modifiedContentLoaded; }
 	/// Sets whether the mouse cursor is activated.
 	void setMouseActive(bool active);
@@ -110,8 +108,6 @@ public:
 	bool isState(State *state) const;
 	/// Returns whether a UfopaediaStartState is in the background.
 	bool containsUfopaediaStartState() const;
-	/// Returns whether a NotesState is in the background.
-	bool containsNotesState() const;
 	/// Returns the GeoscapeState from the background (if available).
 	GeoscapeState* getGeoscapeState() const;
 	/// Returns whether the game is shutting down.
@@ -176,6 +172,11 @@ public:
 
 	/// Gets the scroll step value.
 	int getScrollStep() const { return _scrollStep; }
+
+	/// Sets the map editor for the game.
+	void setMapEditor(MapEditor *mapEditor);
+	/// Gets the map editor for the game.
+	MapEditor *getMapEditor();
 };
 
 }

@@ -20,10 +20,7 @@
 #include "CovertOperationEquipmentState.h"
 #include "CovertOperationSoldiersState.h"
 #include "CovertOperationArmorState.h"
-#include <iomanip>
 #include <algorithm>
-#include <locale>
-#include "../fmath.h"
 #include "../Interface/Window.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/Text.h"
@@ -32,11 +29,10 @@
 #include "../Engine/Action.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Options.h"
-#include "../Engine/Timer.h"
-#include "../Engine/Unicode.h"
 #include "../Mod/Mod.h"
 #include "../Mod/RuleItem.h"
 #include "../Mod/RuleCovertOperation.h"
+#include "../Mod/RuleIntelProject.h"
 #include "../Mod/Armor.h"
 #include "../Mod/RuleSoldier.h"
 #include "../Savegame/Base.h"
@@ -191,25 +187,17 @@ void CovertOperationStartState::init()
 	_txtChances->setText(tr("STR_OPERATION_CHANCES_UC").arg(tr(getOperationOddsString(debug))));
 	_txtChances->setAlign(ALIGN_RIGHT);
 
-	_btnStart->setVisible(_soldiers.size() >= (size_t)_rule->getSoldierSlotsMin());
+	bool canStart = _soldiers.size() >= (size_t)_rule->getSoldierSlotsMin();
 	auto reqItems = _rule->getRequiredItemList();
-	if (!reqItems.empty())
+	for (const auto& [requiredItem, requiredQuantity] : reqItems)
 	{
-		int reqItemsN = 0;
-		for (auto& [reqItem, reqValue] : reqItems)
+		if (_items->getItem(requiredItem) < requiredQuantity)
 		{
-			reqItemsN += reqValue;
-			for (const auto& [contentItem, contentValue] : *_items->getContents())
-			{
-				if (contentItem == reqItem)
-				{
-					reqItemsN -= contentValue;
-				}
-			}
+			canStart = false;
+			break;
 		}
-		
-		_btnStart->setVisible(reqItemsN <= 0);
 	}
+	_btnStart->setVisible(canStart);
 	_btnEquipmet->setVisible(!_soldiers.empty() || _items->getTotalQuantity() > 0);
 	_btnArmor->setVisible(!_soldiers.empty());
 
@@ -294,27 +282,27 @@ void CovertOperationStartState::btnStartClick(Action*)
 		}
 		if (matched)
 		{
+			bool wasMatTraining = (*i)->isInTraining();
+			bool wasPsiTraining = (*i)->isInPsiTraining();
 			(*i)->clearBaseDuty();
 			(*i)->setCovertOperation(newOperation);
-			
-			bool wasMatTraining = false;
-			bool wasPsiTraining = false;
-			if ((*i)->isInTraining())
-			{
-				(*i)->setReturnToTrainingWhenOperationOver(MARTIAL_TRAINING);
-				wasMatTraining = true;
-			}
-			if ((*i)->isInPsiTraining())
-			{
-				(*i)->setReturnToTrainingWhenOperationOver(PSI_TRAINING);
-				wasPsiTraining = true;
-			}
+
 			if (wasMatTraining && wasPsiTraining)
 			{
 				(*i)->setReturnToTrainingWhenOperationOver(BOTH_TRAININGS);
 			}
-			(*i)->setPsiTraining(false);
-			(*i)->setTraining(false);
+			else if (wasMatTraining)
+			{
+				(*i)->setReturnToTrainingWhenOperationOver(MARTIAL_TRAINING);
+			}
+			else if (wasPsiTraining)
+			{
+				(*i)->setReturnToTrainingWhenOperationOver(PSI_TRAINING);
+			}
+			else
+			{
+				(*i)->setReturnToTrainingWhenOperationOver(NONE);
+			}
 			if ((*i)->getCurrentStats()->psiSkill > 0) _hasPsionics = true; //hey, this soldier we sending has psionic skills!
 		}
 	}
@@ -436,9 +424,10 @@ std::string CovertOperationStartState::getOperationOddsString(bool debug)
 */
 double CovertOperationStartState::getOperationOdds()
 {
-	bool investigation = false, infiltration = false, negotiation = false, deception = false, engineering = false, science = false;
+	bool investigation = false, infiltration = false, negotiation = false, deception = false;
 	int statsNumber = 0;
 	auto cats = _rule->getCategories();
+	const auto& oddsFactors = _game->getMod()->getCovertOperationOddsFactors();
 	if (std::find(cats.begin(), cats.end(), "STR_INVESTIGATION") != cats.end())
 	{
 		investigation = true;
@@ -459,40 +448,25 @@ double CovertOperationStartState::getOperationOdds()
 		deception = true;
 		statsNumber++;
 	}
-	if (std::find(cats.begin(), cats.end(), "STR_ENGINEERING") != cats.end())
-	{
-		engineering = true;
-	}
-	if (std::find(cats.begin(), cats.end(), "STR_SCIENCE") != cats.end())
-	{
-		science = true;
-	}
-	if (!investigation && !infiltration && !negotiation && !deception)
-	{
-		investigation = true; // we use it as a default option for further calculations
-		statsNumber = 1;
-	}
-
 	_chances = _rule->getBaseChances();
 
 	GameDifficulty diff = _game->getSavedGame()->getDifficulty();
-	int staffCoeff = 1;
+	double difficultyFactor = 1.0;
 	switch (diff)
 	{
 	case DIFF_BEGINNER:
-		_chances *= 1.1;
+		difficultyFactor = 1.1;
 		break;
 	case DIFF_EXPERIENCED:
 		break;
 	case DIFF_VETERAN:
-		_chances *= 0.95;
+		difficultyFactor = 0.95;
 		break;
 	case DIFF_GENIUS:
-		_chances *= 0.9;
+		difficultyFactor = 0.9;
 		break;
 	case DIFF_SUPERHUMAN:
-		_chances *= 0.85;
-		staffCoeff = 2;
+		difficultyFactor = 0.85;
 		break;
 	}
 
@@ -508,14 +482,8 @@ double CovertOperationStartState::getOperationOdds()
 		int bonItemsN = 0;
 		for (auto& it : bonItems)
 		{
-			bonItemsN += it.second;
-			for (auto& j : *_items->getContents())
-			{
-				if (j.first == it.first && j.second > it.second)
-				{
-					bonItemsN -= j.second;
-				}
-			}
+			int assigned = _items->getItem(it.first);
+			bonItemsN += std::max(0, it.second - assigned);
 		}
 
 		_chances -= (double)_rule->getBonusItemsEffect() * bonItemsN;
@@ -532,6 +500,7 @@ double CovertOperationStartState::getOperationOdds()
 				if (ruleArmor == armorName)
 				{
 					--armorlessSoldiers;
+					break;
 				}
 			}
 		}
@@ -540,8 +509,6 @@ double CovertOperationStartState::getOperationOdds()
 	//lets process soldier stats as pure bonus
 	if (assignedSoldiersN > 0)
 	{
-		int scientistsN = 0;
-		int engineersN = 0;
 		int soldierMaxRank = 0;
 		int soldiersTotalRank = 0;
 		//extract soldier stats we need for processing
@@ -549,11 +516,7 @@ double CovertOperationStartState::getOperationOdds()
 		{
 			auto stats = s->getStatsWithAllBonuses();
 			double soldierBonus = 0;
-
-			if (s->getRoleRank(ROLE_SCIENTIST) > 0)
-				scientistsN++;
-			if (s->getRoleRank(ROLE_ENGINEER) > 0)
-				engineersN++;
+			double psiBonus = 0;
 
 			//lets get soldier effectiveness first, if any
 			double solEffectiveness = 100;
@@ -582,34 +545,48 @@ double CovertOperationStartState::getOperationOdds()
 			//now lets handle soldier stats
 			if (investigation)
 			{
-				soldierBonus += (double)stats->investigation / 5;
-				soldierBonus += (double)stats->perception / 10;
-				soldierBonus += (double)stats->interrogation / 10;
+				double categoryBonus = stats->investigation / oddsFactors.investigation.investigationDivisor;
+				categoryBonus += stats->perception / oddsFactors.investigation.perceptionDivisor;
+				categoryBonus += stats->interrogation / oddsFactors.investigation.interrogationDivisor;
+				soldierBonus += categoryBonus;
 			}
 			if (infiltration)
 			{
-				soldierBonus += (double)stats->stealth / 5;
-				soldierBonus += (double)stats->perception / 10;
-				soldierBonus += (double)stats->interrogation / 10;
-				soldierBonus += statEffectCalc(stats->bravery, 1800, 2.1, 15, -8);
+				double categoryBonus = stats->stealth / oddsFactors.infiltration.stealthDivisor;
+				categoryBonus += stats->perception / oddsFactors.infiltration.perceptionDivisor;
+				categoryBonus += stats->interrogation / oddsFactors.infiltration.interrogationDivisor;
+				const auto& curve = oddsFactors.infiltration.bravery;
+				categoryBonus += statEffectCalc(stats->bravery, curve.scale, curve.exponent, curve.limit, curve.offset);
+				soldierBonus += categoryBonus;
 			}
 			if (negotiation)
 			{
-				soldierBonus += (double)stats->charisma / 3;
+				soldierBonus += stats->charisma / oddsFactors.negotiation.charismaDivisor;
 			}
 			if (deception)
 			{
-				soldierBonus += (double)stats->deception / 3;
-				soldierBonus += statEffectCalc(stats->bravery, 1800, 2.1, 9, -5);
+				double categoryBonus = stats->deception / oddsFactors.deception.deceptionDivisor;
+				const auto& curve = oddsFactors.deception.bravery;
+				categoryBonus += statEffectCalc(stats->bravery, curve.scale, curve.exponent, curve.limit, curve.offset);
+				soldierBonus += categoryBonus;
 			}
 
 			int psi = stats->psiSkill;
 			if (psi > 0 && _game->getSavedGame()->isResearched(_game->getMod()->getPsiRequirements())) //psi offensive bonus
-				soldierBonus += (statEffectCalc(psi, 7000, 2.2, 8, 0) + statEffectCalc(stats->psiStrength, 7000, 2.2, 8, 0)) / 2;
+			{
+				const auto& curve = oddsFactors.psionics.offensive;
+				psiBonus = (statEffectCalc(psi, curve.scale, curve.exponent, curve.limit, curve.offset) +
+					statEffectCalc(stats->psiStrength, curve.scale, curve.exponent, curve.limit, curve.offset)) /
+					oddsFactors.psionics.offensiveDivisor;
+			}
 			else
-				soldierBonus += statEffectCalc(stats->psiStrength, 8000, 2.2, 8, 0) / 4; //as soldier still has psi defence and some excrescence capabilities
+			{
+				const auto& curve = oddsFactors.psionics.passive;
+				psiBonus = statEffectCalc(stats->psiStrength, curve.scale, curve.exponent, curve.limit, curve.offset) /
+					oddsFactors.psionics.passiveDivisor; //as soldier still has psi defence and some excrescence capabilities
+			}
 
-			soldierBonus = soldierBonus * solEffectiveness / 100 / statsNumber;
+			soldierBonus = (soldierBonus / statsNumber + psiBonus) * solEffectiveness / 100;
 			_chances += soldierBonus;
 			soldierBonus = 0;
 		}
@@ -622,57 +599,56 @@ double CovertOperationStartState::getOperationOdds()
 		double rankEffect = (double)soldiersTotalRank / assignedSoldiersN;
 		_chances += officerEffect + rankEffect;
 
-		// let's check if itemset has specific FTA's item categories
-		if (!_rule->getAllowAllEquipment())
-		{
-			bool allConsealed = true;
-			int heavy = 0;
-			int itemConcealedBonusEffect = _rule->getConcealedItemsBonus();
-			double itemCatEffect = 0;
-
-			double diffCoeff = 1;
-			switch (diff)
-			{
-			case DIFF_BEGINNER:
-				diffCoeff = 0.90;
-				break;
-			case DIFF_EXPERIENCED:
-				break;
-			case DIFF_VETERAN:
-				diffCoeff *= 1.1;
-				break;
-			case DIFF_GENIUS:
-				diffCoeff *= 1.3;
-				break;
-			case DIFF_SUPERHUMAN:
-				diffCoeff *= 1.7;
-				break;
-			}
-
-			for (auto& items : *_items->getContents())
-			{
-				if (!items.first->belongsToCategory("STR_CONCEALABLE"))
-					allConsealed = false;
-				if (items.first->belongsToCategory("STR_HEAVY_WEAPONS") && !items.first->belongsToCategory("STR_CLIPS"))
-					++heavy;
-			}
-
-			if (!allConsealed)
-			{
-				itemCatEffect = -itemConcealedBonusEffect * diffCoeff;
-			}
-
-			itemCatEffect = itemCatEffect - diffCoeff * heavy * itemConcealedBonusEffect * 4;
-			_chances += itemCatEffect;
-		}
 	}
+	_chances += getEquipmentConcealmentEffect();
 
-	double intelBonus = ((double)_base->getOperationBoost() * 100 ) / 100;
+	double intelBonus = _game->getSavedGame()->getIntelEffect(
+		INTEL_EFFECT_COVERT_OPERATIONS, _game->getMod());
+	intelBonus *= _game->getMod()->getCovertOpsIntelBonusFactor() / 100.0;
 	_chances += intelBonus;
+	_chances *= difficultyFactor;
 
 	if (_chances > 200) // we dont want too high chances
 		_chances = 200;
 	return _chances;
+}
+
+/**
+ * Calculates the chance effect of non-concealable and heavy equipment.
+ * @param concealmentBonusApplied Optional output for the equipment UI.
+ * @param heavyWeaponsPenalty Optional output containing only the stacked heavy-weapon penalty.
+ * @return The complete equipment concealment effect applied to operation odds.
+ */
+int CovertOperationStartState::getEquipmentConcealmentEffect(bool* concealmentBonusApplied, int* heavyWeaponsPenalty) const
+{
+	if (concealmentBonusApplied)
+		*concealmentBonusApplied = false;
+	if (heavyWeaponsPenalty)
+		*heavyWeaponsPenalty = 0;
+
+	if (_rule->getAllowAllEquipment() || _rule->getConcealedItemsBonus() <= 0)
+		return 0;
+
+	bool allConcealed = true;
+	int heavy = 0;
+	for (const auto& items : *_items->getContents())
+	{
+		if (items.second <= 0)
+			continue;
+		if (!items.first->belongsToCategory("STR_CONCEALABLE"))
+			allConcealed = false;
+		if (items.first->belongsToCategory("STR_HEAVY_WEAPONS") && !items.first->belongsToCategory("STR_CLIPS"))
+			heavy += items.second;
+	}
+
+	const int concealmentEffect = _rule->getConcealedItemsBonus();
+	const int heavyPenalty = -heavy * concealmentEffect * 4;
+	if (concealmentBonusApplied)
+		*concealmentBonusApplied = allConcealed && heavy == 0;
+	if (heavyWeaponsPenalty)
+		*heavyWeaponsPenalty = heavyPenalty;
+
+	return (allConcealed ? 0 : -concealmentEffect) + heavyPenalty;
 }
 
 int CovertOperationStartState::getOperationCost()
@@ -722,7 +698,7 @@ void CovertOperationStartState::addSoldier(Soldier *soldier)
 	_soldiers.push_back(soldier);
 	auto compareRole = [](const Soldier* lhs, const Soldier* rhs)
 	{
-		return lhs->getRoles()[0]->role < rhs->getRoles()[0]->role;
+		return lhs->getBestRole() < rhs->getBestRole();
 	};
 	sort(_soldiers.begin(), _soldiers.end(), compareRole);
 }

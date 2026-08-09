@@ -17,7 +17,9 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "IntelligenceProjectDetailsState.h"
+#include <algorithm>
 #include <sstream>
+#include <vector>
 #include "../Interface/Window.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/Text.h"
@@ -70,17 +72,17 @@ IntelligenceProjectDetailsState::IntelligenceProjectDetailsState(const RuleIntel
 	_txtTitle->setAlign(ALIGN_CENTER);
 
 	std::string typeName;
-	switch (_rule->getSpecialRule()) {
-	case INTEL_NONE:
+	switch (_rule->getEffectType()) {
+	case INTEL_EFFECT_NONE:
 		typeName = "STR_INTEL_NONE";
 		break;
-	case INTEL_UFO_TRACKING:
+	case INTEL_EFFECT_UFO_TRACKING:
 		typeName = "STR_INTEL_UFO_TRACKING";
 		break;
-	case INTEL_COVERT_OPERATIONS:
+	case INTEL_EFFECT_COVERT_OPERATIONS:
 		typeName = "STR_INTEL_COVERT_OPERATIONS";
 		break;
-	case INTEL_DEPLOYMENT_HINTS:
+	case INTEL_EFFECT_DEPLOYMENT_HINTS:
 		typeName = "STR_INTEL_DEPLOYMENT_HINTS";
 		break;
 	default: ;
@@ -123,28 +125,35 @@ std::string IntelligenceProjectDetailsState::generateStatsList()
 	std::ostringstream ss;
 
 	auto stats = _rule->getStats();
-	std::map<int, std::string> statMap;
+	std::vector<std::pair<int, std::string>> statsList;
 
 	if (stats.data > 0)
-		statMap.insert(std::make_pair(stats.data, tr(UnitStats::getStatString(&UnitStats::data, UnitStats::STATSTR_LC))));
+		statsList.emplace_back(stats.data, tr(UnitStats::getStatString(&UnitStats::data, UnitStats::STATSTR_LC)));
 	if (stats.computers > 0)
-		statMap.insert(std::make_pair(stats.computers, tr(UnitStats::getStatString(&UnitStats::computers, UnitStats::STATSTR_LC))));
+		statsList.emplace_back(stats.computers, tr(UnitStats::getStatString(&UnitStats::computers, UnitStats::STATSTR_LC)));
+	if (stats.xenolinguistics > 0 &&
+		_game->getSavedGame()->isResearched(_game->getMod()->getXenolinguisticsUnlockResearch()))
+		statsList.emplace_back(stats.xenolinguistics, tr(UnitStats::getStatString(&UnitStats::xenolinguistics, UnitStats::STATSTR_LC)));
 	if (stats.hacking > 0)
-		statMap.insert(std::make_pair(stats.hacking, tr(UnitStats::getStatString(&UnitStats::hacking, UnitStats::STATSTR_LC))));
+		statsList.emplace_back(stats.hacking, tr(UnitStats::getStatString(&UnitStats::hacking, UnitStats::STATSTR_LC)));
+	if (stats.alienTech > 0 &&
+		_game->getSavedGame()->isResearched(_game->getMod()->getAlienTechUnlockResearch()))
+		statsList.emplace_back(stats.alienTech, tr(UnitStats::getStatString(&UnitStats::alienTech, UnitStats::STATSTR_LC)));
 	if (stats.investigation > 0)
-		statMap.insert(std::make_pair(stats.investigation, tr(UnitStats::getStatString(&UnitStats::investigation, UnitStats::STATSTR_LC))));
+		statsList.emplace_back(stats.investigation, tr(UnitStats::getStatString(&UnitStats::investigation, UnitStats::STATSTR_LC)));
 
-	if (!statMap.empty())
+	if (!statsList.empty())
 	{
+		std::stable_sort(statsList.begin(), statsList.end(),
+			[](const auto& left, const auto& right) { return left.first > right.first; });
 		size_t pos = 0;
-		std::pair<int, std::string> result;
-		for (auto it = statMap.rbegin(); it != statMap.rend(); ++it)
+		for (const auto& stat : statsList)
 		{
 			if (pos > 0)
 			{
 				ss << ", ";
 			}
-			ss << (*it).second;
+			ss << stat.second;
 			pos++;
 		}
 		ss << ".";

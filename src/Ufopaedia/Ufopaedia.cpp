@@ -18,6 +18,8 @@
  */
 
 #include "Ufopaedia.h"
+#include <algorithm>
+#include <set>
 #include "UfopaediaStartState.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/Base.h"
@@ -25,6 +27,7 @@
 #include "../Savegame/SoldierDiary.h"
 #include "../Mod/Mod.h"
 #include "../Mod/ArticleDefinition.h"
+#include "../Mod/RuleResearch.h"
 #include "ArticleState.h"
 #include "ArticleStateBaseFacility.h"
 #include "ArticleStateCraft.h"
@@ -48,6 +51,105 @@
 
 namespace OpenXcom
 {
+	std::vector<std::string> Ufopaedia::resolveArticleIds(const ArticleDefinitionList& articles,
+		const std::string& articleId)
+	{
+		std::vector<std::string> result;
+		// Preserve getArticleIndex() precedence, but keep every visible article
+		// whose requires list is satisfied by this discovery event.
+		auto append = [&](const ArticleDefinition* article)
+		{
+			if (article && std::find(result.begin(), result.end(), article->id) == result.end())
+			{
+				result.push_back(article->id);
+			}
+		};
+		for (const auto* article : articles)
+		{
+			if (article->id == articleId)
+			{
+				append(article);
+			}
+		}
+		const std::string upperCaseId = articleId + "_UC";
+		for (const auto* article : articles)
+		{
+			if (article->id == upperCaseId)
+			{
+				append(article);
+			}
+		}
+		for (const auto* article : articles)
+		{
+			if (std::find(article->_requires.begin(), article->_requires.end(), articleId) !=
+				article->_requires.end())
+			{
+				append(article);
+			}
+		}
+		return result;
+	}
+
+	std::vector<std::string> Ufopaedia::buildResearchArticleIds(SavedGame* save, const Mod* mod,
+		const std::vector<const RuleResearch*>& orderedResearch,
+		const std::vector<const RuleResearch*>& newlyDiscovered)
+	{
+		std::vector<std::string> result;
+		if (!save || !mod || orderedResearch.empty() || newlyDiscovered.empty())
+		{
+			return result;
+		}
+		std::set<std::string> unique;
+		const std::set<const RuleResearch*> newlyDiscoveredSet(
+			newlyDiscovered.begin(), newlyDiscovered.end());
+		const auto visibleArticles = createCommonArticleState(save, mod)->articleList;
+		for (const auto* research : orderedResearch)
+		{
+			if (!research || newlyDiscoveredSet.find(research) == newlyDiscoveredSet.end())
+			{
+				continue;
+			}
+			const std::string requestedId = research->getLookup().empty()
+				? research->getName() : research->getLookup();
+			for (const auto& articleId : resolveArticleIds(visibleArticles, requestedId))
+			{
+				if (unique.insert(articleId).second)
+				{
+					result.push_back(articleId);
+				}
+			}
+		}
+		return result;
+	}
+
+	std::vector<std::string> Ufopaedia::getResearchArticleIds(SavedGame* save, const Mod* mod,
+		const std::vector<const RuleResearch*>& newlyDiscovered)
+	{
+		return buildResearchArticleIds(save, mod, newlyDiscovered, newlyDiscovered);
+	}
+
+	std::vector<std::string> Ufopaedia::getResearchArticleIds(SavedGame* save, const Mod* mod,
+		const ResearchDiscoveryResult& discovery)
+	{
+		std::vector<const RuleResearch*> ordered;
+		auto append = [&](const RuleResearch* research)
+		{
+			if (research && std::find(ordered.begin(), ordered.end(), research) == ordered.end())
+			{
+				ordered.push_back(research);
+			}
+		};
+		append(discovery.primary);
+		append(discovery.primaryDisplay);
+		append(discovery.bonus);
+		append(discovery.bonusDisplay);
+		for (const auto* research : discovery.newlyDiscovered)
+		{
+			append(research);
+		}
+		return buildResearchArticleIds(save, mod, ordered, discovery.newlyDiscovered);
+	}
+
 	/**
 	 * Checks, if an article has already been released.
 	 * @param save Pointer to saved game.
@@ -215,7 +317,6 @@ namespace OpenXcom
 	 */
 	void Ufopaedia::next(Game *game, std::shared_ptr<ArticleCommonState> state)
 	{
-		if (state->isCurrentArticleHidden()) return;
 		state->nextArticlePage();
 		game->popState();
 		game->pushState(createArticleState(std::move(state)));
@@ -227,7 +328,6 @@ namespace OpenXcom
 	 */
 	void Ufopaedia::nextDetail(Game *game, std::shared_ptr<ArticleCommonState> state, bool debug, bool ids, bool defaults)
 	{
-		if (state->isCurrentArticleHidden()) return;
 		state->nextArticle();
 		game->popState();
 		game->pushState(new StatsForNerdsState(std::move(state), debug, ids, defaults));
@@ -239,7 +339,6 @@ namespace OpenXcom
 	 */
 	void Ufopaedia::prev(Game *game, std::shared_ptr<ArticleCommonState> state)
 	{
-		if (state->isCurrentArticleHidden()) return;
 		state->prevArticlePage();
 		game->popState();
 		game->pushState(createArticleState(std::move(state)));
@@ -251,7 +350,6 @@ namespace OpenXcom
 	 */
 	void Ufopaedia::prevDetail(Game *game, std::shared_ptr<ArticleCommonState> state, bool debug, bool ids, bool defaults)
 	{
-		if (state->isCurrentArticleHidden()) return;
 		state->prevArticle();
 		game->popState();
 		game->pushState(new StatsForNerdsState(std::move(state), debug, ids, defaults));
@@ -292,13 +390,7 @@ namespace OpenXcom
 				return false;
 			}
 
-			// 2. or if the article was opened already
-			if (save->getUfopediaRuleStatus(article->id) != ArticleDefinition::PEDIA_STATUS_NEW)
-			{
-				return false;
-			}
-
-			// 3. or if the medal was awarded at least once
+			// 2. or if the medal was awarded at least once
 			if (isAwardedCommendation(save, article))
 			{
 				return false;
@@ -356,7 +448,7 @@ namespace OpenXcom
 	 * @param mod Pointer to mod.
 	 * @return List of visible ArticleDefinitions.
 	 */
-	std::shared_ptr<ArticleCommonState> Ufopaedia::createCommonArticleState(SavedGame *save, Mod *mod)
+	std::shared_ptr<ArticleCommonState> Ufopaedia::createCommonArticleState(SavedGame *save, const Mod *mod)
 	{
 		auto shared = std::make_shared<ArticleCommonState>();
 		for (const auto& articleName : mod->getUfopaediaList())
@@ -365,7 +457,6 @@ namespace OpenXcom
 			if (isArticleAvailable(save, article) && article->section != UFOPAEDIA_NOT_AVAILABLE && !isCommendationArticleInvisible(save, article))
 			{
 				shared->articleList.push_back(article);
-				shared->articleStatusList.push_back(save->getUfopediaRuleStatus(articleName) == ArticleDefinition::PEDIA_STATUS_HIDDEN);
 			}
 		}
 		return shared;

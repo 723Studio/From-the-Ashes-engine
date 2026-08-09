@@ -21,7 +21,6 @@
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
 #include "../Mod/RuleManufacture.h"
-#include "../Engine/LocalizedText.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
@@ -31,8 +30,6 @@
 #include "../Basescape/BasescapeState.h"
 #include "../Basescape/ManufactureState.h"
 #include "../Savegame/Base.h"
-#include "../Savegame/ItemContainer.h"
-#include "../Savegame/SavedGame.h"
 #include "../Battlescape/PromotionsState.h"
 
 namespace OpenXcom
@@ -47,8 +44,8 @@ namespace OpenXcom
  * @param endType What ended the production.
  * @param production Pointer to the production details.
  */
-ProductionCompleteState::ProductionCompleteState(Base *base, const std::string &item, GeoscapeState *state, std::vector<Soldier*> promotedSoldiers, productionProgress_e endType, Production *production) :
-	_base(base), _state(state), _promotedSoldiers(promotedSoldiers), _endType(endType)
+ProductionCompleteState::ProductionCompleteState(Base *base, const std::string &item, GeoscapeState *state, const PromotionBatch& promotions, productionProgress_e endType, Production *production) :
+	_base(base), _state(state), _promotions(promotions), _endType(endType)
 {
 	_screen = false;
 
@@ -100,7 +97,7 @@ ProductionCompleteState::ProductionCompleteState(Base *base, const std::string &
 
 	_btnPromotions->setText(tr("STR_VIEW_PROMOTIONS"));
 	_btnPromotions->onMouseClick((ActionHandler)&ProductionCompleteState::btnPromotionsClick);
-	_btnPromotions->setVisible(!promotedSoldiers.empty());
+	_btnPromotions->setVisible(!_promotions.empty());
 
 	_txtItem->setText(tr("STR_ITEM"));
 	_txtItem->setVisible(false);
@@ -110,22 +107,19 @@ ProductionCompleteState::ProductionCompleteState(Base *base, const std::string &
 
 	_lstSummary->setColumns(2, 162, 46);
 	_lstSummary->setBackground(_window);
-	_lstSummary->setSelectable(true);
+	_lstSummary->setSelectable(false);
 	_lstSummary->setMargin(8);
 	_lstSummary->setVisible(false);
-	_lstSummary->onMouseClick((ActionHandler)&ProductionCompleteState::lstSummaryClick, SDL_BUTTON_RIGHT);
 
-	if (production && !production->getRules()->getRandomProducedItems().empty())
+	if (_endType == PROGRESS_COMPLETE && production && !production->getRules()->getRandomProducedItems().empty())
 	{
 		_btnGotoBase->setVisible(false);
 		_randomProductionInfo = production->getRandomProductionInfo(); // local copy is necessary
-		_index.reserve(_randomProductionInfo.size());
 		for (auto& each : production->getRandomProductionInfo())
 		{
 			std::ostringstream ss;
 			ss << each.second;
 			_lstSummary->addRow(2, tr(each.first).c_str(), ss.str().c_str());
-			_index.push_back(each.first);
 		}
 	}
 	else
@@ -155,6 +149,9 @@ ProductionCompleteState::ProductionCompleteState(Base *base, const std::string &
 	case PROGRESS_NOT_ENOUGH_LIVING_SPACE:
 		s = tr("STR_NOT_ENOUGH_LIVING_SPACE_AT_BASE").arg(item).arg(base->getName());
 		break;
+	case PROGRESS_NOT_ENOUGH_BASE_FUNCTIONS:
+		s = tr("STR_PRODUCTION_PAUSED_MISSING_BASE_FUNCTIONS_AT_BASE").arg(item).arg(base->getName());
+		break;
 	default:
 		assert(false);
 	}
@@ -175,7 +172,6 @@ ProductionCompleteState::~ProductionCompleteState()
  */
 void ProductionCompleteState::btnOkClick(Action *)
 {
-	_game->getSavedGame()->handlePromotionsPostprocessing();
 	_game->popState();
 }
 
@@ -212,56 +208,9 @@ void ProductionCompleteState::btnSummaryClick(Action *)
 	_lstSummary->setVisible(true);
 }
 
-/**
- * Sells the selected item(s)... unless they were sold, transferred or otherwise disposed of earlier already.
- * @param action Pointer to an action.
- */
-void ProductionCompleteState::lstSummaryClick(Action *)
-{
-	// 1. remember stuff
-	auto scrollPos = _lstSummary->getScroll();
-	unsigned int sel = _lstSummary->getSelectedRow();
-	std::string itemName = _index[sel];
-	int itemCount = _randomProductionInfo[itemName];
-
-	// 2. deal with it
-	auto* itemRule = _game->getMod()->getItem(itemName, false);
-	if (itemRule)
-	{
-		// check if we sold something in the meantime
-		if (_base->getStorageItems()->getItem(itemRule) < itemCount)
-		{
-			itemCount = _base->getStorageItems()->getItem(itemRule);
-			_randomProductionInfo[itemName] -= itemCount; // just decrease amount by the maximum we can sell
-		}
-		else
-		{
-			// remove completely
-			_index.erase(_index.begin() + sel);
-		}
-
-		if (itemCount > 0)
-		{
-			int64_t adjustedSellValue = itemRule->getSellCostAdjusted(_base, _game->getSavedGame());
-			adjustedSellValue *= itemCount;
-			_game->getSavedGame()->setFunds(_game->getSavedGame()->getFunds() + adjustedSellValue);
-			_base->getStorageItems()->removeItem(itemRule, itemCount);
-		}
-	}
-
-	// 3. refresh UI
-	_lstSummary->clearList();
-	for (const auto& name : _index)
-	{
-		std::ostringstream ss;
-		ss << _randomProductionInfo[name];
-		_lstSummary->addRow(2, tr(name).c_str(), ss.str().c_str());
-	}
-	_lstSummary->scrollTo(scrollPos);
-}
 
 void ProductionCompleteState::btnPromotionsClick(Action* action)
 {
-	_game->pushState(new PromotionsState); //promotion postprocessing happens only on OK button click
+	_game->pushState(new PromotionsState(_promotions));
 }
 }

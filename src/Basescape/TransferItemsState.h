@@ -19,6 +19,7 @@
  */
 #include "../Engine/TouchState.h"
 #include "../Savegame/Transfer.h"
+#include <cstdint>
 #include <vector>
 #include <string>
 
@@ -28,7 +29,6 @@ namespace OpenXcom
 class TextButton;
 class Window;
 class Text;
-class TextEdit;
 class TextList;
 class ComboBox;
 class Timer;
@@ -46,7 +46,6 @@ private:
 	Base *_baseFrom, *_baseTo;
 	DebriefingState *_debriefingState;
 	TextButton *_btnOk, *_btnCancel;
-	TextEdit *_btnQuickSearch;
 	Window *_window;
 	Text *_txtTitle, *_txtQuantity, *_txtAmountTransfer, *_txtAmountDestination;
 	ComboBox *_cbxCategory;
@@ -56,7 +55,8 @@ private:
 	std::vector<std::string> _cats;
 	size_t _vanillaCategories;
 	size_t _sel;
-	int _total, _pQty, _cQty, _aQty, _prisonQty;
+	int64_t _total;
+	int _pQty, _cQty, _prisonQty, _containedAlienQty, _containedMonsterQty;
 	double _iQty;
 	double _distance;
 	Uint8 _ammoColor;
@@ -85,9 +85,6 @@ public:
 	void updateList();
 	/// Handler for clicking the OK button.
 	void btnOkClick(Action *action);
-	/// Handlers for Quick Search.
-	void btnQuickSearchToggle(Action *action);
-	void btnQuickSearchApply(Action *action);
 	/// Handler for pressing the "Transfer all" hotkey.
 	void btnTransferAllClick(Action *action);
 	/// Completes the transfer between bases.
@@ -119,7 +116,7 @@ public:
 	/// Updates the quantity-strings of the selected item.
 	void updateItemStrings();
 	/// Gets the total of the transfer.
-	int getTotal() const;
+	int64_t getTotal() const;
 	/// Handler for changing the category filter.
 	void cbxCategoryChange(Action *action);
 };

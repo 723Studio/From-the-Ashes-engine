@@ -18,9 +18,10 @@
  */
 #include "AlienDeployment.h"
 #include "MapScript.h"
+#include <set>
+#include "../Engine/Exception.h"
 #include "../Engine/RNG.h"
 #include "../Mod/Mod.h"
-#include "../fmath.h"
 
 namespace OpenXcom
 {
@@ -32,13 +33,13 @@ namespace OpenXcom
  */
 AlienDeployment::AlienDeployment(const std::string &type) :
 	_type(type), _missionBountyItemCount(1), _bughuntMinTurn(0), _forcePercentageOutsideUfo(false),
-	_width(0), _length(0), _height(0), _civilians(0), _ignoreLivingCivilians(false), _markCiviliansAsVIP(false), _civilianSpawnNodeRank(0),
+	_width(0), _length(0), _height(0), _civilians(0), _ignoreLivingCivilians(false), _civilianSpawnNodeRank(0),
 	_shade(-1), _minShade(-1), _maxShade(-1), _finalDestination(false), _isAlienBase(false), _isHidden(false), _isHiddenAlienBase(false), _isHiddentXcomBase(false), _fakeUnderwaterSpawnChance(0),
 	_alert("STR_ALIENS_TERRORISE"), _alertBackground("BACK03.SCR"), _alertDescription(""), _alertSound(-1),
 	_markerName("STR_TERROR_SITE"), _markerIcon(-1), _durationMin(0), _durationMax(0), _minDepth(0), _maxDepth(0),
 	_genMissionFrequency(0), _genMissionLimit(1000), _genMissionRaceFromAlienBase(true),
 	_objectiveType(-1), _objectivesRequired(0), _objectiveCompleteScore(0), _objectiveFailedScore(0), _despawnPenalty(0), _abortPenalty(0), _points(0),
-	_turnLimit(0), _cheatTurn(20), _chronoTrigger(FORCE_LOSE), _keepCraftAfterFailedMission(false), _allowObjectiveRecovery(false), _escapeType(ESCAPE_NONE), _extendedObjectiveType(OBJECTIVE_NONE), _vipSurvivalPercentage(0),
+	_turnLimit(0), _cheatTurn(20), _chronoTrigger(FORCE_LOSE), _keepCraftAfterFailedMission(false), _allowObjectiveRecovery(false), _escapeType(ESCAPE_NONE), _extendedObjectiveType(OBJECTIVE_NONE),
 	_baseDetectionRange(0), _baseDetectionChance(100), _huntMissionMaxFrequency(60), _huntMissionRaceFromAlienBase(true),
 	_resetAlienBaseAgeAfterUpgrade(false), _resetAlienBaseAge(false), _noWeaponPile(false)
 {
@@ -93,13 +94,11 @@ void AlienDeployment::load(const YAML::YamlNodeReader& node, Mod *mod)
 	reader.tryRead("bughuntMinTurn", _bughuntMinTurn);
 	reader.tryRead("forcePercentageOutsideUfo", _forcePercentageOutsideUfo);
 	reader.tryRead("data", _data);
-	reader.tryRead("reinforcements", _reinforcements);
 	reader.tryRead("width", _width);
 	reader.tryRead("length", _length);
 	reader.tryRead("height", _height);
 	reader.tryRead("civilians", _civilians);
 	reader.tryRead("ignoreLivingCivilians", _ignoreLivingCivilians);
-	reader.tryRead("markCiviliansAsVIP", _markCiviliansAsVIP);
 	reader.tryRead("civilianSpawnNodeRank", _civilianSpawnNodeRank);
 	mod->loadUnorderedNamesToInt(_type, _civiliansByType, reader["civiliansByType"]);
 	reader.tryRead("terrains", _terrains);
@@ -190,7 +189,6 @@ void AlienDeployment::load(const YAML::YamlNodeReader& node, Mod *mod)
 	int extendedObjectiveType = static_cast<int>(_extendedObjectiveType);
 	reader.tryRead("extendedObjectiveType", extendedObjectiveType);
 	_extendedObjectiveType = static_cast<ObjectiveType>(extendedObjectiveType);
-	reader.tryRead("vipSurvivalPercentage", _vipSurvivalPercentage);
 	if (reader["genMission"])
 	{
 		_genMission.load(reader["genMission"]);
@@ -230,6 +228,75 @@ void AlienDeployment::load(const YAML::YamlNodeReader& node, Mod *mod)
 		);
 	}
 	reader.tryRead("noWeaponPile", _noWeaponPile);
+}
+
+/**
+ * Validates deployment references that cannot be resolved during YAML loading.
+ */
+void AlienDeployment::afterLoad(const Mod *mod)
+{
+	std::set<std::string> uniqueArmors;
+	for (const std::string &armorId : _undercoverArmors)
+	{
+		if (armorId.empty())
+		{
+			throw Exception("Alien deployment '" + _type + "': undercoverArmors must not contain an empty armor ID.");
+		}
+		if (!uniqueArmors.insert(armorId).second)
+		{
+			throw Exception("Alien deployment '" + _type + "': duplicate undercover armor '" + armorId + "'.");
+		}
+		if (!mod->getArmor(armorId))
+		{
+			throw Exception("Alien deployment '" + _type + "': undercover armor '" + armorId + "' does not exist.");
+		}
+	}
+
+	const bool hasAlternative = !_alternativeDeployment.empty();
+	const bool hasAlternativeResearch = !_alternativeDeploymentResearch.empty();
+	if (hasAlternative != hasAlternativeResearch)
+	{
+		throw Exception("Alien deployment '" + _type +
+			"': alternativeDeployment and alternativeDeploymentResearch must be defined or cleared together.");
+	}
+	if (!hasAlternative)
+	{
+		return;
+	}
+	if (!mod->getResearch(_alternativeDeploymentResearch))
+	{
+		throw Exception("Alien deployment '" + _type + "': alternative research '" +
+			_alternativeDeploymentResearch + "' does not exist.");
+	}
+
+	std::set<std::string> visited;
+	const AlienDeployment *current = this;
+	while (current && !current->getAlternativeDeploymentName().empty())
+	{
+		if (current->getAlternativeDeploymentResearchName().empty())
+		{
+			throw Exception("Alien deployment '" + current->getType() +
+				"': alternativeDeploymentResearch is required when alternativeDeployment is set.");
+		}
+		if (!visited.insert(current->getType()).second)
+		{
+			throw Exception("Alien deployment '" + _type + "': alternativeDeployment chain contains a cycle at '" +
+				current->getType() + "'.");
+		}
+
+		const std::string &nextId = current->getAlternativeDeploymentName();
+		current = mod->getDeployment(nextId);
+		if (!current)
+		{
+			throw Exception("Alien deployment '" + _type + "': alternative deployment '" +
+				nextId + "' does not exist.");
+		}
+	}
+	if (current && !visited.insert(current->getType()).second)
+	{
+		throw Exception("Alien deployment '" + _type + "': alternativeDeployment chain contains a cycle at '" +
+			current->getType() + "'.");
+	}
 }
 
 /**
@@ -300,15 +367,6 @@ int AlienDeployment::getMaxAlienRank() const
 			max = dd.alienRank;
 	}
 	return max;
-}
-
-/**
- * Gets a pointer to the reinforcements data.
- * @return Pointer to the reinforcements data.
- */
-const std::vector<ReinforcementsData>* AlienDeployment::getReinforcementsData() const
-{
-	return &_reinforcements;
 }
 
 /**
@@ -881,33 +939,6 @@ bool read(ryml::ConstNodeRef const& n, BriefingData* val)
 	reader.tryRead("background", val->background);
 	reader.tryRead("showCraft", val->showCraft);
 	reader.tryRead("showTarget", val->showTarget);
-	return true;
-}
-
-bool read(ryml::ConstNodeRef const& n, ReinforcementsData* val)
-{
-	YAML::YamlNodeReader reader(n);
-	reader.tryRead("type", val->type);
-	reader.tryRead("briefing", val->briefing);
-	reader.tryRead("minDifficulty", val->minDifficulty);
-	reader.tryRead("maxDifficulty", val->maxDifficulty);
-	reader.tryRead("objectiveDestroyed", val->objectiveDestroyed);
-	reader.tryRead("turns", val->turns);
-	reader.tryRead("minTurn", val->minTurn);
-	reader.tryRead("maxTurn", val->maxTurn);
-	reader.tryRead("executionOdds", val->executionOdds);
-	reader.tryRead("maxRuns", val->maxRuns);
-	reader.tryRead("useSpawnNodes", val->useSpawnNodes);
-	reader.tryRead("mapBlockFilterType", val->mapBlockFilterType);
-	reader.tryRead("spawnBlocks", val->spawnBlocks);
-	reader.tryRead("spawnBlockGroups", val->spawnBlockGroups);
-	reader.tryRead("spawnNodeRanks", val->spawnNodeRanks);
-	reader.tryRead("spawnZLevels", val->spawnZLevels);
-	reader.tryRead("randomizeZLevels", val->randomizeZLevels);
-	reader.tryRead("minDistanceFromXcomUnits", val->minDistanceFromXcomUnits);
-	reader.tryRead("maxDistanceFromBorders", val->maxDistanceFromBorders);
-	reader.tryRead("forceSpawnNearFriend", val->forceSpawnNearFriend);
-	reader.tryRead("data", val->data);
 	return true;
 }
 

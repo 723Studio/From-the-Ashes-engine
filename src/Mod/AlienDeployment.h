@@ -50,31 +50,6 @@ struct BriefingData
 	bool showCraft, showTarget;
 	BriefingData() : palette(0), textOffset(0), music("GMDEFEND"), background("BACK16.SCR"), showCraft(true), showTarget(true) { /*Empty by Design*/ };
 };
-enum MapBlockFilterType : int { MFT_NONE, MFT_BY_MAPSCRIPT, MFT_BY_REINFORCEMENTS, MFT_BY_BOTH_UNION, MFT_BY_BOTH_INTERSECTION };
-struct ReinforcementsData
-{
-	std::string type;
-	BriefingData briefing;
-	int minDifficulty = 0;
-	int maxDifficulty = 4;
-	bool objectiveDestroyed = false;
-	std::vector<int> turns;
-	int minTurn = 0;
-	int maxTurn = -1;
-	int executionOdds = 100;
-	int maxRuns = -1;
-	bool useSpawnNodes = true;
-	MapBlockFilterType mapBlockFilterType = MFT_BY_BOTH_UNION;
-	std::vector<std::string> spawnBlocks;
-	std::vector<int> spawnBlockGroups;
-	std::vector<int> spawnNodeRanks;
-	std::vector<int> spawnZLevels;
-	bool randomizeZLevels = true;
-	int minDistanceFromXcomUnits = 0;
-	int maxDistanceFromBorders = 0;
-	bool forceSpawnNearFriend = true;
-	std::vector<DeploymentData> data;
-};
 enum ChronoTrigger { FORCE_LOSE, FORCE_ABORT, FORCE_WIN, FORCE_WIN_SURRENDER };
 enum EscapeType : int { ESCAPE_NONE, ESCAPE_EXIT, ESCAPE_ENTRY, ESCAPE_EITHER };
 enum ObjectiveType { OBJECTIVE_NONE, OBJECTIVE_EVACUATION, OBJECTIVE_ITEM_EXTRACTION, OBJECTIVE_HACKING};
@@ -103,10 +78,8 @@ private:
 	int _bughuntMinTurn;
 	bool _forcePercentageOutsideUfo;
 	std::vector<DeploymentData> _data;
-	std::vector<ReinforcementsData> _reinforcements;
 	int _width, _length, _height, _civilians;
 	bool _ignoreLivingCivilians;
-	bool _markCiviliansAsVIP;
 	int _civilianSpawnNodeRank;
 	std::map<std::string, int> _civiliansByType;
 	std::vector<std::string> _terrains, _music;
@@ -131,7 +104,6 @@ private:
 	bool _keepCraftAfterFailedMission, _allowObjectiveRecovery;
 	EscapeType _escapeType;
 	ObjectiveType _extendedObjectiveType;
-	int _vipSurvivalPercentage;
 	std::string _baseSelfDestructCode;
 	int _baseDetectionRange, _baseDetectionChance, _huntMissionMaxFrequency;
 	bool _huntMissionRaceFromAlienBase;
@@ -148,6 +120,8 @@ public:
 	~AlienDeployment();
 	/// Loads Alien Deployment data from YAML.
 	void load(const YAML::YamlNodeReader& node, Mod *mod);
+	/// Validates references after all rules are loaded.
+	void afterLoad(const Mod *mod);
 	/// Gets the Alien Deployment's type.
 	const std::string& getType() const;
 	/// Gets the custom UFO name to use for the dummy/blank 'addUFO' mapscript command.
@@ -194,16 +168,12 @@ public:
 	const std::vector<DeploymentData>* getDeploymentData() const;
 	/// Gets the highest used alien rank.
 	int getMaxAlienRank() const;
-	/// Gets a pointer to the reinforcements data.
-	const std::vector<ReinforcementsData>* getReinforcementsData() const;
 	/// Gets dimensions.
 	void getDimensions(int *width, int *length, int *height) const;
 	/// Gets civilians.
 	int getCivilians() const;
 	/// Should living civilians be ignored for scoring, commendations, etc.?
 	bool getIgnoreLivingCivilians() const { return _ignoreLivingCivilians; }
-	/// Gets the civilian spawn node rank.
-	bool getMarkCiviliansAsVIP() const { return _markCiviliansAsVIP; }
 	/// Gets the civilian spawn node rank.
 	int getCivilianSpawnNodeRank() const { return _civilianSpawnNodeRank; }
 	/// Gets civilians by type.
@@ -243,7 +213,7 @@ public:
 	/// Gets geoscape event rule name to spawn after failure mission.
 	std::string chooseFailureEvent() const { return _failureEvents.choose(); }
 	/// Gets the the list of undercover armor types for the mission to make concealed units.
-	std::vector<std::string> getUndercoverArmors() const { return _undercoverArmors; }
+	const std::vector<std::string>& getUndercoverArmors() const { return _undercoverArmors; }
 	/// Gets the alert message for this mission type.
 	std::string getAlertMessage() const;
 	/// Gets the alert background for this mission type.
@@ -309,8 +279,6 @@ public:
 	bool keepCraftAfterFailedMission() const;
 	bool allowObjectiveRecovery() const;
 	EscapeType getEscapeType() const;
-	/// Gets the percentage of VIP units that must survive in order to accomplish the mission.
-	int getVIPSurvivalPercentage() const { return _vipSurvivalPercentage; }
 
 	/// Generates a hunt mission based on the given month.
 	std::string generateHuntMission(const size_t monthsPassed) const;
@@ -345,6 +313,5 @@ public:
 bool read(ryml::ConstNodeRef const& n, ItemSet* val);
 bool read(ryml::ConstNodeRef const& n, DeploymentData* val);
 bool read(ryml::ConstNodeRef const& n, BriefingData* val);
-bool read(ryml::ConstNodeRef const& n, ReinforcementsData* val);
 
 }

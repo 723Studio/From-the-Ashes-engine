@@ -54,6 +54,7 @@ private:
 	std::vector<SortFunctor*> _sortFunctors;
 	std::vector<int> _agentsNumbers;
 	getStatFn_t _dynGetter;
+	int _freeSpace;
 	/// initializes the display list based on the project scientists list and the position to display
 	void initList(size_t scrl);
 

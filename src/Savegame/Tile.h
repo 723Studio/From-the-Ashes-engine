@@ -240,6 +240,8 @@ public:
 
 	///Switch tilepart to AltMCD, return true if successful
 	bool switchToAltMCD(TilePart part);
+	/// Switch every part matching targetAltMCD from a snapshot of the original tile state.
+	int switchMatchingPartsToAltMCD(int targetAltMCD);
 
 	/**
 	 * Check if the ufo door is open or opening. Used for visibility/light blocking checks.

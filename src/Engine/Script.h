@@ -917,7 +917,13 @@ public:
 	/// Size of string range.
 	constexpr size_t size() const
 	{
-		return _end - _begin;
+		if (_begin == _end)
+		{
+			return 0;
+		}
+
+		const auto rangeSize = _end - _begin;
+		return rangeSize > 0 ? static_cast<size_t>(rangeSize) : 0;
 	}
 	/// Bool operator.
 	constexpr explicit operator bool() const
@@ -1050,7 +1056,7 @@ public:
 			//check for GCC warnings, it thinks that we try use extremely long strings there...
 			assert(size_a < SIZE_MAX/2);
 
-			return memcmp(a._begin, b._begin, size_a);
+			return size_a == 0 ? 0 : memcmp(a._begin, b._begin, size_a);
 		}
 		else if (size_a < size_b)
 		{

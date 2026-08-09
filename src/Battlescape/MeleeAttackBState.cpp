@@ -71,7 +71,7 @@ void MeleeAttackBState::init()
 
 	_unit = _action.actor;
 
-	bool reactionShoot = _unit->getFaction() != _parent->getSave()->getSide();
+	bool reactionShoot = _action.reactionAttack || _unit->getFaction() != _parent->getSave()->getSide();
 	_ammo = _action.weapon->getAmmoForAction(BA_HIT, reactionShoot ? nullptr : &_action.result);
 	if (!_ammo)
 	{
@@ -115,6 +115,7 @@ void MeleeAttackBState::init()
 		_parent->popState();
 		return;
 	}
+	_parent->processUndercoverAction(_action);
 
 	// terrain melee
 	if (terrainMeleeTilePart > 0)
@@ -126,7 +127,8 @@ void MeleeAttackBState::init()
 
 	AIModule *ai = _unit->getAIModule();
 
-	if (_unit->getFaction() == _parent->getSave()->getSide() &&
+	if (!reactionShoot &&
+		_unit->getFaction() == _parent->getSave()->getSide() &&
 		_unit->getFaction() != FACTION_PLAYER &&
 		_parent->_debugPlay == false &&
 		ai && ai->getTarget())
@@ -171,7 +173,7 @@ void MeleeAttackBState::init()
 void MeleeAttackBState::think()
 {
 	_parent->getSave()->getBattleState()->clearMouseScrollingState();
-	if (_reaction && !_parent->getSave()->getUnitsFalling())
+	if (_reaction && !_action.reactionAttack && !_parent->getSave()->getUnitsFalling())
 	{
 		_reaction = false;
 		if (_parent->getTileEngine()->checkReactionFire(_unit, _action))
@@ -187,7 +189,7 @@ void MeleeAttackBState::think()
 	}
 	if (_hitNumber > 0 &&
 		// not performing a reaction attack
-		_unit->getFaction() == _parent->getSave()->getSide() &&
+		!_action.reactionAttack && _unit->getFaction() == _parent->getSave()->getSide() &&
 		// whose target is still alive or at least conscious
 		_target && !_target->isOutThresholdExceed() &&
 		// and we still have ammo to make the attack
@@ -206,7 +208,7 @@ void MeleeAttackBState::think()
 			_parent->getMap()->invalidate();
 		}
 
-		if (_unit->getFaction() == _parent->getSave()->getSide()) // not a reaction attack
+		if (!_action.reactionAttack && _unit->getFaction() == _parent->getSave()->getSide()) // not a reaction attack
 		{
 			_parent->getCurrentAction()->type = BA_NONE; // do this to restore cursor
 		}

@@ -51,9 +51,8 @@ namespace OpenXcom
  * @param craft Pointer to the craft in the mission.
  * @param base Pointer to the base in the mission.
  * @param infoOnly Only show static info, when briefing is re-opened during the battle.
- * @param customBriefing Pointer to a custom briefing (used for Reinforcements notification).
  */
-BriefingState::BriefingState(Craft *craft, Base *base, bool infoOnly, BriefingData *customBriefing) : _infoOnly(infoOnly), _disableCutsceneAndMusic(false)
+BriefingState::BriefingState(Craft *craft, Base *base, bool infoOnly) : _infoOnly(infoOnly), _disableCutsceneAndMusic(false)
 {
 	Options::baseXResolution = Options::baseXGeoscape;
 	Options::baseYResolution = Options::baseYGeoscape;
@@ -71,37 +70,19 @@ BriefingState::BriefingState(Craft *craft, Base *base, bool infoOnly, BriefingDa
 	auto* battleSave = _game->getSavedGame()->getSavedBattle();
 
 	std::string mission = battleSave->getMissionType();
-	AlienDeployment *deployment = _game->getMod()->getDeployment(mission);
+	AlienDeployment *deployment = battleSave->getActiveDeployment();
 	if (mission == "STR_BASE_DEFENSE")
 	{
-		AlienDeployment* customDeployment = _game->getMod()->getDeployment(battleSave->getAlienCustomDeploy());
+		AlienDeployment *customDeployment = _game->getMod()->getDeployment(battleSave->getAlienCustomDeploy());
 		if (customDeployment && !customDeployment->getBriefingData().desc.empty())
 		{
 			deployment = customDeployment;
 		}
 	}
-	else
-	{
-		Ufo* ufo = 0;
-		if (!deployment && craft)
-		{
-			ufo = dynamic_cast <Ufo*> (craft->getDestination());
-			if (ufo) // landing site or crash site.
-			{
-				std::string ufoMissionName = ufo->getRules()->getType();
-				if (!battleSave->getAlienCustomMission().empty())
-				{
-					// fake underwater UFO
-					ufoMissionName = battleSave->getAlienCustomMission();
-				}
-				deployment = _game->getMod()->getDeployment(ufoMissionName);
-			}
-		}
-	}
 
 	std::string title = mission;
 	std::string desc = title + "_BRIEFING";
-	if (!deployment && !customBriefing) // none defined - should never happen, but better safe than sorry i guess.
+	if (!deployment) // none defined - should never happen, but better safe than sorry i guess.
 	{
 		setStandardPalette("PAL_GEOSCAPE", 0);
 		_musicId = "GMDEFEND";
@@ -109,7 +90,7 @@ BriefingState::BriefingState(Craft *craft, Base *base, bool infoOnly, BriefingDa
 	}
 	else
 	{
-		BriefingData data = customBriefing ? *customBriefing : deployment->getBriefingData();
+		BriefingData data = deployment->getBriefingData();
 		setStandardPalette("PAL_GEOSCAPE", data.palette);
 		_window->setBackground(_game->getMod()->getSurface(data.background));
 		_txtCraft->setY(56 + data.textOffset);
@@ -127,7 +108,7 @@ BriefingState::BriefingState(Craft *craft, Base *base, bool infoOnly, BriefingDa
 			desc = data.desc;
 		}
 	}
-	_disableCutsceneAndMusic = _infoOnly && !customBriefing;
+	_disableCutsceneAndMusic = _infoOnly;
 
 	add(_window, "window", "briefing");
 	add(_btnOk, "button", "briefing");

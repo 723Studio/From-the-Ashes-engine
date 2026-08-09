@@ -51,7 +51,6 @@ private:
 	std::vector<int> _soldierNumbers;
 	size_t _sel;
 	int _space;
-	bool _ftaUI;
 	std::vector<std::string> _availableOptions;
 	Base *_base;
 	std::vector<Soldier *> _origSoldierOrder, _filteredListOfSoldiers;
@@ -76,10 +75,6 @@ public:
 	void btnPlusClick(Action *action);
 	/// Handler for clicking the Soldiers list.
 	void lstSoldiersClick(Action *action);
-	/// Handler for clicking the De-assign All Soldiers button.
-	void btnDeassignAllSoldiersClick(Action* action);
-	/// Handler for clicking the Assign All Soldiers button.
-	void btnAssignAllSoldiersClick(Action* action);
 	/// Handler for changing the screen actions combo box.
 	void cbxScreenActionsChange(Action* action);
 };

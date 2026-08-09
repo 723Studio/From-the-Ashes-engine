@@ -4,65 +4,80 @@
  *
  * This file is part of OpenXcom.
  *
- * OpenXcom is free software: you can redistribute it and/or modify
+ * This file is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
- * OpenXcom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <map>
+#include <string>
+#include <vector>
 #include "../Engine/Yaml.h"
+#include "../Mod/Unit.h"
 
 namespace OpenXcom
 {
 
 class RuleIntelProject;
-class RuleIntelStage;
+class RuleIntelMilestone;
+class RuleIntelEventOutput;
+class RuleAlienMission;
 class Soldier;
-class Game;
-class Globe;
 class SavedGame;
 class Mod;
-class Base;
+
+struct IntelProjectDailyResult
+{
+	std::vector<std::string> eventScripts;
+	std::vector<const RuleAlienMission*> spawnMissions;
+	const RuleIntelMilestone* completedMilestone = nullptr;
+	bool completed = false;
+};
 
 /**
- Represent a IntelProject
- Contain information about assigned scientist, time already spent and cost of the project.
+ * Global state of an intelligence project. Agents assigned at every base
+ * contribute to this single object.
  */
 class IntelProject
 {
-	const RuleIntelProject * _rules;
-	Base* _base;
-	std::map<std::string, int> _stageRolls;
-	bool _active;
-	int _spent;
-	int _rolls;
-	int _cost;
-	/// Get a string describing current progress.
-	std::string getState(int progress) const;
+	friend class SavedGame;
+
+private:
+	const RuleIntelProject* _rules;
+	bool _completed = false;
+	std::string _currentMilestone;
+	std::string _blockedMilestone;
+	int64_t _milestoneProgress = 0;
+	int64_t _eventProgress = 0;
+	int64_t _eventCycles = 0;
+
+	std::vector<const RuleIntelEventOutput*> getAvailableEventOutputs(const SavedGame* save) const;
+	std::string getState(int progress, int cost) const;
+	/// Marks the project completed and clears all active progress.
+	void complete();
+
 public:
-	IntelProject(const RuleIntelProject *rule, Base *base, int cost = 0);
-	/// Calculates daily progress.
-	int getStepProgress(std::map<Soldier*, int> &assignedAgents, Mod *mod, int rating, std::string& description, bool estimate = false);
-	/// Game logic. Called every new day.
-	bool roll(Game *game, const Globe& globe, int progress, bool &finalRoll);
-	std::vector<const RuleIntelStage*> getAvailableStages(SavedGame* save);
-	/// getters and setters
-	std::string getName() const;
+	explicit IntelProject(const RuleIntelProject* rule);
+
+	int getStepProgress(std::map<Soldier*, int>& assignedAgents, const Mod* mod, int rating,
+		std::string& description, bool estimate = false,
+		std::map<Soldier*, UnitStats>* dailyExperience = nullptr,
+		std::vector<Soldier*>* contributors = nullptr);
+	IntelProjectDailyResult processDay(SavedGame* save, int progress);
+	bool isCurrentMilestoneBlocked(const SavedGame* save) const;
+	std::string getProgressState(int dailyProgress, const SavedGame* save) const;
+
+	const std::string& getName() const;
 	const RuleIntelProject* getRules() const { return _rules; }
-	bool getActive() const { return _active; }
-	int getRolls() const { return _rolls; }
-	int getCost() { return _cost; }
-	void setCost(int cost) { _cost = cost; }
-	/// load the IntelProject from YAML
+	bool isCompleted() const { return _completed; }
+	const std::string& getCurrentMilestone() const { return _currentMilestone; }
+	const std::string& getBlockedMilestone() const { return _blockedMilestone; }
+	void markCurrentMilestoneBlocked();
+	void clearBlockedMilestone() { _blockedMilestone.clear(); }
+	int64_t getMilestoneProgress() const { return _milestoneProgress; }
+	int64_t getEventProgress() const { return _eventProgress; }
+	int64_t getEventCycles() const { return _eventCycles; }
 	void load(const YAML::YamlNodeReader& reader);
-	/// save the IntelProject to YAML
 	void save(YAML::YamlNodeWriter writer) const;
 };
 

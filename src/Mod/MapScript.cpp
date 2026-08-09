@@ -29,7 +29,7 @@ namespace OpenXcom
 {
 
 MapScript::MapScript() :
-	_type(MSC_UNDEFINED), _canBeSkipped(true), _markAsReinforcementsBlock(false),
+	_type(MSC_UNDEFINED), _canBeSkipped(true), _markAsSpawnBlock(false),
 	_verticalGroup(MT_NSROAD), _horizontalGroup(MT_EWROAD), _crossingGroup(MT_CROSSING),
 	_sizeX(1), _sizeY(1), _sizeZ(0),
 	_executionChances(100), _executions(1), _cumulativeFrequency(0), _label(0),
@@ -265,7 +265,7 @@ void MapScript::load(const YAML::YamlNodeReader& node)
 	reader.tryRead("horizontalGroup", _horizontalGroup);
 	reader.tryRead("crossingGroup", _crossingGroup);
 	reader.tryRead("canBeSkipped", _canBeSkipped);
-	reader.tryRead("markAsReinforcementsBlock", _markAsReinforcementsBlock);
+	reader.tryRead("markAsSpawnBlock", _markAsSpawnBlock);
 	reader.tryRead("executionChances", _executionChances);
 	reader.tryRead("executions", _executions);
 	reader.tryRead("UFOName", _ufoName);

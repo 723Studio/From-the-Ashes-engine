@@ -18,6 +18,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "../Engine/State.h"
+#include "../Savegame/Promotion.h"
 
 namespace OpenXcom
 {
@@ -41,17 +42,25 @@ class PrisonReportState : public State
 {
 	Window *_window;
 	Text *_txtTitle, *_txtDescription;
-	TextButton *_btnDetails, *_btnOk;
+	TextButton *_btnDetails, *_btnOk, *_btnPromotions;
 	const RuleResearch * _research, * _bonus;
 	BasePrisoner* _prisoner;
 	Base* _base;
 	Soldier* _soldier;
 	PrisonerReportCase _reportCase;
+	PromotionBatch _promotions;
+	std::vector<std::string> _articleIds;
+	std::vector<std::string> _newResearchNotifications;
+	bool _containedAlienStudiesUnblocked = false;
 public:
 	/// Creates the PrisonReportState for case of prisoner's death.
 	PrisonReportState(BasePrisoner* prisoner, Base *base);
 	/// Creates the PrisonReportState for case of finished interrogation.
-	PrisonReportState(const RuleResearch * research, const RuleResearch *bonus, BasePrisoner* prisoner, Base* base);
+	PrisonReportState(const RuleResearch * research, const RuleResearch *bonus, BasePrisoner* prisoner,
+		Base* base, const PromotionBatch& promotions,
+		std::vector<std::string> articleIds,
+		std::vector<std::string> newResearchNotifications = {},
+		bool containedAlienStudiesUnblocked = false);
 	/// Creates the PrisonReportState for case of finished reqcruiting.
 	PrisonReportState(Soldier *soldier, BasePrisoner* prisoner, Base* base);
 	/// Inits the UI for the state.
@@ -60,6 +69,8 @@ public:
 	void btnOkClick(Action *action);
 	/// Handler for clicking the Report button.
 	void btnDetailsClick(Action *action);
+	/// Handler for clicking the Promotions button.
+	void btnPromotionsClick(Action *action);
 };
 
 }

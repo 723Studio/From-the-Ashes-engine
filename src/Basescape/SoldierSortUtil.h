@@ -20,7 +20,7 @@
 #include "../Engine/Game.h"
 #include "../Savegame/Soldier.h"
 #include "../Savegame/SavedGame.h"
-#include "../Mod/Mod.h"
+
 
 namespace OpenXcom
 {
@@ -211,7 +211,7 @@ GET_SOLDIER_STAT_FN(craftId, CraftId)
 GET_SOLDIER_STAT_FN(type, Type)
 GET_SOLDIER_STAT_FN(role, Role)
 GET_SOLDIER_STAT_FN(roleRank, RoleRank)
-GET_SOLDIER_STAT_FN(rank, Rank)
+int rankStat(const Game *game, const Soldier *s);
 GET_SOLDIER_STAT_FN(missions, Missions)
 GET_SOLDIER_STAT_FN(kills, Kills)
 GET_SOLDIER_STAT_FN(woundRecovery, WoundRecovery)

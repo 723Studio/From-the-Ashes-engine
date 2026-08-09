@@ -75,6 +75,8 @@ public:
 	// *** Logic Section ***
 	/// Gets operation success chances.
 	double getOperationOdds();
+	/// Gets the current equipment concealment effect and optional UI details.
+	int getEquipmentConcealmentEffect(bool* concealmentBonusApplied = nullptr, int* heavyWeaponsPenalty = nullptr) const;
 	/// Gets operation's final cost.
 	int getOperationCost();
 	/// Gets operation rules

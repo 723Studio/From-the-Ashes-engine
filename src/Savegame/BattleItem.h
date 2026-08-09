@@ -59,6 +59,7 @@ private:
 	bool _ammoVisibility[RuleItem::AmmoSlotMax] = { };
 	int _fuseTimer, _ammoQuantity;
 	int _painKiller, _heal, _stimulant;
+	int _preBattleSpawnUnitChanceResult = -1;
 	bool _XCOMProperty, _droppedOnAlienTurn, _isAmmo, _isWeaponWithAmmo, _fuseEnabled, _isCraftTurretAmmo;
 	const RuleItemAction *_confAimedOrLaunch = nullptr;
 	const RuleItemAction *_confSnap = nullptr;
@@ -112,6 +113,10 @@ public:
 
 	/// Check if owner is removed from game.
 	bool isOwnerIgnored() const;
+	/// Check if this map item is configured to spawn before the first turn.
+	bool isPreBattleSpawnItem() const;
+	/// Resolve the spawn-unit chance once for pre-battle map processing.
+	bool resolvePreBattleSpawnUnitChance();
 	/// Gets the item's owner.
 	BattleUnit *getOwner();
 	/// Gets the item's owner.

@@ -25,6 +25,9 @@
 namespace OpenXcom
 {
 
+class Mod;
+class RuleResearch;
+
 /**
  * Represents a custom Geoscape event.
  * Events are spawned using Event Script ruleset.
@@ -32,13 +35,14 @@ namespace OpenXcom
 class RuleDiplomacyFaction
 {
 private:
-	std::string _name, _description, _background, _cardBackground, _discoverResearch, _discoverEvent, _startingResearch;
+	std::string _name, _description, _background, _cardBackground, _discoverResearch, _discoverEvent;
 	int _genMissionFrequency, _helpTreatyGap;
-	int _sellPriceFactor, _buyPriceFactor, _repPriceFactor, _powerHungry, _scienceBaseCost;
+	int _sellPriceFactor, _buyPriceFactor, _repPriceFactor, _powerHungry;
 	int _startingReputation, _startingFunds, _startingPower;
 	std::map<std::string, int> _startingItems, _startingStaff, _staffWeights;
 	std::map<std::string, double> _wishList;
-	std::vector<std::string> _helpTreatyMissions, _helpTreatyEventScripts, _usualEventsScripts, _happyEvents, _angryEvents, _startingResearches, _factionalEvents;
+	std::vector<std::string> _helpTreatyMissions, _helpTreatyEventScripts, _usualEventsScripts, _happyEvents, _angryEvents, _startingResearchNames, _factionalEvents;
+	std::vector<const RuleResearch*> _startingResearches;
 public:
 	/// Creates a blank RuleDiplomacyFaction.
 	RuleDiplomacyFaction(const std::string &name);
@@ -46,6 +50,8 @@ public:
 	~RuleDiplomacyFaction() = default;
 	/// Loads the Faction definition from YAML.
 	void load(const YAML::YamlNodeReader& reader);
+	/// Cross-links faction technology IDs with ordinary research rules.
+	void afterLoad(const Mod* mod);
 	/// Gets the Faction's name.
 	const std::string &getName() const { return _name; }
 	/// Gets the Faction's description.
@@ -70,7 +76,7 @@ public:
 	/// Gets the set of Faction's starting non-item property and personell.
 	const std::map<std::string, int>& getStartingStaff() const { return _startingStaff; }
 	/// Gets the research project names that are discovered by the faction from very start.
-	const std::vector<std::string>& getStartingResearches() const { return _startingResearches; }
+	const std::vector<const RuleResearch*>& getStartingResearches() const { return _startingResearches; }
 
 
 	/// Gets help treaty mission scripts for the faction.
@@ -91,9 +97,6 @@ public:
 	const std::vector<std::string>& getFactionalEvents() const { return _factionalEvents; }
 	/// Gets power hungry value.
 	int getPowerHungry() const { return _powerHungry; }
-	/// Gets base cost to do science.
-	int getScienceBaseCost() const { return _scienceBaseCost; }
-
 	/// Getters for faction market data.
 	int getSellPriceFactor() const { return _sellPriceFactor; }
 	int getBuyPriceFactor() const { return _buyPriceFactor; }

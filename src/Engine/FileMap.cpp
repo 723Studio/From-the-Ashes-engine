@@ -410,7 +410,7 @@ typedef std::unordered_map<std::string, FileRecord> FileSet;
 static const NameSet emptySet;
 static mz_zip_archive *newZipContext(const std::string& log_ctx, SDL_RWops *rwops);
 static OXCContainer *newOxcContext(const std::string& log_ctx, SDL_RWops *rwops, const std::string& fullpath, bool takeOwnership);
-static OXCContainer *newOxcContext(const std::string& log_ctx, const std::string& fullpath);
+static OXCContainer *newOxcContext(const std::string& log_ctx, const std::string& fullpath, std::string *error = nullptr);
 static std::string getOxcPassphrase();
 
 struct VFSLayer {
@@ -742,7 +742,7 @@ struct ModRecord {
 	ModInfo modInfo;
 	VFSLayerStack stack;
 
-	ModRecord(const std::string& somepath) : modInfo(somepath), stack() { }
+	ModRecord(const std::string& somepath, bool isOxcContainer = false) : modInfo(somepath, isOxcContainer), stack() { }
 	void push_back(VFSLayer *layer) { stack.push_back(layer); }
 	void push_front(VFSLayer *layer) { stack.push_front(layer); }
 	const FileRecord *at(const std::string& relpath) { return stack.at(relpath); }
@@ -879,16 +879,22 @@ static OXCContainer *newOxcContext(const std::string& log_ctx, SDL_RWops *rwops,
 	return NULL;
 }
 
-static OXCContainer *newOxcContext(const std::string& log_ctx, const std::string& fullpath) {
+static OXCContainer *newOxcContext(const std::string& log_ctx, const std::string& fullpath, std::string *error) {
+	if (error) {
+		error->clear();
+	}
 	try {
 		auto ctx = new OXCContainer(fullpath, getOxcPassphrase());
 		OXCContexts.push_back(ctx);
 		return ctx;
 	} catch (const Exception& e) {
+		if (error) { *error = e.what(); }
 		Log(LOG_WARNING) << log_ctx << "Ignoring oxc: " << e.what();
 	} catch (const std::exception& e) {
+		if (error) { *error = e.what(); }
 		Log(LOG_WARNING) << log_ctx << "Ignoring oxc: " << e.what();
 	} catch (...) {
+		if (error) { *error = "unknown error"; }
 		Log(LOG_WARNING) << log_ctx << "Ignoring oxc: unknown error.";
 	}
 	return NULL;
@@ -1136,7 +1142,7 @@ static std::string mapOxcMod(OXCContainer *oxc, const std::string& oxcname, cons
 		Log(LOG_WARNING) << log_ctx << "Bad metadata.yml found, skipping.";
 		return "";
 	}
-	auto mrec = std::make_unique<ModRecord>(modpath);
+	auto mrec = std::make_unique<ModRecord>(modpath, true);
 	mrec->modInfo.load(reader);
 	auto mri = ModsAvailable.find(mrec->modInfo.getId());
 	if (mri != ModsAvailable.end()) {
@@ -1224,9 +1230,9 @@ void scanModOxcRW(SDL_RWops *rwops, const std::string& fullpath) {
 	scanModOxcContext(ctx, fullpath, log_ctx);
 }
 
-static std::vector<std::string> scanModOxc(const std::string& fullpath) {
+static std::vector<std::string> scanModOxc(const std::string& fullpath, std::string *error = nullptr) {
 	std::string log_ctx = "scanModOxc(" + fullpath + "): ";
-	auto ctx = newOxcContext(log_ctx, fullpath);
+	auto ctx = newOxcContext(log_ctx, fullpath, error);
 	return scanModOxcContext(ctx, fullpath, log_ctx);
 }
 
@@ -1260,7 +1266,23 @@ std::vector<std::string> scanOfficialPackageDir(const std::string& dirname, cons
 	for (const auto& packageName : packageNames) {
 		const std::string fullpath = concatPaths(packageDir, packageName);
 		Log(LOG_INFO) << log_ctx << "scanning official .oxc package " << packageName;
-		const auto packageIds = scanModOxc(fullpath);
+
+		std::string lowerPackageName = packageName;
+		Unicode::lowerCase(lowerPackageName);
+		const bool isRequiredBasePackage = lowerPackageName == "from the ashes.oxc";
+		std::string packageError;
+		std::vector<std::string> packageIds;
+		try {
+			packageIds = scanModOxc(fullpath, isRequiredBasePackage ? &packageError : nullptr);
+		} catch (const std::exception& e) {
+			if (isRequiredBasePackage) {
+				throw Exception("The required From the Ashes.oxc package was found at '" + fullpath + "' but could not be read: " + e.what());
+			}
+			throw;
+		}
+		if (isRequiredBasePackage && !packageError.empty()) {
+			throw Exception("The required From the Ashes.oxc package was found at '" + fullpath + "' but could not be read: " + packageError);
+		}
 		mappedIds.insert(mappedIds.end(), packageIds.begin(), packageIds.end());
 	}
 

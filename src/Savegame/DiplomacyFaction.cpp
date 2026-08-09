@@ -19,10 +19,12 @@
 #include "DiplomacyFaction.h"
 #include "SoldierPool.h"
 #include <algorithm>
+#include <climits>
 #include "../fmath.h"
 #include "../Engine/Game.h"
 #include "../Engine/RNG.h"
 #include "../Engine/Logger.h"
+#include "../Geoscape/GeoscapeState.h"
 #include "../Mod/Mod.h"
 #include "../Mod/RuleMissionScript.h"
 #include "../Mod/RuleDiplomacyFaction.h"
@@ -32,8 +34,6 @@
 #include "../Mod/RuleSoldier.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/ItemContainer.h"
-#include "../Savegame/FactionalResearch.h"
-#include "../FTA/MasterMind.h"
 
 namespace OpenXcom
 {
@@ -49,10 +49,6 @@ DiplomacyFaction::DiplomacyFaction(const Mod* mod, const std::string& name):
 
 DiplomacyFaction::~DiplomacyFaction()
 {
-	for (auto& i : _research)
-	{
-		delete i;
-	}
 	delete _items;
 	delete _staffPool;
 }
@@ -74,27 +70,30 @@ void DiplomacyFaction::load(const YAML::YamlNodeReader &reader, SavedGame *save)
 	reader.tryRead("discovered", _discovered);
 	reader.tryRead("thisMonthDiscovered", _thisMonthDiscovered);
 	reader.tryRead("treaties", _treaties);
-	reader.tryRead("unlockedResearches", _unlockedResearches);
-	_items->load(reader["items"], _mod);
-	for (const auto& researchReader : reader["research"].children())
+	std::vector<std::string> unlockedResearchNames;
+	reader.tryRead("unlockedResearches", unlockedResearchNames);
+	for (const auto& name : unlockedResearchNames)
 	{
-		std::string name;
-		researchReader.tryRead("name", name);
-		if (_mod->getResearch(name))
-		{
-			FactionalResearch* r = new FactionalResearch(_mod->getResearch(name), this);
-			r->load(researchReader, save, _mod);
-			_research.push_back(r);
-		}
-		else
-		{
-			Log(LOG_ERROR) << "Failed to load research " << name;
-		}
+		unlockResearch(_mod->getResearch(name, true));
 	}
-
+	_items->load(reader["items"], _mod);
 	_staffPool->load(reader["soldierPool"], save, _mod);
 
 	reader.tryRead("dailyRepScore", _dailyRepScore);
+	for (const auto& historyReader : reader["history"].children())
+	{
+		FactionHistoryEntry entry;
+		historyReader.tryRead("reputation", entry.reputation);
+		historyReader.tryRead("power", entry.power);
+		historyReader.tryRead("vigilance", entry.vigilance);
+		historyReader.tryRead("funds", entry.funds);
+		historyReader.tryRead("known", entry.known);
+		_history.push_back(entry);
+	}
+	if (_history.size() > 11)
+	{
+		_history.erase(_history.begin(), _history.end() - 11);
+	}
 }
 
 /**
@@ -125,17 +124,52 @@ void DiplomacyFaction::save(YAML::YamlNodeWriter writer) const
 		writer.write("thisMonthDiscovered", _thisMonthDiscovered);
 	}
 	writer.write("treaties", _treaties);
-	writer.write("unlockedResearches", _unlockedResearches);
+	std::vector<std::string> unlockedResearchNames;
+	unlockedResearchNames.reserve(_unlockedResearches.size());
+	for (const auto* research : _unlockedResearches)
+	{
+		unlockedResearchNames.push_back(research->getName());
+	}
+	writer.write("unlockedResearches", unlockedResearchNames);
 	_items->save(writer["items"]);
 	_staffPool->save(writer["soldierPool"], _mod);
 
-	writer.write("research", _research,
-		[&](YAML::YamlNodeWriter& vectorWriter, FactionalResearch* r)
-		{
-			r->save(vectorWriter.write(), _mod);
-		}
-	);
 	writer.write("dailyRepScore", _dailyRepScore);
+	if (!_history.empty())
+	{
+		auto historyWriter = writer["history"];
+		historyWriter.setAsSeq();
+		for (const auto& entry : _history)
+		{
+			auto entryWriter = historyWriter.write();
+			entryWriter.setAsMap();
+			entryWriter.write("reputation", entry.reputation);
+			entryWriter.write("power", entry.power);
+			entryWriter.write("vigilance", entry.vigilance);
+			entryWriter.write("funds", entry.funds);
+			entryWriter.write("known", entry.known);
+		}
+	}
+}
+
+/**
+ * Returns the faction's current graph values.
+ */
+FactionHistoryEntry DiplomacyFaction::getCurrentHistoryEntry() const
+{
+	return FactionHistoryEntry(_reputationScore, _power, _vigilance, _funds, _discovered);
+}
+
+/**
+ * Stores the current values as the most recently completed month.
+ */
+void DiplomacyFaction::recordMonthlyHistory()
+{
+	_history.push_back(getCurrentHistoryEntry());
+	if (_history.size() > 11)
+	{
+		_history.erase(_history.begin());
+	}
 }
 
 /**
@@ -152,21 +186,71 @@ void DiplomacyFaction::updateReputationScore(int change)
 }
 
 /**
- * Removes research projet's name to a faction's list of unlocked researches.
- * @param research name of research project.
+ * Handle updating of faction reputation level based on current score, rules and other conditions.
+ * @param mod Ruleset access for reputation thresholds.
+ * @param initial Whether this update runs during new game initialization.
+ * @return true if reputation level was updated.
  */
-void DiplomacyFaction::disableResearch(const std::string& research)
+bool DiplomacyFaction::updateReputationLvl(const Mod& mod, bool initial)
 {
-	bool erased = false;
-	std::vector<std::string>::iterator r = std::find(_unlockedResearches.begin(), _unlockedResearches.end(), research);
-	if (r != _unlockedResearches.end())
+	bool changed = false;
+	std::string repName = "STR_NEUTRAL";
+	int newLvl = 3; // STR_NEUTRAL is default resolve
+
+	const std::map<int, std::string>* repLevels = mod.getReputationLevels();
+	if (repLevels)
 	{
-		_unlockedResearches.erase(r);
-		erased = true;
+		int temp = INT_MIN;
+		for (auto& i : *repLevels)
+		{
+			if (i.first > temp && i.first <= _reputationScore)
+			{
+				temp = i.first;
+				repName = i.second;
+			}
+		}
+
+		if (repName == "STR_ALLY") newLvl = 6;
+		else if (repName == "STR_HONORED") newLvl = 5;
+		else if (repName == "STR_FRIENDLY") newLvl = 4;
+		else if (repName == "STR_UNFRIENDLY") newLvl = 2;
+		else if (repName == "STR_HOSTILE") newLvl = 1;
+		else if (repName == "STR_HATED") newLvl = 0;
+
+		if ((_reputationLvL != newLvl && !_thisMonthDiscovered) || initial)
+		{
+			_reputationLvL = newLvl;
+			_reputationName = repName;
+			if (!initial)
+			{
+				changed = true;
+				//#FINNIKTODO add cross-factional relations
+			}
+		}
 	}
-	if (!erased) { Log(LOG_ERROR) << "Research project  named " << research << " was not deleted from <unlockedResearches> list!"; }
+
+	return changed;
 }
 
+/**
+ * Adds a linked ordinary research rule to the faction's known technologies.
+ */
+void DiplomacyFaction::unlockResearch(const RuleResearch* research)
+{
+	if (research && !isResearched(research))
+	{
+		_unlockedResearches.push_back(research);
+	}
+}
+
+void DiplomacyFaction::disableResearch(const RuleResearch* research)
+{
+	auto found = std::find(_unlockedResearches.begin(), _unlockedResearches.end(), research);
+	if (found != _unlockedResearches.end())
+	{
+		_unlockedResearches.erase(found);
+	}
+}
 
 void DiplomacyFaction::addItem(const RuleItem* item, int qty)
 {
@@ -193,7 +277,6 @@ void DiplomacyFaction::removeItem(const RuleItem* item, int qty)
 void DiplomacyFaction::think(Game& engine, ThinkPeriod period)
 {
 	SavedGame& save = *engine.getSavedGame();
-	MasterMind& mind = *engine.getMasterMind();
 	_commandsToProcess.clear();
 	_availableMissionScripts.clear();
 	_eventsToProcess.clear();
@@ -213,9 +296,9 @@ void DiplomacyFaction::think(Game& engine, ThinkPeriod period)
 				save.spawnEvent(engine.getMod()->getEvent(_rule->getDiscoverEvent()));
 			}
 			// update reputation level for just discovered fraction
-			mind.updateReputationLvl(this, false);
+			updateReputationLvl(*engine.getMod(), false);
 			// and if it turns friendly at start we sign help treaty by default
-			if (_reputationLvL > 0)
+			if (_reputationLvL >= 4)
 			{
 				_treaties.push_back("STR_HELP_TREATY");
 			}
@@ -230,22 +313,18 @@ void DiplomacyFaction::think(Game& engine, ThinkPeriod period)
 		if (period == TIMESTEP_10_DAYS)
 		{
 			processFactionalEvents(engine);
-			Log(LOG_INFO) << "Managing faction:  " << _rule->getName() << " has funds: " << _funds << " and power: " << _power << "."; //#CLEARLOGS
 			managePower();
 			handleRestock();
 			handleSelling();
 			manageStaff(engine);
-			Log(LOG_INFO) << ">>> Faction management finished:  " << _rule->getName() << " has funds: " << _funds << " and power: " << _power << "."; //#CLEARLOGS
 		}
-		//handleResearch(engine); //#FINNIKTODO
-
 		if (_discovered)
 		{
 			//process treaty logic
 			if (std::find(_treaties.begin(), _treaties.end(), "STR_HELP_TREATY") != _treaties.end())
 			{
 				//load treaty scripts from rules to generate missions and geoscape events
-				if (_helpTreatyTimer > 0)
+				if (_helpTreatyTimer > 1)
 				{
 					_helpTreatyTimer -= 1;
 				}
@@ -267,7 +346,7 @@ void DiplomacyFaction::think(Game& engine, ThinkPeriod period)
 					_eventsToProcess.push_back(s);
 				}
 			}
-			mind.eventScriptProcessor(_eventsToProcess, SCRIPT_FACTIONAL);
+			engine.getGeoscapeState()->eventScriptProcessor(_eventsToProcess, SCRIPT_FACTIONAL);
 		}
 	}
 }
@@ -280,7 +359,6 @@ void DiplomacyFaction::processDailyReputation(Game& engine)
 {
 	const Mod& mod = *engine.getMod();
 	SavedGame& save = *engine.getSavedGame();
-	MasterMind& mind = *engine.getMasterMind();
 	int dailyReputation = 0;
 	int breakLevel = mod.getReputationBreakthroughValue();
 	std::vector<std::string> events;
@@ -306,7 +384,7 @@ void DiplomacyFaction::processDailyReputation(Game& engine)
 
 	if (needUpdate)
 	{
-		_repLvlChanged = mind.updateReputationLvl(this, false);
+		_repLvlChanged = updateReputationLvl(mod, false) || _repLvlChanged;
 		if (!events.empty())
 		{
 			save.spawnEvent(engine.getMod()->getEvent(events.at(RNG::generate(0, events.size() - 1))));
@@ -351,7 +429,11 @@ void DiplomacyFaction::processFactionalEvents(Game& engine)
 						// factional research requirments
 						for (auto& triggerFactionsResearch : rule->getFactionResearchTriggers())
 						{
-							triggerHappy = (isResearched(triggerFactionsResearch.first) == triggerFactionsResearch.second);
+							if (!triggerHappy)
+							{
+								break;
+							}
+							triggerHappy = (isResearched(mod.getResearch(triggerFactionsResearch.first, true)) == triggerFactionsResearch.second);
 						}
 					}
 					if (triggerHappy)
@@ -359,6 +441,10 @@ void DiplomacyFaction::processFactionalEvents(Game& engine)
 						// item requirements
 						for (auto& triggerItem : rule->getItemTriggers())
 						{
+							if (!triggerHappy)
+							{
+								break;
+							}
 							triggerHappy = ((_items->getItem(triggerItem.first) > 0) == triggerItem.second);
 						}
 					}
@@ -366,7 +452,6 @@ void DiplomacyFaction::processFactionalEvents(Game& engine)
 					//ok, we are happy with this factional event, let's finally process its effects!
 					if (triggerHappy)
 					{
-						Log(LOG_INFO) << "Faction:  " << _rule->getName() << " got event: " << rule->getType(); //#CLEARLOGS
 						_power += rule->getPowerChange();
 						_funds += rule->getFundsChange();
 						_vigilance += rule->getVigilanceChange();
@@ -378,13 +463,13 @@ void DiplomacyFaction::processFactionalEvents(Game& engine)
 								auto ruleResearch = mod.getResearch(r);
 								if (ruleResearch != nullptr && !isResearched(ruleResearch))
 								{
-									unlockResearch(ruleResearch->getName());
+									unlockResearch(ruleResearch);
 
 									if (!ruleResearch->getGetOneFree().empty())
 									{
 										for (auto g : ruleResearch->getGetOneFree())
 										{
-											unlockResearch(g->getName());
+											unlockResearch(g);
 										}
 									}
 
@@ -401,31 +486,27 @@ void DiplomacyFaction::processFactionalEvents(Game& engine)
 									{
 										for (auto d : ruleResearch->getDisabled())
 										{
-											disableResearch(d->getName());
+											disableResearch(d);
 										}
 									}
 								}
 							}
 						}
 
-						for (auto& item : rule->getItemsToAdd())
+						for (const auto& itemChange : rule->getItemsChange())
 						{
-							auto ruleItem = mod.getItem(item.first);
-							if (ruleItem)
+							const RuleItem* ruleItem = mod.getItem(itemChange.first, true);
+							const int change = itemChange.second;
+							if (change > 0)
 							{
-								int val = item.second;
-								if (val > 0)
-								{
-									addItem(ruleItem, val);
-								}
-								else if (val < 0)
-								{
-									const int64_t qty = -static_cast<int64_t>(val);
-									if (_items->getItem(ruleItem) >= qty)
-									{
-										removeItem(ruleItem, static_cast<int>(qty));
-									}
-								}
+								addItem(ruleItem, change);
+							}
+							else if (change < 0)
+							{
+								const int64_t requested = -static_cast<int64_t>(change);
+								const int64_t available = _items->getItem(ruleItem);
+								const int toRemove = static_cast<int>(std::min(requested, available));
+								removeItem(ruleItem, toRemove);
 							}
 						}
 
@@ -462,6 +543,11 @@ void DiplomacyFaction::factionMissionGenerator(Game& engine)
 			for (auto &name : _commandsToProcess)
 			{
 				auto ruleScript = mod.getMissionScript(name);
+				if (!ruleScript)
+				{
+					Log(LOG_ERROR) << "Diplomacy faction " << _rule->getName() << " references missing mission script " << name;
+					continue;
+				}
 				auto month = save.getMonthsPassed();
 				int loyalty = save.getLoyalty();
 				// lets process mission script with own way, first things first
@@ -474,7 +560,8 @@ void DiplomacyFaction::factionMissionGenerator(Game& engine)
 					(ruleScript->getMaxLoyalty() >= loyalty) &&
 					(ruleScript->getMinFunds() <= save.getFunds()) &&
 					(ruleScript->getMaxFunds() >= save.getFunds()) &&
-					ruleScript->getMinDifficulty() <= save.getDifficulty())
+					ruleScript->getMinDifficulty() <= save.getDifficulty() &&
+					ruleScript->getMaxDifficulty() >= save.getDifficulty())
 				{
 					// don't forget about FTA-specific stuff
 					if (save.getMissionScriptGapped(ruleScript->getType()))
@@ -503,9 +590,34 @@ void DiplomacyFaction::factionMissionGenerator(Game& engine)
 					}
 					if (triggerHappy)
 					{
+						// reputation requirements
+						for (const auto& triggerFaction : ruleScript->getReputationRequirments())
+						{
+							bool requirementMet = false;
+							for (const auto& faction : save.getDiplomacyFactions())
+							{
+								if (faction->getRules()->getName() == triggerFaction.first)
+								{
+									requirementMet = faction->getReputationLevel() >= triggerFaction.second;
+									break;
+								}
+							}
+							if (!requirementMet)
+							{
+								triggerHappy = false;
+								break;
+							}
+						}
+					}
+					if (triggerHappy)
+					{
 						// item requirements
 						for (auto& triggerItem : ruleScript->getItemTriggers())
 						{
+							if (!triggerHappy)
+							{
+								break;
+							}
 							triggerHappy = (save.isItemObtained(triggerItem.first, &mod) == triggerItem.second);
 						}
 					}
@@ -514,6 +626,10 @@ void DiplomacyFaction::factionMissionGenerator(Game& engine)
 						// facility requirements
 						for (auto& triggerFacility : ruleScript->getFacilityTriggers())
 						{
+							if (!triggerHappy)
+							{
+								break;
+							}
 							triggerHappy = (save.isFacilityBuilt(triggerFacility.first) == triggerFacility.second);
 						}
 					}
@@ -540,22 +656,31 @@ void DiplomacyFaction::handleRestock()
 	for (const auto& [wishListItem, weight] : _rule->getWishList())
 	{
 		RuleItem* ruleItem = _mod->getItem(wishListItem);
+		if (!ruleItem)
+		{
+			Log(LOG_ERROR) << "Diplomacy faction " << _rule->getName() << " references missing wish-list item " << wishListItem;
+			continue;
+		}
 		int cost = ruleItem->getBuyCost();
-		if (cost <= 0 || !ruleItem)
+		if (cost <= 0)
 		{
 			// we don't have cost for the item, skip that trash!
 			continue;
 		}
 
 		// first, we see if we can handle this item
-		if (ruleItem->getBuyRequirements().empty() || isResearched(ruleItem->getBuyRequirements()))
+		if (canAcquireItem(ruleItem))
 		{
 			// calculate wanted amount purchase things
 			int64_t toBuy = round(weight * _power / 100) - getItems()->getItem(ruleItem);
 			// now we can purchase things
 			if (toBuy > 0 && _funds > 0)
 			{
-				Log(LOG_INFO) << "Buyng: " << toBuy << "of item:  " << ruleItem->getName() << " that has weight: " << weight << " and current stock is: " << getItems()->getItem(ruleItem); //#CLEARLOGS
+				toBuy = std::min(toBuy, _funds / cost);
+				if (toBuy <= 0)
+				{
+					continue;
+				}
 				_items->addItem(ruleItem, (int)toBuy);
 				_funds -= toBuy * cost;
 			}
@@ -605,7 +730,6 @@ void DiplomacyFaction::handleSelling()
 	{
 		for (auto [sellItem, values] : sellList)
 		{
-			Log(LOG_INFO) << "Selling: " << values.first << " of item: " << sellItem->getName(); //#CLEARLOGS
 			removeItem(sellItem, values.first);
 			int64_t dFunds = values.first;
 			dFunds *= values.second; // sorry for that, was too lasy to make a structure
@@ -626,8 +750,14 @@ void DiplomacyFaction::manageStaff(Game& engine)
 	for (auto &weights : _rule->getStaffWeights())
 	{
 		const RuleSoldier* soldierRule = _mod->getSoldier(weights.first);
+		if (!soldierRule)
+		{
+			Log(LOG_ERROR) << "Diplomacy faction " << _rule->getName() << " references missing staff type " << weights.first;
+			continue;
+		}
 
-		if (soldierRule->getBuyCost() != 0 && isResearched(soldierRule->getRequirements()))
+		const std::vector<const RuleResearch*> requirements = _mod->getResearch(soldierRule->getRequirements());
+		if (soldierRule->getBuyCost() > 0 && isResearched(requirements))
 		{
 			int soldiersInPool = 0;
 			for (auto hiredSoldier: _staffPool->getSoldiers())
@@ -648,10 +778,11 @@ void DiplomacyFaction::manageStaff(Game& engine)
 
 	for (auto [rule, amount] : buyList)
 	{
-		if (RNG::percent(70 - (engine.getSavedGame()->getDifficultyCoefficient()) * 10))
+		(void)amount; // staff grows gradually: at most one recruit of each type per management cycle
+		if (_funds >= rule->getBuyCost() && RNG::percent(70 - (engine.getSavedGame()->getDifficultyCoefficient()) * 10))
 		{
-			int nationality = engine.getSavedGame()->selectSoldierNationalityByLocation(engine.getMod(), rule, nullptr);
-			_staffPool->addSoldier(engine.getMod()->genSoldier(engine.getSavedGame(), rule, nationality));
+			_staffPool->addSoldier(engine.getMod()->genSoldier(engine.getSavedGame(), rule));
+			_funds -= rule->getBuyCost();
 		}
 
 	}
@@ -666,6 +797,11 @@ void DiplomacyFaction::managePower()
 {
 
 	int powerHungry = _rule->getPowerHungry();
+	if (powerHungry <= 0)
+	{
+		Log(LOG_ERROR) << "Diplomacy faction " << _rule->getName() << " has invalid powerHungry value " << powerHungry;
+		return;
+	}
 	int64_t reqFunds = _power;
 	reqFunds *= powerHungry;
 	if (reqFunds > _funds)
@@ -677,7 +813,6 @@ void DiplomacyFaction::managePower()
 			_power -= powerLost;
 			int64_t gainedFunds = powerLost;
 			gainedFunds *= powerHungry;
-			Log(LOG_INFO) << "reqFunds:  " << reqFunds << " > funds: " << _funds << ", power loss is: " << powerLost << " and funds gain is: " << gainedFunds; //#CLEARLOGS
 			_funds += gainedFunds;
 		}
 	}
@@ -688,7 +823,6 @@ void DiplomacyFaction::managePower()
 		vigilanceCost *= powerHungry;
 		if (spareFunds >= vigilanceCost)
 		{
-			Log(LOG_INFO) << "spareFunds:  " << spareFunds << " > vigilanceCost: " << vigilanceCost << ", power gain equal vigilance: " << _vigilance; //#CLEARLOGS
 			_power += _vigilance;
 			_funds -= vigilanceCost;
 			_vigilance = 0;
@@ -698,7 +832,6 @@ void DiplomacyFaction::managePower()
 			int powerGain = floor(spareFunds / powerHungry);
 			if (powerGain > 0)
 			{
-				Log(LOG_INFO) << "powerGain:  " << powerGain << " > 0 due to having spare funds: " << spareFunds << " and vigilance: " << _vigilance << ", increasing power"; //#CLEARLOGS
 				_power += powerGain;
 				_vigilance -= powerGain;
 				vigilanceCost = powerGain;
@@ -712,273 +845,33 @@ void DiplomacyFaction::managePower()
 }
 
 /**
- * Handle managing of Faction's staff and non-item equipment.
- * @param engine
+ * Checks the item's ordinary requiresBuy rules against faction technology.
  */
-void DiplomacyFaction::handleResearch(Game& engine) //#FINNIKTODO - refactor with new soldier-based scientists logic
+bool DiplomacyFaction::canAcquireItem(const RuleItem* item) const
 {
-	SavedGame& save = *engine.getSavedGame();
-	if (!_research.empty())
-	{
-		for (FactionalResearch* project : _research)
-		{
-			if (project->step())
-			{
-				//project finished
-				const RuleResearch* bonus = 0;
-				const RuleResearch* research = project->getRules();
-
-				// core research first
-				unlockResearch(research->getName());
-				Log(LOG_INFO) << "Faction:  " << _rule->getName() << " finished research : " << project->getName(); //#CLEARLOGS
-
-				// spawn item
-				RuleItem* spawnedItem = _mod->getItem(research->getSpawnedItem());
-				if (spawnedItem)
-				{
-					addItem(spawnedItem, 1);
-				}
-
-				// spawn event
-				auto researchEvent = research->getSpawnedEvent();
-				if (!researchEvent.empty())
-				{
-					save.spawnEvent(engine.getMod()->getEvent(researchEvent));
-				}
-
-				// process getOneFree
-				if ((bonus = save.selectGetOneFree(research)))
-				{
-					unlockResearch(bonus->getName());
-				}
-
-				//clear research project
-				/*_staff->addItem("STR_SCIENTIST", (*p)->getScientists());*/
-
-				Collections::deleteIf(_research, 1,
-					[&](FactionalResearch* r)
-					{
-						return r == project;
-					}
-				);
-			}
-			else // project still in development
-			{
-				//std::vector<Soldier*> scientists;
-				//
-				//// handle low funds case
-				//if (_funds < reqFunds / 4)
-				//{
-				//	if ((*p)->getScientists() > 1) // we can keep lone guy doing his stuff
-				//	{
-				//		Log(LOG_INFO) << "Faction:  " << _rule->getName() << " has too low funds: " << _funds << " < required / 4 = " << reqFunds / 4
-				//			<< " and project: " << (*p)->getName() << " was reduced in funding!"; //#CLEARLOGS
-				//		int qty = ceil((*p)->getScientists() / 2);
-				//		//_staff->addItem("STR_SCIENTIST", qty);
-				//		(*p)->setScientists((*p)->getScientists() - qty);
-				//	}
-				//}
-
-				//else if (_staff->getItem("STR_SCIENTIST") > 0 && _funds > reqFunds / 2 && RNG::percent(40)) // we choose to rise funding on this project
-				//{
-				//	int qty = floor(RNG::generate(0, _staff->getItem("STR_SCIENTIST") / 4));
-				//	_staff->removeItem("STR_SCIENTIST", qty);
-				//	(*p)->setScientists((*p)->getScientists() + qty);
-				//}
-			}
-		}
-	}
-
-	//// probably we can have some free researches unlocked
-	////for (auto i = _mod->getResearchList().begin(); i != _mod->getResearchList().end(); ++i)
-	////{
-	////	RuleResearch* rRule = _mod->getResearch((*i));
-
-	////	if (rRule->getCost() <= 0 && !rRule->getDependencies().empty() && isResearched(rRule->getDependencies()))
-	////	{
-	////		unlockResearch(rRule->getName());
-	////	}
-	////}
-
-	// let's count how many research project teams we can potentially have
-	//size_t totalScientists = 0; //static_cast<size_t>(_staff->getItem("STR_SCIENTIST"));
-	//if (hasResearch)
-	//{
-	//	for (auto y : _research)
-	//	{
-	//		totalScientists += (*y).getScientists();
-	//	}
-	//}
-
-	/*size_t projectSpots = floor(totalScientists / 10);
-	if (totalScientists <= 10 && RNG::percent(totalScientists * 10))
-	{
-		projectSpots = 1;
-	}*/
-
-	//// now we should choose to start a new project
-	//if (_staff->getItem("STR_SCIENTIST") > 0 && _funds > reqFunds && projectSpots >= (_research.size() + 1) && RNG::percent(100)) // if we have scientists, money and process was not canceled because of internal reasons
-	//{
-	//	std::vector<std::pair<int, RuleResearch*>> researchList;
-
-	//	for (auto i = _mod->getResearchList().begin(); i != _mod->getResearchList().end(); ++i)
-	//	{
-	//		if (isResearched(*i))
-	//		{
-	//			continue; // we already know what is that!
-	//		}
-	//		RuleResearch* rRule = _mod->getResearch((*i));
-
-	//		if (!rRule->getDependencies().empty() && isResearched(rRule->getDependencies()))// this one effectively splits xcom and factional research trees
-	//		{
-
-	//			if (rRule->getCost() == 0)
-	//			{
-	//				continue; // meh, too easy
-	//			}
-
-	//			if (rRule->needItem())
-	//			{
-	//				if (_items->getItem(_mod->getItem((*i))) <= 0 || _secretItems->getItem(_mod->getItem((*i))) <= 0)
-	//				{
-	//					continue; //sadly, we dont have required item
-	//				}
-	//			}
-
-	//			//extra one to make sure we are not already researching it
-	//			if (hasResearch)
-	//			{
-	//				bool ongoing = false;
-	//				for (auto l = _research.begin(); l != _research.end(); ++l)
-	//				{
-	//					if ((*l)->getName() == rRule->getName())
-	//					{
-	//						ongoing = true;
-	//						break; // ah, we are already researching this one!
-	//					}
-	//				}
-	//				if (ongoing)
-	//				{
-	//					continue; // ok, we do not want to start same research again
-	//				}
-	//			}
-	//			// this one looks fine, let's remember it
-	//			int priority = rRule->getPoints() / rRule->getCost();
-	//			researchList.push_back(std::make_pair(priority, rRule));
-	//			Log(LOG_INFO) << "Faction:  " << _rule->getName() << " has potential research : " << rRule->getName() << ", processing! It has priority: " << priority; //#CLEARLOGS
-	//		}
-	//	}
-
-	//	if (!researchList.empty())
-	//	{
-	//		// now we should pick the most sweet project to start
-	//		std::sort(researchList.begin(), researchList.end());
-
-	//		RuleResearch* choice = researchList.front().second; // our potential choice
-	//		int priority = researchList.front().first;
-	//		bool promising = true;
-	//		int64_t factionCost = choice->getCost();
-	//		//counts FTA is loaded, so we turn hours to days and say, that faction's research is 10 times slower, than player's
-	//		factionCost = reqFunds * 2 / 3 - factionCost * 10 / 2400 * _rule->getScienceBaseCost();
-	//		Log(LOG_INFO) << "factionCost for research project " << _rule->getName() << " is: " << factionCost
-	//			<< " based on reqFunds: " << reqFunds << ", initial cost: " << choice->getCost() << " and science base cost: " << _rule->getScienceBaseCost(); //#CLEARLOGS
-
-	//		if (_funds > factionCost) // looks like we would manage to deal with this one.
-	//		{
-	//			// now let's if this research is more valuable than already processed researches
-	//			if (hasResearch)
-	//			{
-	//				for (auto k = _research.begin(); k != _research.end(); ++k)
-	//				{
-	//					if ((*k)->getPriority() >= priority)
-	//					{
-	//						promising = false;
-	//						break; //ongoing research is better
-	//					}
-	//					else if ((*k)->getPriority() * 2 < priority)
-	//					{
-	//						// now we are talking, looks like we are wasting time here, let's reduce funding of this crap!
-	//						if ((*k)->getScientists() > 1) // we can keep lone guy doing his stuff
-	//						{
-	//							int qty = ceil((*k)->getScientists() / 2);
-	//							_staff->addItem("STR_SCIENTIST", qty);
-	//							(*k)->setScientists((*k)->getScientists() - qty);
-	//						}
-	//					}
-	//				}
-	//				if (!promising)
-	//				{
-	//					return; // we should not start new researches as we have a lot more things to do right now
-	//				}
-	//			}
-
-	//			// finally, we can start a new research project
-	//			FactionalResearch* newResearch = new FactionalResearch(choice, this);
-	//			_research.push_back(newResearch);
-	//			int randomCost = (double)factionCost / 4;
-	//			newResearch->setTimeLeft((int)factionCost + RNG::generate(-randomCost, randomCost));
-	//			newResearch->setPriority(priority);
-	//			int qty = _staff->getItem("STR_SCIENTIST");
-	//			qty = RNG::generate(qty * 0.5, qty * 0.9); // FINNIKTODO: think more about how many scientists faction should assign on a new project
-	//			newResearch->setScientists(qty);
-	//			_staff->removeItem("STR_SCIENTIST", qty);
-	//			_funds -= factionCost / 10;
-
-	//			Log(LOG_INFO) << "Faction:  " << _rule->getName() << " has chosen research : " << choice->getName()
-	//				<< " with priority: " << priority; //#CLEARLOGS
-	//		}
-	//	}
-	//}
-}
-
-bool DiplomacyFaction::isResearched(const std::string& name) const
-{
-	if (std::find(_unlockedResearches.begin(), _unlockedResearches.end(), name) != _unlockedResearches.end())
-	{
-		return true;
-	}
-	return false;
+	return item && isResearched(item->getBuyRequirements());
 }
 
 bool DiplomacyFaction::isResearched(const RuleResearch* rule) const
 {
-	if (std::find(_unlockedResearches.begin(), _unlockedResearches.end(), rule->getName()) != _unlockedResearches.end())
+	if (std::find(_unlockedResearches.begin(), _unlockedResearches.end(), rule) != _unlockedResearches.end())
 	{
 		return true;
 	}
-	return false;
-}
-
-bool DiplomacyFaction::isResearched(const std::vector<std::string>& names) const
-{
-	if (names.empty())
-		return true;
-
-	for (const std::string& r : names)
-	{
-		if (isResearched(r))
-		{
-			return true;
-		}
-	}
-
 	return false;
 }
 
 bool DiplomacyFaction::isResearched(const std::vector<const RuleResearch*>& rules) const
 {
-	if (rules.empty())
-		return true;
-
-	for (auto r : rules)
+	for (const RuleResearch* rule : rules)
 	{
-		if (isResearched(r))
+		if (!isResearched(rule))
 		{
-			return true;
+			return false;
 		}
 	}
 
-	return false;
+	return true;
 }
 
 }

@@ -77,7 +77,6 @@ private:
 	/// Calculates a new speed vector to the destination.
 	void calculateSpeed() override;
 	int _shield, _shieldRechargeHandle;
-	int _tractorBeamSlowdown;
 	bool _isHunterKiller, _isEscort;
 	int _huntMode, _huntBehavior;
 	bool _isHunting, _isEscorting;
@@ -231,10 +230,6 @@ public:
 	/// Gets the percent shield remaining
 	int getShieldPercentage() const;
 
-	/// Sets the number of tractor beams locked on to a UFO
-	void setTractorBeamSlowdown(int tractorBeamSlowdown);
-	/// Gets the number of tractor beams locked on to a UFO
-	int getTractorBeamSlowdown() const;
 	/// Is this UFO a hunter-killer?
 	bool isHunterKiller() const;
 	void setHunterKiller(bool isHunterKiller);

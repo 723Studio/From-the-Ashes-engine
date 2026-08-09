@@ -17,13 +17,15 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <algorithm>
+#include <climits>
+#include <cstdint>
 #include "RuleManufacture.h"
-#include "RuleManufactureShortcut.h"
 #include "RuleResearch.h"
 #include "RuleCraft.h"
 #include "RuleItem.h"
 #include "Mod.h"
 #include "../Engine/Collections.h"
+#include "../Engine/Exception.h"
 
 namespace OpenXcom
 {
@@ -32,7 +34,7 @@ namespace OpenXcom
  * @param name The unique manufacture name.
  */
 RuleManufacture::RuleManufacture(const std::string& name, int listOrder)
-	: _name(name), _space(0), _time(0), _cost(0), _points(0), _refund(false), _producedCraft(0), _listOrder(listOrder)
+	: _name(name), _space(0), _time(0), _cost(0), _fundsGain(0), _points(0), _refund(false), _producedCraft(0), _listOrder(listOrder)
 {
 	_producedItemsNames[name] = 1;
 }
@@ -56,6 +58,7 @@ void RuleManufacture::load(const YAML::YamlNodeReader& node, Mod* mod)
 	reader.tryRead("space", _space);
 	reader.tryRead("time", _time);
 	reader.tryRead("cost", _cost);
+	reader.tryRead("fundsGain", _fundsGain);
 	_stats.merge(reader["stats"].readVal(_stats));
 	reader.tryRead("points", _points);
 	reader.tryRead("refund", _refund);
@@ -77,14 +80,34 @@ void RuleManufacture::load(const YAML::YamlNodeReader& node, Mod* mod)
  */
 void RuleManufacture::afterLoad(const Mod* mod)
 {
+	if (_space < 0)
+	{
+		throw Exception("Manufacture '" + _name + "' has negative workshop space.");
+	}
 	if (_time <= 0)
 	{
-		throw Exception("Manufacturing time must be greater than zero.");
+		throw Exception("Manufacture '" + _name + "' time must be greater than zero.");
+	}
+	if (_cost < 0)
+	{
+		throw Exception("Manufacture '" + _name + "' has negative cost; use fundsGain for completion income.");
+	}
+	if (_fundsGain < 0)
+	{
+		throw Exception("Manufacture '" + _name + "' has negative fundsGain.");
+	}
+	if (_cost > 0 && _fundsGain > 0)
+	{
+		throw Exception("Manufacture '" + _name + "' cannot define both positive cost and fundsGain.");
 	}
 
 	_requires = mod->getResearch(_requiresName);
 	if (_category == "STR_CRAFT")
 	{
+		if (_producedItemsNames.size() != 1)
+		{
+			throw Exception("Craft manufacture '" + _name + "' must define exactly one produced craft.");
+		}
 		auto item = _producedItemsNames.begin();
 		if (item == _producedItemsNames.end())
 		{
@@ -92,7 +115,7 @@ void RuleManufacture::afterLoad(const Mod* mod)
 		}
 		else if (item->second != 1)
 		{
-			throw Exception("Only one craft can be build in production");
+			throw Exception("Craft manufacture '" + _name + "' must produce exactly one craft per project.");
 		}
 		else
 		{
@@ -103,17 +126,40 @@ void RuleManufacture::afterLoad(const Mod* mod)
 	{
 		for (auto& i : _producedItemsNames)
 		{
+			if (i.second <= 0)
+			{
+				throw Exception("Manufacture '" + _name + "' has a non-positive produced item quantity.");
+			}
 			_producedItems[mod->getItem(i.first, true)] = i.second;
 		}
 	}
 
-	if (mod->isFTAGame() && _stats.empty())
+	const int taskStats[] =
 	{
-		throw Exception("Stats are not defined for manufacture project, it is required for FTA game");
+		_stats.weaponry, _stats.explosives, _stats.microelectronics,
+		_stats.metallurgy, _stats.processing, _stats.hacking, _stats.robotics,
+		_stats.alienTech, _stats.reverseEngineering
+	};
+	bool hasPositiveTaskStat = false;
+	for (const int value : taskStats)
+	{
+		if (value < 0)
+		{
+			throw Exception("Manufacture '" + _name + "' has a negative engineering task stat.");
+		}
+		hasPositiveTaskStat = hasPositiveTaskStat || value > 0;
+	}
+	if (!hasPositiveTaskStat)
+	{
+		throw Exception("Manufacture '" + _name + "' must define at least one positive supported engineering task stat.");
 	}
 
 	for (auto& i : _requiredItemsNames)
 	{
+		if (i.second <= 0)
+		{
+			throw Exception("Manufacture '" + _name + "' has a non-positive required item quantity.");
+		}
 		auto* itemRule = mod->getItem(i.first, false);
 		auto* craftRule = mod->getCraft(i.first, false);
 		if (itemRule)
@@ -130,14 +176,37 @@ void RuleManufacture::afterLoad(const Mod* mod)
 		}
 	}
 
+	int64_t totalRandomWeight = 0;
 	for (auto& itemSet : _randomProducedItemsNames)
 	{
+		if (itemSet.first <= 0 || itemSet.second.empty())
+		{
+			throw Exception("Manufacture '" + _name + "' has an invalid random production entry.");
+		}
+		totalRandomWeight += itemSet.first;
+		if (totalRandomWeight > INT_MAX)
+		{
+			throw Exception("Manufacture '" + _name + "' has excessive random production weight.");
+		}
 		std::map<const RuleItem*, int> tmp;
 		for (auto& i : itemSet.second)
 		{
+			if (i.second <= 0)
+			{
+				throw Exception("Manufacture '" + _name + "' has a non-positive random output quantity.");
+			}
 			tmp[mod->getItem(i.first, true)] = i.second;
 		}
 		_randomProducedItems.push_back(std::make_pair(itemSet.first, tmp));
+	}
+
+	if (!_spawnedPersonType.empty())
+	{
+		mod->getSoldier(_spawnedPersonType, true);
+	}
+	if (_refund && !_requiredCrafts.empty())
+	{
+		throw Exception("Manufacture '" + _name + "' cannot refund consumed crafts safely; disable refund for this project.");
 	}
 
 	//remove not needed data
@@ -147,70 +216,6 @@ void RuleManufacture::afterLoad(const Mod* mod)
 	Collections::removeAll(_randomProducedItemsNames);
 }
 
-/**
- * Change the name and break down the sub-projects into simpler components.
- */
-void RuleManufacture::breakDown(const Mod* mod, const RuleManufactureShortcut* recipe)
-{
-	// 0. rename
-	_name = recipe->getName();
-
-	// 1. init temp variables
-	std::map<const RuleItem*, int> tempRequiredItems = _requiredItems;
-	std::map<const RuleResearch*, bool> tempRequires;
-	for (auto* r : _requires)
-		tempRequires[r] = true;
-	RuleBaseFacilityFunctions tempRequiresBaseFunc = _requiresBaseFunc;
-
-	// 2. break down iteratively
-	bool doneSomething = false;
-	do
-	{
-		doneSomething = false;
-		for (auto& projectName : recipe->getBreakDownItems())
-		{
-			RuleItem* itemRule = mod->getItem(projectName, true);
-			RuleManufacture* projectRule = mod->getManufacture(projectName, true);
-			int count = tempRequiredItems[itemRule];
-			if (count > 0)
-			{
-				tempRequiredItems[itemRule] = 0;
-				doneSomething = true;
-
-				_space = std::max(_space, projectRule->getRequiredSpace());
-				_time += count * projectRule->getManufactureTime();
-				_cost += count * projectRule->getManufactureCost();
-
-				for (auto& ri : projectRule->getRequiredItems())
-					tempRequiredItems[ri.first] += count * ri.second;
-				for (auto* r : projectRule->getRequirements())
-					tempRequires[r] = true;
-
-				tempRequiresBaseFunc |= projectRule->getRequireBaseFunc();
-			}
-		}
-	}
-	while (doneSomething);
-
-	// 3. update
-	{
-		_requiredItems.clear();
-		for (auto& item : tempRequiredItems)
-			if (item.second > 0)
-				_requiredItems[item.first] = item.second;
-	}
-	if (recipe->getBreakDownRequires())
-	{
-		_requires.clear();
-		for (auto& item : tempRequires)
-			if (item.second)
-				_requires.push_back(item.first);
-	}
-	if (recipe->getBreakDownRequiresBaseFunc())
-	{
-		_requiresBaseFunc = tempRequiresBaseFunc;
-	}
-}
 
 /**
  * Gets the unique name of the manufacture.
@@ -266,17 +271,6 @@ int RuleManufacture::getManufactureTime() const
 int RuleManufacture::getManufactureCost() const
 {
 	return _cost;
-}
-
-/**
- * Checks if there's enough funds to manufacture one object.
- * @param funds Current funds.
- * @return True if manufacture is possible.
- */
-bool RuleManufacture::haveEnoughMoneyForOneMoreUnit(int64_t funds) const
-{
-	// either we have enough money, or the production doesn't cost anything
-	return funds >= _cost || _cost <= 0;
 }
 
 /**
@@ -350,24 +344,6 @@ const std::string &RuleManufacture::getSpawnedPersonName() const
 	return _spawnedPersonName;
 }
 
-/**
- * Is it possible to use auto-sell feature for this manufacturing project?
- * @return True for normal projects, false for special projects.
- */
-bool RuleManufacture::canAutoSell() const
-{
-	if (!_spawnedPersonType.empty())
-	{
-		// can't sell people
-		return false;
-	}
-	if (!_randomProducedItems.empty())
-	{
-		// sell profit label can't show reasonable info
-		return false;
-	}
-	return true;
-}
 
 /**
  * Gets the list weight for this manufacture item.

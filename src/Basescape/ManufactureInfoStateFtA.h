@@ -53,7 +53,7 @@ private:
 	ArrowButton * _btnUnitUp, * _btnUnitDown;
 	TextButton * _btnStop, * _btnOk, *_btnAllocateEngineers;
 	Text * _txtTitle, * _txtAvailableEngineer, * _txtAvailableSpace, * _txtAllocatedEngineers, *_txtAvgEfficiency, * _txtAvgDiligence;
-	Text * _txtUnitToProduce, * _txtUnitUp, * _txtUnitDown, * _txtTodo;
+	Text * _txtUnitCost, * _txtUnitToProduce, * _txtUnitUp, * _txtUnitDown, * _txtTodo;
 	Timer *_timerMoreUnit, * _timerLessUnit;
 	InteractiveSurface *_surfaceUnits;
 	TextList * _lstEngineers;
@@ -63,6 +63,8 @@ private:
 	bool _infiniteProduction;
 	/// Handler for the Stop button.
 	void btnStopClick (Action *action);
+	/// Handler for cancelling staged changes.
+	void btnCancelClick(Action *action);
 	/// Handler for the OK button.
 	void btnOkClick (Action *action);
 	/// Handler for the Allocate engineers button.
@@ -107,7 +109,7 @@ public:
 	void init() override;
 	void fillEngineersList(size_t scrl);
 	/// Updates display of assigned/available engineers and workshop space.
-	void setAssignedEngineers();
+	void refreshAssignedEngineers();
 
 	const RuleManufacture* getManufactureRules();
 	std::set<Soldier*> getEngineers() { return _engineers; };
@@ -115,6 +117,7 @@ public:
 	void removeEngineer(Soldier* engineer) { _engineers.erase(engineer); };
 	void setEngineers(std::set<Soldier*> engineers) { _engineers = engineers; };
 	bool isNewProject() { return _newProject; }
+	Production* getProduction() const { return _production; }
 	int getWorkspace() { return _workSpace; }
 };
 

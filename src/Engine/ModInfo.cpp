@@ -17,10 +17,8 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "../version.h"
 #include "ModInfo.h"
 #include "CrossPlatform.h"
-#include "Exception.h"
 #include "Logger.h"
 #include "../Engine/Yaml.h"
 #include <sstream>
@@ -155,49 +153,16 @@ const ModInfoVersion defaultModVersion = normalizeModVersion("def", "1.0");
 
 } //namespace
 
-ModInfo::ModInfo(const std::string &path) :
+ModInfo::ModInfo(const std::string &path, bool isOxcContainer) :
 	 _path(path), _name(CrossPlatform::baseFilename(path)),
 	_desc("No description."), _author("unknown author"),
 	_id(_name), _master("xcom1"),
 	_versionDisplay("1.0"),
 	_version(defaultModVersion),
-	_isMaster(false), _reservedSpace(1),
-	_engineOk(false)
+	_isMaster(false), _isOxcContainer(isOxcContainer), _reservedSpace(1)
 {
 	// empty
 }
-
-namespace
-{
-
-struct EngineData
-{
-	std::string name;
-	int version[4];
-};
-
-/**
- * List of engines that current version support.
- */
-const EngineData supportedEngines[] = {
-	{ OPENXCOM_FTA_VERSION_ENGINE, { OPENXCOM_FTA_VERSION_NUMBER }},
-	{ "", { 0, 0, 0, 0 } }, // assume that every engine support mods from base game, remove if its not true.
-};
-
-template<int I>
-bool findCompatibleEngine(const EngineData (&l)[I], const std::string& e, const std::array<int, 4>& version)
-{
-	for (auto& d : supportedEngines)
-	{
-		if (d.name == e)
-		{
-			return !CrossPlatform::isHigherThanCurrentVersion(version, d.version);
-		}
-	}
-	return false;
-}
-
-} //namespace
 
 void ModInfo::load(const YAML::YamlNodeReader& reader)
 {
@@ -213,12 +178,6 @@ void ModInfo::load(const YAML::YamlNodeReader& reader)
 	reader.tryRead("author", _author);
 	reader.tryRead("isMaster", _isMaster);
 	reader.tryRead("reservedSpace", _reservedSpace);
-
-	if (reader.tryRead("requiredExtendedVersion", _requiredExtendedVersion))
-		_requiredExtendedEngine = "Extended"; // for backward compatibility
-	reader.tryRead("requiredExtendedEngine", _requiredExtendedEngine);
-
-	_engineOk = findCompatibleEngine(supportedEngines, _requiredExtendedEngine, CrossPlatform::parseVersion(_requiredExtendedVersion));
 
 	if (_reservedSpace < 1)
 	{
@@ -272,9 +231,7 @@ const std::string &ModInfo::getId()                      const { return _id;    
 const std::string &ModInfo::getMaster()                  const { return _master;                  }
 const std::string &ModInfo::getRequiredMasterVersion()   const { return _requiredMasterModVersion.first; }
 bool               ModInfo::isMaster()                   const { return _isMaster;                }
-bool               ModInfo::isEngineOk()                 const { return _engineOk;                }
-const std::string &ModInfo::getRequiredExtendedEngine()  const { return _requiredExtendedEngine;  }
-const std::string &ModInfo::getRequiredExtendedVersion() const { return _requiredExtendedVersion; }
+bool               ModInfo::isOxcContainer()             const { return _isOxcContainer;          }
 const std::string &ModInfo::getResourceConfigFile()      const { return _resourceConfigFile;      }
 int                ModInfo::getReservedSpace()           const { return _reservedSpace;           }
 
@@ -309,19 +266,6 @@ const std::vector<std::string> &ModInfo::getExternalResourceDirs() const { retur
 
 static auto dummy = ([]
 {
-	auto create = [](int i, int j, int k, int l)
-	{
-		return std::array<int, 4>{{i, j, k, l}};
-	};
-
-	assert(findCompatibleEngine(supportedEngines, OPENXCOM_FTA_VERSION_ENGINE, create(OPENXCOM_FTA_VERSION_NUMBER)));
-	assert(findCompatibleEngine(supportedEngines, OPENXCOM_FTA_VERSION_ENGINE, create(1, 0, 0, 0)));
-	assert(findCompatibleEngine(supportedEngines, "", create(0, 0, 0, 0)));
-	assert(!findCompatibleEngine(supportedEngines, OPENXCOM_FTA_VERSION_ENGINE, create(OPENXCOM_FTA_VERSION_NUMBER + 1)));
-	assert(!findCompatibleEngine(supportedEngines, "XYZ", create(OPENXCOM_FTA_VERSION_NUMBER)));
-	assert(!findCompatibleEngine(supportedEngines, "XYZ", create(0, 0, 0, 0)));
-
-
 	auto check = [](const std::string& a, const std::string& b)
 	{
 		ModInfoVersion aa = normalizeModVersion("x", a);

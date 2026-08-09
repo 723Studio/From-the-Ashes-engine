@@ -233,14 +233,6 @@ std::string ConfirmDestinationState::checkStartingCondition()
 		// rule doesn't exist (mod upgrades?)
 		return "";
 	}
-	if (rule->requiresCommanderOnboard() && !_crafts.front()->isCommanderOnboard())
-	{
-		if (!u || u->getStatus() == Ufo::LANDED || u->getStatus() == Ufo::CRASHED)
-		{
-			return tr("STR_STARTING_CONDITION_COMMANDER");
-		}
-	}
-
 	// Only check first selected craft
 	// The other crafts will follow the first selected craft so they will not land at the mission site
 	// This check is only performed once per wing
@@ -430,10 +422,6 @@ void ConfirmDestinationState::btnTransferClick(Action *)
 	else if (_crafts.front()->getNumTotalSoldiers() > targetBase->getAvailableQuarters() - targetBase->getUsedQuarters())
 	{
 		errorMessage = tr("STR_NO_FREE_ACCOMODATION_CREW");
-	}
-	else if (Options::storageLimitsEnforced && targetBase->storesOverfull(_crafts.front()->getTotalItemStorageSize()))
-	{
-		errorMessage = tr("STR_NOT_ENOUGH_STORE_SPACE_FOR_CRAFT");
 	}
 	else if (_crafts.front()->getFuel() < _crafts.front()->getFuelLimit(targetBase))
 	{

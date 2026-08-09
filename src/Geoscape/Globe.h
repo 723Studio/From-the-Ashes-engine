@@ -60,7 +60,7 @@ private:
 	size_t _zoom, _zoomOld, _zoomTexture;
 	SurfaceSet *_texture, *_markerSet;
 	Game *_game;
-	Surface *_markers, *_countries, *_radars;
+	Surface *_labels, *_markers, *_radars;
 	bool _hover, _craft;
 	int _blink;
 	Timer *_blinkTimer, *_rotTimer;
@@ -95,19 +95,23 @@ private:
 	void drawGlobeCircle(double lat, double lon, double radius, int segments, int frac = 1);
 	/// Special "transparent" line.
 	void XuLine(Surface* surface, Surface* src, double x1, double y1, double x2, double y2, int shade);
-	/// Draw line on globe surface.
+	/// Draw a longitude/latitude-aligned line on the globe.
 	void drawVHLine(Surface *surface, double lon1, double lat1, double lon2, double lat2, Uint8 color);
 	/// Draw flight path.
 	void drawPath(Surface *surface, double lon1, double lat1, double lon2, double lat2);
 	/// Draw target marker.
 	void drawTarget(Target *target, Surface *surface);
+	/// Draw all independent labels and debug overlays.
+	void drawGlobeOverlays();
+	/// Draw city markers and city/base labels.
+	void drawCityAndBaseLabels();
+	/// Draw the selected debug region, mission zones, and areas.
+	void drawDebugOverlays();
 	/// Set up the radius of earth and stuff.
 	void setupRadii(int width, int height);
 public:
 	static Uint8 OCEAN_COLOR;
 	static bool OCEAN_SHADING;
-	static Uint8 COUNTRY_LABEL_COLOR;
-	static Uint8 LINE_COLOR;
 	static Uint8 CITY_LABEL_COLOR;
 	static Uint8 BASE_LABEL_COLOR;
 
@@ -157,8 +161,6 @@ public:
 	bool insideLand(double lon, double lat) const;
 	/// Checks if a point is inside fakeUnderwater texture.
 	bool insideFakeUnderwaterTexture(double lon, double lat) const;
-	/// Turns on/off the globe detail.
-	void toggleDetail();
 	/// Gets all the targets near a point on the globe.
 	std::vector<Target*> getTargets(int x, int y, bool craft, Craft *currentCraft) const;
 	/// Caches visible globe polygons.
@@ -183,8 +185,6 @@ public:
 	void drawRadars();
 	/// Draws the flight paths of the globe.
 	void drawFlights();
-	/// Draws the country details of the globe.
-	void drawDetail();
 	/// Draws all the markers over the globe.
 	void drawMarkers();
 	/// Blits the globe onto another surface.
@@ -197,8 +197,6 @@ public:
 	void mouseRelease(Action *action, State *state) override;
 	/// Special handling for mouse clicks.
 	void mouseClick(Action *action, State *state) override;
-	/// Special handling for key presses.
-	void keyboardPress(Action *action, State *state) override;
 	/// Get the polygons texture and shade at the given point.
 	void getPolygonTextureAndShade(double lon, double lat, int *texture, int *shade) const;
 	/// Sets hover base position.
@@ -207,8 +205,6 @@ public:
 	void setNewBaseHover(bool hover);
 	/// Sets craft range mode.
 	void setCraftRange(double lon, double lat, double range);
-	/// set the _radarLines variable
-	void toggleRadarLines();
 	/// Update the resolution settings, we just resized the window.
 	void resize();
 	/// Move the mouse back to where it started after we finish drag scrolling.

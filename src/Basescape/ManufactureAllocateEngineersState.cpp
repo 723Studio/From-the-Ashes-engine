@@ -226,7 +226,6 @@ void ManufactureAllocateEngineersState::cbxSortByChange(Action*)
 */
 void ManufactureAllocateEngineersState::btnOkClick(Action*)
 {
-	_planningProject->setAssignedEngineers();
 	_game->popState();
 }
 
@@ -336,48 +335,30 @@ void ManufactureAllocateEngineersState::lstEngineersClick(Action* action)
 	int row = _lstEngineers->getSelectedRow();
 	if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
 	{
-		Soldier* s = _base->getSoldiers()->at(_engineerNumbers.at(row));
-		Uint8 color = _lstEngineers->getColor();
-		bool isBusy = false, isFree = false, matched = false;
-		std::string duty = s->getCurrentDuty(_game->getLanguage(), _base->getSumRecoveryPerDay(), isBusy, isFree, WORK);
+		Soldier* soldier = _base->getSoldiers()->at(_engineerNumbers.at(row));
+		bool isBusy = false;
+		bool isFree = false;
+		std::string duty = soldier->getCurrentDuty(
+			_game->getLanguage(), _base->getSumRecoveryPerDay(), isBusy, isFree, WORK);
 		auto engineers = _planningProject->getEngineers();
-		auto iter = std::find(std::begin(engineers), std::end(engineers), s);
-		if (iter != std::end(engineers))
-		{
-			matched = true;
-		}
+		const bool matched = engineers.find(soldier) != engineers.end();
+		Production* current = soldier->getProductionProject();
+		const bool consumesAdditionalSpace = !current || current == _planningProject->getProduction();
+
 		if (matched)
 		{
-			_planningProject->removeEngineer(s);
-			if (s->getProductionProject())
+			_planningProject->removeEngineer(soldier);
+			if (consumesAdditionalSpace)
 			{
-				if (s->getProductionProject()->getRules() == _planningProject->getManufactureRules())
-				{
-					s->setProductionProject(0);
-					color = _lstEngineers->getColor();
-					_lstEngineers->setCellText(row, 1, tr("STR_NONE_UC"));
-					_freeSpace++;
-				}
-				else
-				{
-					color = _otherCraftColor;
-					_lstEngineers->setCellText(row, 1, duty);
-				}
+				++_freeSpace;
 			}
-			else
-			{
-				_lstEngineers->setCellText(row, 1, duty); //#FINNIKCHECK
-				_freeSpace++;
-				if (isBusy || !isFree || s->getCraft())
-				{
-					color = _otherCraftColor;
-				}
-			}
+			_lstEngineers->setCellText(row, 1, duty);
+			_lstEngineers->setRowColor(row, (isBusy || !isFree || soldier->getCraft())
+				? _otherCraftColor : _lstEngineers->getColor());
 		}
-		else if (s->hasFullHealth() && !isBusy)
+		else if (soldier->hasFullHealth() && !isBusy)
 		{
-			bool noProject = s->getProductionProject() == 0;
-			if (noProject && _freeSpace <= 0)
+			if (consumesAdditionalSpace && _freeSpace <= 0)
 			{
 				_game->pushState(new ErrorMessageState(tr("STR_NOT_ENOUGH_WORKSPACE"),
 					_palette,
@@ -387,17 +368,15 @@ void ManufactureAllocateEngineersState::lstEngineersClick(Action* action)
 			}
 			else
 			{
-				_lstEngineers->setCellText(row, 1, tr("STR_ASSIGNED_UC"));
-				color = _lstEngineers->getSecondaryColor();
-				_planningProject->addEngineer(s);
-				if (noProject)
+				_planningProject->addEngineer(soldier);
+				if (consumesAdditionalSpace)
 				{
-					_freeSpace--;
+					--_freeSpace;
 				}
+				_lstEngineers->setCellText(row, 1, tr("STR_ASSIGNED_UC"));
+				_lstEngineers->setRowColor(row, _lstEngineers->getSecondaryColor());
 			}
 		}
-
-		_lstEngineers->setRowColor(row, color);
 		_txtFreeSpace->setText(tr("STR_WORKSHOP_SPACE_AVAILABLE").arg(_freeSpace));
 	}
 	else if (action->getDetails()->button.button == SDL_BUTTON_RIGHT)

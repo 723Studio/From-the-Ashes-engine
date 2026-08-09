@@ -38,7 +38,7 @@ struct MissionStatistics
 	std::string markerName;
 	int markerId;
 	GameTime time;
-	std::string region, country, type, ufo, craft;
+	std::string region, type, ufo, craft;
 	bool success;
 	bool aborted;
 	std::string rating;
@@ -58,7 +58,6 @@ struct MissionStatistics
 		reader.tryRead("markerId", markerId);
 		time.load(reader["time"]);
 		reader.tryRead("region", region);
-		reader.tryRead("country", country);
 		reader.tryRead("type", type);
 		reader.tryRead("ufo", ufo);
 		reader.tryRead("craft", craft);
@@ -86,7 +85,6 @@ struct MissionStatistics
 		}
 		time.save(writer["time"]);
 		writer.write("region", region);
-		writer.write("country", country);
 		writer.write("type", type);
 		writer.write("ufo", ufo);
 		writer.write("craft", craft);
@@ -132,14 +130,7 @@ struct MissionStatistics
 
 	std::string getLocationString() const
 	{
-		if (country == "STR_UNKNOWN")
-		{
-			return region;
-		}
-		else
-		{
-			return country;
-		}
+		return region;
 	}
 
 	bool isDarkness(const Mod* mod) const
@@ -187,7 +178,7 @@ struct MissionStatistics
 	}
 
 	MissionStatistics(const YAML::YamlNodeReader& reader) : time(0, 0, 0, 0, 0, 0, 0) { load(reader); }
-	MissionStatistics() : id(0), markerId(0), time(0, 0, 0, 0, 0, 0, 0), region("STR_REGION_UNKNOWN"), country("STR_UNKNOWN"), ufo("NO_UFO"), craft("NO_CRAFT"), success(false), aborted(false), score(0), alienRace("STR_UNKNOWN"), objective("STR_NEUTRALIZE_ENEMIES"), daylight(0), valiantCrux(false), lootValue(0) { }
+	MissionStatistics() : id(0), markerId(0), time(0, 0, 0, 0, 0, 0, 0), region("STR_REGION_UNKNOWN"), ufo("NO_UFO"), craft("NO_CRAFT"), success(false), aborted(false), score(0), alienRace("STR_UNKNOWN"), objective("STR_NEUTRALIZE_ENEMIES"), daylight(0), valiantCrux(false), lootValue(0) { }
 	~MissionStatistics() { }
 };
 

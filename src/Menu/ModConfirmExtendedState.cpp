@@ -23,19 +23,17 @@
 #include "../Interface/Text.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/Window.h"
-#include "../Mod/Mod.h"
-#include "../version.h"
-#include "ModListState.h"
+#include "OptionsModsState.h"
 
 namespace OpenXcom
 {
 
 	/**
 	 * Initializes all the elements in the Confirm OXCE screen.
-	 * @param state Pointer to the Options|Mod state.
+	 * @param state Pointer to the Mods options state.
 	 * @param modInfo What exactly mod caused this question?
 	 */
-	ModConfirmExtendedState::ModConfirmExtendedState(ModListState *state, const ModInfo *modInfo, const ModInfo *masterInfo) : _state(state), _isMaster(modInfo->isMaster())
+	ModConfirmExtendedState::ModConfirmExtendedState(OptionsModsState *state, const ModInfo *modInfo, const ModInfo *masterInfo) : _state(state)
 	{
 		_screen = false;
 
@@ -60,10 +58,6 @@ namespace OpenXcom
 
 		_btnYes->setText(tr("STR_YES"));
 		_btnYes->onMouseClick((ActionHandler)&ModConfirmExtendedState::btnYesClick);
-		if (!modInfo->isEngineOk())
-		{
-			_btnYes->setVisible(false);
-		}
 
 		_btnNo->setText(tr("STR_CANCEL"));
 		_btnNo->onMouseClick((ActionHandler)&ModConfirmExtendedState::btnNoClick);
@@ -71,66 +65,31 @@ namespace OpenXcom
 		_txtTitle->setAlign(ALIGN_CENTER);
 		_txtTitle->setBig();
 		_txtTitle->setWordWrap(true);
-		if (masterInfo && !modInfo->isParentMasterOk(masterInfo))
+		if (masterInfo)
 		{
 			_txtTitle->setText(tr("STR_MASTER_MOD_VERSION_REQUIRED_QUESTION").arg(modInfo->getRequiredMasterVersion()).arg(masterInfo->getVersion()));
 		}
-		else if (modInfo->getRequiredExtendedEngine() != OPENXCOM_FTA_VERSION_ENGINE)
-		{
-			_txtTitle->setText(tr("STR_OXCE_REQUIRED_QUESTION").arg(modInfo->getRequiredExtendedEngine()));
-		}
-		else
-		{
-			_txtTitle->setText(tr("STR_VERSION_REQUIRED_QUESTION").arg(modInfo->getRequiredExtendedVersion()));
-		}
 	}
 
-	/**
-	 *
-	 */
 	ModConfirmExtendedState::~ModConfirmExtendedState()
 	{
-
 	}
 
 	/**
 	 * Closes the window. Enables the mod.
-	 * @param action Pointer to an action.
 	 */
 	void ModConfirmExtendedState::btnYesClick(Action *)
 	{
 		_game->popState();
-
-		if (_isMaster)
-		{
-			_state->changeMasterMod();
-		}
-		else
-		{
-			_state->toggleMod();
-		}
+		_state->toggleMod();
 	}
 
 	/**
 	 * Closes the window. Does not enable the mod.
-	 * @param action Pointer to an action.
 	 */
 	void ModConfirmExtendedState::btnNoClick(Action *)
 	{
 		_game->popState();
-
-		if (_isMaster)
-		{
-			_state->revertMasterMod();
-		}
-	}
-
-	/**
-	 * Check if master mod is not valid.
-	 */
-	bool ModConfirmExtendedState::isMasterNotValid(const ModInfo *masterInfo)
-	{
-		return !masterInfo->isEngineOk();
 	}
 
 	/**
@@ -138,23 +97,10 @@ namespace OpenXcom
 	 */
 	bool ModConfirmExtendedState::isModNotValid(const ModInfo *modInfo, const ModInfo *masterInfo)
 	{
-		return !modInfo->isMaster() && // skip checking master mod
-			(!modInfo->isEngineOk() || !modInfo->isParentMasterOk(masterInfo));
+		return !modInfo->isMaster() && masterInfo && !modInfo->isParentMasterOk(masterInfo);
 	}
 
-
-	bool ModConfirmExtendedState::tryShowMasterNotValidConfirmationState(ModListState *state, const ModInfo *masterInfo)
-	{
-		if (isMasterNotValid(masterInfo))
-		{
-			_game->pushState(new ModConfirmExtendedState(state, masterInfo));
-			return true;
-		}
-
-		return false;
-	}
-
-	bool ModConfirmExtendedState::tryShowModNotValidConfirmationState(ModListState *state, const ModInfo *modInfo, const ModInfo *masterInfo)
+	bool ModConfirmExtendedState::tryShowModNotValidConfirmationState(OptionsModsState *state, const ModInfo *modInfo, const ModInfo *masterInfo)
 	{
 		if (isModNotValid(modInfo, masterInfo))
 		{

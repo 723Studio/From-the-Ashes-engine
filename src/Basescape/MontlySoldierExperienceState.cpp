@@ -17,15 +17,11 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "MontlySoldierExperienceState.h"
-#include "../Engine/Screen.h"
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
-#include "../Mod/RuleSoldierTransformation.h"
-#include "../Mod/RuleSoldier.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Options.h"
 #include "../Engine/Action.h"
-#include "../Geoscape/AllocatePsiTrainingState.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
@@ -139,11 +135,11 @@ void MontlySoldierExperienceState::initList(size_t scrl)
 			if (_bases.size() == 1)
 			{
 				std::string duty = (*s)->getCurrentDuty(_game->getLanguage(), recovery, isBusy, isFree);
-				_lstSoldiers->addRow(3, (*s)->getName(true).c_str(), tr((*s)->getRankString(true)).c_str(), duty.c_str());
+				_lstSoldiers->addRow(3, (*s)->getName(true).c_str(), tr((*s)->getRankString()).c_str(), duty.c_str());
 			}
 			else
 			{
-				_lstSoldiers->addRow(3, (*s)->getName(true).c_str(), tr((*s)->getRankString(true)).c_str(), b->getName().c_str());
+				_lstSoldiers->addRow(3, (*s)->getName(true).c_str(), tr((*s)->getRankString()).c_str(), b->getName().c_str());
 			}
 
 			UnitStats *exp = (*s)->getMonthlyExperienceCache();

@@ -17,25 +17,24 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Globe.h"
+#include <algorithm>
+#include <cmath>
 #include "../fmath.h"
 #include "../Engine/Action.h"
 #include "../Engine/SurfaceSet.h"
 #include "../Engine/Timer.h"
 #include "../Mod/Mod.h"
 #include "../Mod/Polygon.h"
-#include "../Mod/Polyline.h"
 #include "../Engine/FastLineClip.h"
 #include "../Engine/Game.h"
 #include "../Engine/RNG.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/GameTime.h"
 #include "../Savegame/Base.h"
-#include "../Savegame/Country.h"
-#include "../Mod/RuleCountry.h"
 #include "../Interface/Text.h"
+#include "../Mod/City.h"
 #include "../Mod/RuleRegion.h"
 #include "../Savegame/Region.h"
-#include "../Mod/City.h"
 #include "../Savegame/Target.h"
 #include "../Savegame/Ufo.h"
 #include "../Savegame/Craft.h"
@@ -45,13 +44,13 @@
 #include "../Engine/Options.h"
 #include "../Savegame/MissionSite.h"
 #include "../Savegame/AlienBase.h"
-#include "../Engine/Language.h"
 #include "../Savegame/BaseFacility.h"
 #include "../Mod/RuleBaseFacility.h"
 #include "../Mod/RuleCraft.h"
 #include "../Mod/RuleGlobe.h"
 #include "../Mod/Texture.h"
 #include "../Interface/Cursor.h"
+#include "../Engine/Language.h"
 #include "../Engine/Screen.h"
 
 namespace OpenXcom
@@ -62,8 +61,6 @@ const double Globe::ROTATE_LATITUDE = 0.06;
 
 Uint8 Globe::OCEAN_COLOR;
 bool Globe::OCEAN_SHADING;
-Uint8 Globe::COUNTRY_LABEL_COLOR;
-Uint8 Globe::LINE_COLOR;
 Uint8 Globe::CITY_LABEL_COLOR;
 Uint8 Globe::BASE_LABEL_COLOR;
 
@@ -338,7 +335,7 @@ Globe::Globe(Game* game, int cenX, int cenY, int width, int height, int x, int y
 	_texture = new SurfaceSet(*_game->getMod()->getSurfaceSet("TEXTURE.DAT"));
 	_markerSet = _game->getMod()->getSurfaceSet("GlobeMarkers");
 
-	_countries = new Surface(width, height, x, y);
+	_labels = new Surface(width, height, x, y);
 	_markers = new Surface(width, height, x, y);
 	_radars = new Surface(width, height, x, y);
 	_clipper = new FastLineClip(x, x+width, y, y+height);
@@ -368,7 +365,7 @@ Globe::~Globe()
 {
 	delete _blinkTimer;
 	delete _rotTimer;
-	delete _countries;
+	delete _labels;
 	delete _markers;
 	delete _texture;
 	delete _radars;
@@ -745,16 +742,6 @@ bool Globe::insideFakeUnderwaterTexture(double lon, double lat) const
 }
 
 /**
- * Switches the amount of detail shown on the globe.
- * With detail on, country and city details are shown when zoomed in.
- */
-void Globe::toggleDetail()
-{
-	Options::globeDetail = !Options::globeDetail;
-	drawDetail();
-}
-
-/**
  * Checks if a certain target is near a certain cartesian point
  * (within a circled area around it) over the globe.
  * @param target Pointer to target.
@@ -917,7 +904,7 @@ void Globe::setPalette(const SDL_Color *colors, int firstcolor, int ncolors)
 
 	_texture->setPalette(colors, firstcolor, ncolors);
 
-	_countries->setPalette(colors, firstcolor, ncolors);
+	_labels->setPalette(colors, firstcolor, ncolors);
 	_markers->setPalette(colors, firstcolor, ncolors);
 	_radars->setPalette(colors, firstcolor, ncolors);
 }
@@ -971,7 +958,7 @@ void Globe::draw()
 	drawFlights();
 	drawShadow();
 	drawMarkers();
-	drawDetail();
+	drawGlobeOverlays();
 }
 
 
@@ -1021,32 +1008,25 @@ Cord Globe::getSunDirection(double lon, double lat) const
 {
 	const double curTime = _game->getSavedGame()->getTime()->getDaylight();
 	const double rot = curTime * 2*M_PI;
-	double sun;
+	const int MonthDays1[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365};
+	const int MonthDays2[] = {0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366};
 
-	if (Options::globeSeasons)
-	{
-		const int MonthDays1[] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365};
-		const int MonthDays2[] = {0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366};
+	int year=_game->getSavedGame()->getTime()->getYear();
+	int month=_game->getSavedGame()->getTime()->getMonth()-1;
+	int day=_game->getSavedGame()->getTime()->getDay()-1;
 
-		int year=_game->getSavedGame()->getTime()->getYear();
-		int month=_game->getSavedGame()->getTime()->getMonth()-1;
-		int day=_game->getSavedGame()->getTime()->getDay()-1;
+	double tm = (double)(( _game->getSavedGame()->getTime()->getHour() * 60
+		+ _game->getSavedGame()->getTime()->getMinute() ) * 60
+		+ _game->getSavedGame()->getTime()->getSecond() ) / 86400; //day fraction is also taken into account
 
-		double tm = (double)(( _game->getSavedGame()->getTime()->getHour() * 60
-			+ _game->getSavedGame()->getTime()->getMinute() ) * 60
-			+ _game->getSavedGame()->getTime()->getSecond() ) / 86400; //day fraction is also taken into account
-
-		double CurDay;
-		if (year%4 == 0 && !(year%100 == 0 && year%400 != 0))
-			CurDay = (MonthDays2[month] + day + tm )/366 - 0.219; //spring equinox (start of astronomic year)
-		else
-			CurDay = (MonthDays1[month] + day + tm )/365 - 0.219;
-		if (CurDay<0) CurDay += 1.;
-
-		sun = -0.261 * sin(CurDay*2*M_PI);
-	}
+	double CurDay;
+	if (year%4 == 0 && !(year%100 == 0 && year%400 != 0))
+		CurDay = (MonthDays2[month] + day + tm )/366 - 0.219; //spring equinox (start of astronomic year)
 	else
-		sun = 0;
+		CurDay = (MonthDays1[month] + day + tm )/365 - 0.219;
+	if (CurDay<0) CurDay += 1.;
+
+	double sun = -0.261 * sin(CurDay*2*M_PI);
 
 	Cord sun_direction(cos(rot+lon), sin(rot+lon)*-sin(lat), sin(rot+lon)*cos(lat));
 
@@ -1164,9 +1144,6 @@ void Globe::XuLine(Surface* surface, Surface* src, double x1, double y1, double 
 void Globe::drawRadars()
 {
 	_radars->clear();
-
-	if (!Options::globeRadarLines)
-		return;
 
 	double tr, range;
 	double lat, lon;
@@ -1313,273 +1290,144 @@ void Globe::setNewBaseHoverPos(double lon, double lat)
 	_hoverLat=lat;
 }
 
+void Globe::drawGlobeOverlays()
+{
+	_labels->clear();
+	drawCityAndBaseLabels();
+	drawDebugOverlays();
+}
+
+/**
+ * Draws city markers and the names of cities and player bases.
+ */
+void Globe::drawCityAndBaseLabels()
+{
+
+	// Preserve the zoom threshold previously used by Globe::drawDetail().
+	if (_zoom < 3)
+		return;
+
+	Text *label = new Text(100, 9, 0, 0);
+	label->setPalette(getPalette());
+	label->initText(_game->getMod()->getFont("FONT_BIG"), _game->getMod()->getFont("FONT_SMALL"), _game->getLanguage());
+	label->setAlign(ALIGN_CENTER);
+	label->setColor(CITY_LABEL_COLOR);
+
+	Sint16 x, y;
+	for (auto* region : *_game->getSavedGame()->getRegions())
+	{
+		for (auto* city : *region->getRules()->getCities())
+		{
+			drawTarget(city, _labels);
+
+			if (pointBack(city->getLongitude(), city->getLatitude()))
+				continue;
+
+			polarToCart(city->getLongitude(), city->getLatitude(), &x, &y);
+			label->setX(x - 50);
+			label->setY(y + 2);
+			label->setText(city->getName(_game->getLanguage()));
+			label->blit(_labels->getSurface());
+		}
+	}
+
+	label->setColor(BASE_LABEL_COLOR);
+	for (auto* xbase : *_game->getSavedGame()->getBases())
+	{
+		if (xbase->getMarker() == -1 || pointBack(xbase->getLongitude(), xbase->getLatitude()))
+			continue;
+
+		polarToCart(xbase->getLongitude(), xbase->getLatitude(), &x, &y);
+		label->setX(x - 50);
+		label->setY(y + 2);
+		label->setText(xbase->getName());
+		label->blit(_labels->getSurface());
+	}
+
+	delete label;
+}
+
 void Globe::drawVHLine(Surface *surface, double lon1, double lat1, double lon2, double lat2, Uint8 color)
 {
 	double sx = lon2 - lon1;
 	double sy = lat2 - lat1;
-	double ln1, lt1, ln2, lt2;
-	int seg;
-	Sint16 x1, y1, x2, y2;
+	if (sx < 0)
+		sx += 2 * M_PI;
 
-	if (sx<0) sx += 2*M_PI;
-
-	if (fabs(sx)<0.01)
-	{
-		seg = std::abs(sy/(2*M_PI)*48);
-		if (seg == 0) ++seg;
-	}
+	int segments;
+	if (std::fabs(sx) < 0.01)
+		segments = std::max(1, std::abs(static_cast<int>(sy / (2 * M_PI) * 48)));
 	else
+		segments = std::max(1, std::abs(static_cast<int>(sx / (2 * M_PI) * 96)));
+
+	sx /= segments;
+	sy /= segments;
+	for (int i = 0; i < segments; ++i)
 	{
-		seg = std::abs(sx/(2*M_PI)*96);
-		if (seg == 0) ++seg;
-	}
-
-	sx /= seg;
-	sy /= seg;
-
-	for (int i = 0; i < seg; ++i)
-	{
-		ln1 = lon1 + sx*i;
-		lt1 = lat1 + sy*i;
-		ln2 = lon1 + sx*(i+1);
-		lt2 = lat1 + sy*(i+1);
-
-		if (!pointBack(ln2, lt2)&&!pointBack(ln1, lt1))
+		double ln1 = lon1 + sx * i;
+		double lt1 = lat1 + sy * i;
+		double ln2 = lon1 + sx * (i + 1);
+		double lt2 = lat1 + sy * (i + 1);
+		if (!pointBack(ln1, lt1) && !pointBack(ln2, lt2))
 		{
-			polarToCart(ln1,lt1,&x1,&y1);
-			polarToCart(ln2,lt2,&x2,&y2);
+			Sint16 x1, y1, x2, y2;
+			polarToCart(ln1, lt1, &x1, &y1);
+			polarToCart(ln2, lt2, &x2, &y2);
 			surface->drawLine(x1, y1, x2, y2, color);
 		}
 	}
 }
 
-
 /**
- * Draws the details of the countries on the globe,
- * based on the current zoom level.
+ * Draws debug geometry.
  */
-void Globe::drawDetail()
+void Globe::drawDebugOverlays()
 {
-	_countries->clear();
-
-	if (!Options::globeDetail)
+	auto *save = _game->getSavedGame();
+	if (!save->getDebugMode() || save->debugType == 0 || save->debugRegion.empty())
 		return;
 
-	// Draw the country borders
-	if (_zoom >= 1)
+	auto *region = _game->getMod()->getRegion(save->debugRegion);
+	if (!region)
+		return;
+
+	if (save->debugType == 1)
 	{
-		// Lock the surface
-		_countries->lock();
-
-		for (auto* polyline : *_rules->getPolylines())
+		const Uint8 color = 10;
+		for (size_t i = 0; i < region->getLatMax().size(); ++i)
 		{
-			Sint16 x[2], y[2];
-			for (int j = 0; j < polyline->getPoints() - 1; ++j)
-			{
-				// Don't draw if polyline is facing back
-				if (pointBack(polyline->getLongitude(j), polyline->getLatitude(j)) || pointBack(polyline->getLongitude(j + 1), polyline->getLatitude(j + 1)))
-					continue;
-
-				// Convert coordinates
-				polarToCart(polyline->getLongitude(j), polyline->getLatitude(j), &x[0], &y[0]);
-				polarToCart(polyline->getLongitude(j + 1), polyline->getLatitude(j + 1), &x[1], &y[1]);
-
-				_countries->drawLine(x[0], y[0], x[1], y[1], LINE_COLOR);
-			}
+			double lon1 = region->getLonMin().at(i);
+			double lon2 = region->getLonMax().at(i);
+			double lat1 = region->getLatMin().at(i);
+			double lat2 = region->getLatMax().at(i);
+			drawVHLine(_labels, lon1, lat1, lon2, lat1, color);
+			drawVHLine(_labels, lon1, lat2, lon2, lat2, color);
+			drawVHLine(_labels, lon1, lat1, lon1, lat2, color);
+			drawVHLine(_labels, lon2, lat1, lon2, lat2, color);
 		}
-
-		// Unlock the surface
-		_countries->unlock();
+		return;
 	}
 
-	// Draw the country names
-	if (_zoom >= 2)
+	int color = -1;
+	size_t zoneNumber = 0;
+	for (const auto& missionZone : region->getMissionZones())
 	{
-		Text *label = new Text(150, 9, 0, 0);
-		label->setPalette(getPalette());
-		label->initText(_game->getMod()->getFont("FONT_BIG"), _game->getMod()->getFont("FONT_SMALL"), _game->getLanguage());
-		label->setAlign(ALIGN_CENTER);
+		++zoneNumber;
+		if (save->debugZone > 0 && save->debugZone != zoneNumber)
+			continue;
 
-		Sint16 x, y;
-		for (auto* country : *_game->getSavedGame()->getCountries())
+		color += 2;
+		size_t areaNumber = 0;
+		for (const auto& missionArea : missionZone.areas)
 		{
-			// Don't draw if label is facing back
-			if (pointBack(country->getRules()->getLabelLongitude(), country->getRules()->getLabelLatitude()))
+			++areaNumber;
+			if (save->debugArea > 0 && save->debugArea != areaNumber)
 				continue;
 
-			// Convert coordinates
-			polarToCart(country->getRules()->getLabelLongitude(), country->getRules()->getLabelLatitude(), &x, &y);
-
-			label->setX(x - 75);
-			label->setY(y);
-			label->setText(_game->getLanguage()->getString(country->getRules()->getType()));
-			label->setColor(COUNTRY_LABEL_COLOR);
-			if (country->getRules()->getLabelColor() > 0)
-			{
-				label->setColor(country->getRules()->getLabelColor());
-			}
-			label->blit(_countries->getSurface());
-		}
-
-		delete label;
-	}
-
-	// Draw extra globe labels
-	{
-		Text *label = new Text(120, 18, 0, 0);
-		label->setPalette(getPalette());
-		label->initText(_game->getMod()->getFont("FONT_BIG"), _game->getMod()->getFont("FONT_SMALL"), _game->getLanguage());
-		label->setAlign(ALIGN_CENTER);
-
-		Sint16 x, y;
-		for (auto& extraLabelType : _game->getMod()->getExtraGlobeLabelsList())
-		{
-			RuleCountry *rule = _game->getMod()->getExtraGlobeLabel(extraLabelType, true);
-			if ((int)(_zoom) >= rule->getZoomLevel())
-			{
-				// Don't draw if label is facing back
-				if (pointBack(rule->getLabelLongitude(), rule->getLabelLatitude()))
-					continue;
-
-				// Convert coordinates
-				polarToCart(rule->getLabelLongitude(), rule->getLabelLatitude(), &x, &y);
-
-				label->setX(x - 60);
-				label->setY(y);
-				label->setText(_game->getLanguage()->getString(rule->getType()));
-				label->setColor(COUNTRY_LABEL_COLOR);
-				if (rule->getLabelColor() > 0)
-				{
-					label->setColor(rule->getLabelColor());
-				}
-				label->blit(_countries->getSurface());
-			}
-		}
-		delete label;
-	}
-
-	// Draw the city and base markers
-	if (_zoom >= 3)
-	{
-		Text *label = new Text(100, 9, 0, 0);
-		label->setPalette(getPalette());
-		label->initText(_game->getMod()->getFont("FONT_BIG"), _game->getMod()->getFont("FONT_SMALL"), _game->getLanguage());
-		label->setAlign(ALIGN_CENTER);
-		label->setColor(CITY_LABEL_COLOR);
-
-		Sint16 x, y;
-		for (auto* region : *_game->getSavedGame()->getRegions())
-		{
-			for (auto* city : *region->getRules()->getCities())
-			{
-				drawTarget(city, _countries);
-
-				// Don't draw if city is facing back
-				if (pointBack(city->getLongitude(), city->getLatitude()))
-					continue;
-
-				// Convert coordinates
-				polarToCart(city->getLongitude(), city->getLatitude(), &x, &y);
-
-				label->setX(x - 50);
-				label->setY(y + 2);
-				label->setText(city->getName(_game->getLanguage()));
-				label->blit(_countries->getSurface());
-			}
-		}
-		// Draw bases names
-		for (auto* xbase : *_game->getSavedGame()->getBases())
-		{
-			if (xbase->getMarker() == -1 || pointBack(xbase->getLongitude(), xbase->getLatitude()))
-				continue;
-			polarToCart(xbase->getLongitude(), xbase->getLatitude(), &x, &y);
-			label->setX(x - 50);
-			label->setY(y + 2);
-			label->setColor(BASE_LABEL_COLOR);
-			label->setText(xbase->getName());
-			label->blit(_countries->getSurface());
-		}
-
-		delete label;
-	}
-
-	int& debugType = _game->getSavedGame()->debugType;
-	static bool canSwitchDebugType = false;
-	if (_game->getSavedGame()->getDebugMode())
-	{
-		int color;
-		canSwitchDebugType = true;
-		auto mod = _game->getMod();
-		if (debugType == 0)
-		{
-			color = 0;
-			for (auto i : mod->getRegionsList())
-			{
-				if (_game->getSavedGame()->debugRegion != i)
-					continue;
-
-				color += 10;
-				auto region = mod->getRegion(i);
-				for (size_t k = 0; k != region->getLatMax().size(); ++k)
-				{
-					double lon2 = region->getLonMax().at(k);
-					double lon1 = region->getLonMin().at(k);
-					double lat2 = region->getLatMax().at(k);
-					double lat1 = region->getLatMin().at(k);
-
-					drawVHLine(_countries, lon1, lat1, lon2, lat1, color);
-					drawVHLine(_countries, lon1, lat2, lon2, lat2, color);
-					drawVHLine(_countries, lon1, lat1, lon1, lat2, color);
-					drawVHLine(_countries, lon2, lat1, lon2, lat2, color);
-				}
-			}
-		}
-		else if (debugType == 1)
-		{
-			for (auto i : mod->getRegionsList())
-			{
-				if (_game->getSavedGame()->debugRegion != i)
-					continue;
-
-				color = -1;
-				size_t zoneNumber = 0;
-				auto region = mod->getRegion(i);
-				for (const auto& missionZone : region->getMissionZones())
-				{
-					++zoneNumber;
-					if (_game->getSavedGame()->debugZone > 0 && _game->getSavedGame()->debugZone != zoneNumber)
-						continue;
-
-					color += 2;
-					size_t areaNumber = 0;
-					for (const auto& missionArea : missionZone.areas)
-					{
-						++areaNumber;
-						if (_game->getSavedGame()->debugArea > 0 && _game->getSavedGame()->debugArea != areaNumber)
-							continue;
-
-						double lon2 = missionArea.lonMax;
-						double lon1 = missionArea.lonMin;
-						double lat2 = missionArea.latMax;
-						double lat1 = missionArea.latMin;
-
-						drawVHLine(_countries, lon1, lat1, lon2, lat1, color);
-						drawVHLine(_countries, lon1, lat2, lon2, lat2, color);
-						drawVHLine(_countries, lon1, lat1, lon1, lat2, color);
-						drawVHLine(_countries, lon2, lat1, lon2, lat2, color);
-					}
-				}
-			}
-		}
-		
-	}
-	else
-	{
-		if (canSwitchDebugType)
-		{
-			++debugType;
-			if (debugType > 2) debugType = 0;
-			canSwitchDebugType = false;
+			drawVHLine(_labels, missionArea.lonMin, missionArea.latMin, missionArea.lonMax, missionArea.latMin, color);
+			drawVHLine(_labels, missionArea.lonMin, missionArea.latMax, missionArea.lonMax, missionArea.latMax, color);
+			drawVHLine(_labels, missionArea.lonMin, missionArea.latMin, missionArea.lonMin, missionArea.latMax, color);
+			drawVHLine(_labels, missionArea.lonMax, missionArea.latMin, missionArea.lonMax, missionArea.latMax, color);
 		}
 	}
 }
@@ -1629,9 +1477,6 @@ void Globe::drawFlights()
 {
 	//_radars->clear();
 
-	if (!Options::globeFlightPaths)
-		return;
-
 	// Lock the surface
 	_radars->lock();
 
@@ -1648,21 +1493,7 @@ void Globe::drawFlights()
 			double lat1 = xcraft->getLatitude();
 			double lon2 = xcraft->getDestination()->getLongitude();
 			double lat2 = xcraft->getDestination()->getLatitude();
-
-			if (xcraft->isMeetCalculated())
-			{
-				lon2 = xcraft->getMeetLongitude();
-				lat2 = xcraft->getMeetLatitude();
-			}
 			drawPath(_radars, lon1, lat1, lon2, lat2);
-
-			if (xcraft->isMeetCalculated())
-			{
-				lon1 = xcraft->getDestination()->getLongitude();
-				lat1 = xcraft->getDestination()->getLatitude();
-
-				drawPath(_radars, lon1, lat1, lon2, lat2);
-			}
 		}
 	}
 
@@ -1788,7 +1619,7 @@ void Globe::blit(SDL_Surface *surface)
 {
 	Surface::blit(surface);
 	_radars->blit(surface);
-	_countries->blit(surface);
+	_labels->blit(surface);
 	_markers->blit(surface);
 }
 
@@ -1998,24 +1829,6 @@ void Globe::mouseClick(Action *action, State *state)
 }
 
 /**
- * Handles globe keyboard shortcuts.
- * @param action Pointer to an action.
- * @param state State that the action handlers belong to.
- */
-void Globe::keyboardPress(Action *action, State *state)
-{
-	InteractiveSurface::keyboardPress(action, state);
-	if (action->getDetails()->key.keysym.sym == Options::keyGeoToggleDetail)
-	{
-		toggleDetail();
-	}
-	if (action->getDetails()->key.keysym.sym == Options::keyGeoToggleRadar)
-	{
-		toggleRadarLines();
-	}
-}
-
-/**
  * Get the polygons texture at a given point
  * @param lon Longitude of the point.
  * @param lat Latitude of the point.
@@ -2045,20 +1858,11 @@ size_t Globe::getZoom() const
 }
 
 /*
- * Turns Radar lines on or off.
- */
-void Globe::toggleRadarLines()
-{
-	Options::globeRadarLines = !Options::globeRadarLines;
-	drawRadars();
-}
-
-/*
  * Resizes the geoscape.
  */
 void Globe::resize()
 {
-	Surface *surfaces[4] = {this, _markers, _countries, _radars};
+	Surface *surfaces[4] = {this, _labels, _markers, _radars};
 	int width = Options::baseXGeoscape - 64;
 	int height = Options::baseYGeoscape;
 

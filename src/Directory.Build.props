@@ -1,0 +1,6 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug' and '$(MSBuildProjectName)' == 'OpenXcom.2010'">
+    <FtaAutoRepackOfficialContent Condition="'$(FtaAutoRepackOfficialContent)' == ''">true</FtaAutoRepackOfficialContent>
+    <DisableFastUpToDateCheck Condition="'$(FtaAutoRepackOfficialContent)' == 'true'">true</DisableFastUpToDateCheck>
+  </PropertyGroup>
+</Project>

@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "ManufactureProductDetailsState.h"
+#include <algorithm>
 #include <sstream>
 #include "../Interface/Window.h"
 #include "../Interface/TextButton.h"
@@ -29,7 +30,6 @@
 #include "../Mod/RuleManufacture.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/SavedGame.h"
-#include "../Mod/RuleInterface.h"
 
 namespace OpenXcom
 {
@@ -73,13 +73,20 @@ ManufactureProductDetailsState::ManufactureProductDetailsState(Base *base, const
 	_txtTitle->setBig();
 	_txtTitle->setAlign(ALIGN_CENTER);
 
-	_txtManHour->setText(tr("STR_BASE_LABOR_COSTS").arg(_item->getManufactureTime()));
+	_txtManHour->setText(tr("STR_BASE_LABOR_COSTS").arg(_item->getManufactureTime() / 100));
 	_txtReqStatsHeader->setText(tr("STR_REQUIRED_STATS"));
 
 	_txtReqStats->setText(generateStatsList());
 	_txtReqStats->setWordWrap(true);
 
-	_txtCost->setText(tr("STR_COST_PER_UNIT_").arg(Unicode::formatFunding(_item->getManufactureCost())));
+	if (_item->getFundsGain() > 0)
+	{
+		_txtCost->setText(tr("STR_FUNDS_GAIN").arg(Unicode::formatFunding(_item->getFundsGain())));
+	}
+	else
+	{
+		_txtCost->setText(tr("STR_COST_PER_UNIT_").arg(Unicode::formatFunding(_item->getManufactureCost())));
+	}
 
 	_txtWorkSpace->setText(tr("STR_WORK_SPACE_REQUIRED").arg(_item->getRequiredSpace()));
 
@@ -102,43 +109,43 @@ void ManufactureProductDetailsState::btnOKClick(Action *)
 std::string ManufactureProductDetailsState::generateStatsList()
 {
 	std::ostringstream ss;
-
-	auto stats = _item->getStats();
-	std::map<int, std::string> statMap;
-
-	if (stats.weaponry > 0)
-		statMap.insert(std::make_pair(stats.weaponry, tr("STR_WEAPONRY_LC")));
-	if (stats.explosives > 0)
-		statMap.insert(std::make_pair(stats.explosives, tr("STR_EXPLOSIVES_LC")));
-	if (stats.microelectronics > 0)
-		statMap.insert(std::make_pair(stats.microelectronics, tr("STR_MICROELECTRONICS_LC")));
-	if (stats.metallurgy > 0)
-		statMap.insert(std::make_pair(stats.metallurgy, tr("STR_METALLURGY_LC")));
-	if (stats.processing > 0)
-		statMap.insert(std::make_pair(stats.processing, tr("STR_PROCESSING_LC")));
-	if (stats.hacking > 0)
-		statMap.insert(std::make_pair(stats.hacking, tr("STR_HACKING_LC")));
-	if (stats.alienTech > 0)
-		statMap.insert(std::make_pair(stats.alienTech, tr("STR_ALIEN_TECH_LC")));
-	if (stats.reverseEngineering > 0)
-		statMap.insert(std::make_pair(stats.reverseEngineering, tr("STR_REVERSE_ENGINEERING_LC")));
-
-	if (!statMap.empty())
+	const UnitStats stats = _item->getStats();
+	std::vector<std::pair<int, std::string>> statList;
+	auto addStat = [&](int value, const std::string& name)
 	{
-		size_t pos = 0;
-		std::pair<int, std::string> result;
-		for (auto it = statMap.rbegin(); it != statMap.rend(); ++it)
+		if (value > 0)
 		{
-			if (pos > 0)
-			{
-				ss << ", ";
-			}
-			ss << (*it).second;
-			pos++;
+			statList.push_back(std::make_pair(value, name));
 		}
+	};
+
+	addStat(stats.weaponry, tr("STR_WEAPONRY_LC"));
+	addStat(stats.explosives, tr("STR_EXPLOSIVES_LC"));
+	addStat(stats.microelectronics, tr("STR_MICROELECTRONICS_LC"));
+	addStat(stats.metallurgy, tr("STR_METALLURGY_LC"));
+	addStat(stats.processing, tr("STR_PROCESSING_LC"));
+	addStat(stats.hacking, tr("STR_HACKING_LC"));
+	addStat(stats.robotics, tr("STR_ROBOTICS_LC"));
+	addStat(stats.alienTech, tr("STR_ALIEN_TECH_LC"));
+	addStat(stats.reverseEngineering, tr("STR_REVERSE_ENGINEERING_LC"));
+
+	std::stable_sort(statList.begin(), statList.end(),
+		[](const auto& left, const auto& right)
+		{
+			return left.first > right.first;
+		});
+	for (size_t i = 0; i < statList.size(); ++i)
+	{
+		if (i > 0)
+		{
+			ss << ", ";
+		}
+		ss << statList[i].second;
+	}
+	if (!statList.empty())
+	{
 		ss << ".";
 	}
-
 	return ss.str();
 }
 

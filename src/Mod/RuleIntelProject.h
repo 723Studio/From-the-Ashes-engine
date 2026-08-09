@@ -8,99 +8,141 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
- * OpenXcom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <map>
 #include <string>
 #include <vector>
 #include "../Engine/Yaml.h"
-#include "RuleBaseFacilityFunctions.h"
-#include "RuleResearch.h"
 #include "../Mod/Unit.h"
-#include "../Mod/Mod.h"
 
 namespace OpenXcom
 {
 
 class Mod;
+class RuleAlienMission;
+class RuleEventScript;
 class RuleResearch;
-class RuleIntelStage;
 
-enum IntelProjectSpecialRule { INTEL_NONE = 0, INTEL_UFO_TRACKING = 1, INTEL_COVERT_OPERATIONS = 2, INTEL_DEPLOYMENT_HINTS = 3 };
-/**
- * Represents rules for an intel project.
- */
-class RuleIntelProject
+enum IntelProjectEffectType : int
 {
- private:
-	std::string _name, _description, _requiredResearchName;
-	int _cost, _costIncrease;
-	IntelProjectSpecialRule _specialRule;
-	UnitStats _stats;
-	const RuleResearch* _requiredResearch = nullptr;
-	std::vector<RuleIntelStage*> _stages;
-	int _listOrder;
-public:
-	RuleIntelProject(const std::string &name, int listOrder);
+	INTEL_EFFECT_NONE = 0,
+	INTEL_EFFECT_UFO_TRACKING = 1,
+	INTEL_EFFECT_COVERT_OPERATIONS = 2,
+	INTEL_EFFECT_DEPLOYMENT_HINTS = 3
+};
 
-	/// Loads the research from YAML.
-	void load(const YAML::YamlNodeReader& reader, Mod* mod);
-	/// Cross link with other rules.
-	void afterLoad(const Mod* mod);
-	/// Gets the intel project name.
-	const std::string& getName() const { return _name; }
-	/// Gets the intel project description.
-	const std::string& getDescription() const { return _description; }
-	/// Gets the base cost for making a roll for this project.
+class RuleIntelMilestone
+{
+private:
+	std::string _id;
+	std::string _previousMilestone;
+	int _cost = 0;
+	std::vector<std::string> _requiredResearchNames;
+	std::vector<const RuleResearch*> _requiredResearch;
+	std::vector<std::string> _eventScriptNames;
+	std::vector<const RuleEventScript*> _eventScripts;
+	std::string _spawnMissionName;
+	const RuleAlienMission* _spawnMission = nullptr;
+	std::vector<std::string> _unlockResearchNames;
+	std::vector<const RuleResearch*> _unlockResearches;
+	bool _completesProject = false;
+
+public:
+	void load(const YAML::YamlNodeReader& reader, const std::string& projectName);
+	void afterLoad(const Mod* mod, const std::string& projectName);
+
+	const std::string& getId() const { return _id; }
+	const std::string& getPreviousMilestone() const { return _previousMilestone; }
 	int getCost() const { return _cost; }
-	/// Gets the cost increase value to calculate next roll cost for this project.
-	int getCostIncrease() const { return _costIncrease; }
-	/// Gets the required tech for this project.
-	const RuleResearch* getRequiredResearch() const { return _requiredResearch; }
-	/// Gets the special rule for the intel project.
-	IntelProjectSpecialRule getSpecialRule() const { return _specialRule; }
-	/// Get pointer to this project's stats.
-	UnitStats getStats() const { return _stats; }
-	/// Gets the list weight for this intel project.
-	int getListOrder() const { return _listOrder; }
-	/// Gets the list of the stages for this intel prject.
-	std::vector<RuleIntelStage*> getStages() const { return _stages; }
+	const std::vector<const RuleResearch*>& getRequiredResearch() const { return _requiredResearch; }
+	const std::vector<std::string>& getEventScripts() const { return _eventScriptNames; }
+	const RuleAlienMission* getSpawnMission() const { return _spawnMission; }
+	const std::vector<const RuleResearch*>& getUnlockResearches() const { return _unlockResearches; }
+	bool completesProject() const { return _completesProject; }
+};
+
+class RuleIntelEventOutput
+{
+private:
+	std::string _eventScriptName;
+	const RuleEventScript* _eventScript = nullptr;
+	std::string _spawnMissionName;
+	const RuleAlienMission* _spawnMission = nullptr;
+	int _weight = 100;
+	int64_t _minCycles = 0;
+	std::vector<std::string> _requiredResearchNames;
+	std::vector<const RuleResearch*> _requiredResearch;
+	std::vector<std::string> _disabledByResearchNames;
+	std::vector<const RuleResearch*> _disabledByResearch;
+
+public:
+	void load(const YAML::YamlNodeReader& reader, const std::string& projectName);
+	void afterLoad(const Mod* mod, const std::string& projectName);
+
+	const std::string& getEventScript() const { return _eventScriptName; }
+	const std::string& getSpawnMissionName() const { return _spawnMissionName; }
+	const RuleAlienMission* getSpawnMission() const { return _spawnMission; }
+	int getWeight() const { return _weight; }
+	int64_t getMinCycles() const { return _minCycles; }
+	const std::vector<const RuleResearch*>& getRequiredResearch() const { return _requiredResearch; }
+	const std::vector<const RuleResearch*>& getDisabledByResearch() const { return _disabledByResearch; }
+};
+
+class RuleIntelEventCycle
+{
+private:
+	int _cost = 0;
+	std::vector<RuleIntelEventOutput*> _outputs;
+
+public:
+	~RuleIntelEventCycle();
+	void load(const YAML::YamlNodeReader& reader, const std::string& projectName);
+	void afterLoad(const Mod* mod, const std::string& projectName);
+
+	int getCost() const { return _cost; }
+	const std::vector<RuleIntelEventOutput*>& getOutputs() const { return _outputs; }
 };
 
 /**
-* Definition of the stage to Intel Project.
-*/
-class RuleIntelStage
+ * Rules for one global intelligence project.
+ */
+class RuleIntelProject
 {
 private:
-	std::string _stageName;
-	int _odds, _requireRolls, _availableRolls;
-	const RuleResearch* _requiredResearch = nullptr;
-	const RuleResearch* _disabledByResearch = nullptr;
-	RuleBaseFacilityFunctions _requiresBaseFunc;
-	std::string _spawnMission, _requiredResearchName, _disabledByResearchName;
-	std::vector<std::string> _eventScripts;
-	bool _finalStage;
+	std::string _name;
+	std::string _description;
+	std::vector<std::string> _requiredResearchNames;
+	std::vector<const RuleResearch*> _requiredResearch;
+	IntelProjectEffectType _effectType = INTEL_EFFECT_NONE;
+	UnitStats _stats;
+	std::vector<RuleIntelMilestone*> _milestones;
+	std::map<std::string, RuleIntelMilestone*> _milestonesById;
+	std::map<std::string, const RuleIntelMilestone*> _nextMilestones;
+	const RuleIntelMilestone* _firstMilestone = nullptr;
+	RuleIntelEventCycle* _eventCycle = nullptr;
+	int _listOrder;
+
+	void validateStats() const;
+	void buildMilestoneChain();
+
 public:
-	RuleIntelStage();
+	RuleIntelProject(const std::string& name, int listOrder);
+	~RuleIntelProject();
+
 	void load(const YAML::YamlNodeReader& reader, Mod* mod);
 	void afterLoad(const Mod* mod);
-	const std::string& getName() const { return _stageName; }
-	int getOdds() const { return _odds; }
-	int getRequireRolls() const { return _requireRolls; }
-	int getAvailableRolls() const { return _availableRolls; }
-	const RuleResearch* getRequiredResearch() const { return _requiredResearch; }
-	const RuleResearch* getDisabledByResearch() const { return _disabledByResearch; }
-	RuleBaseFacilityFunctions getRequireBaseFunc() const { return _requiresBaseFunc; }
-	const std::string& getSpawnedMission() const { return _spawnMission; }
-	const std::vector<std::string>& getEventScripts() const { return _eventScripts; }
-	bool isFinalStage() const { return _finalStage; }
+
+	const std::string& getName() const { return _name; }
+	const std::string& getDescription() const { return _description; }
+	const std::vector<const RuleResearch*>& getRequiredResearch() const { return _requiredResearch; }
+	IntelProjectEffectType getEffectType() const { return _effectType; }
+	UnitStats getStats() const { return _stats; }
+	int getListOrder() const { return _listOrder; }
+	const std::vector<RuleIntelMilestone*>& getMilestones() const { return _milestones; }
+	const RuleIntelMilestone* getFirstMilestone() const { return _firstMilestone; }
+	const RuleIntelMilestone* getMilestone(const std::string& id) const;
+	const RuleIntelMilestone* getNextMilestone(const std::string& id) const;
+	const RuleIntelEventCycle* getEventCycle() const { return _eventCycle; }
 };
 
 }

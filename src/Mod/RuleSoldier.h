@@ -114,7 +114,6 @@ private:
 	RuleBaseFacilityFunctions _requiresBuyBaseFunc;
 	std::vector<SoldierRoleRanksRequirements*> _roleExpRequirements;
 	std::vector<SoldierRoleRanksStrings*> _roleRankStrings;
-	std::string _requiresBuyCountry;
 	UnitStats _minStats, _maxStats, _statCaps, _trainingStatCaps, _dogfightExperience;
 	std::string _armorName;
 	const Armor* _armor;
@@ -123,7 +122,7 @@ private:
 	std::string _specWeaponName;
 	const RuleItem* _specWeapon;
 	int _monthlyBuyLimit;
-	int _costBuy, _costSalary, _costSalarySquaddie, _costSalarySergeant, _costSalaryCaptain, _costSalaryColonel, _costSalaryCommander;
+	int _costBuy, _costSalary;
 	int _standHeight, _kneelHeight, _floatHeight;
 	int _femaleFrequency, _value, _transferTime, _moraleLossWhenKilled;
 	int _manaMissingWoundThreshold = -1;
@@ -139,9 +138,8 @@ private:
 	int _totalSoldierNamePoolWeight;
 	std::string _armorForAvatar;
 	int _avatarOffsetX, _avatarOffsetY, _flagOffset;
-	bool _allowPromotion, _allowPiloting, _showTypeInInventory;
+	bool _allowPiloting, _showTypeInInventory;
 	std::vector<StatString*> _statStrings;
-	std::vector<std::string> _rankStrings, _pilotRankStrings, _agentRankStrings, _scientistRankStrings, _engineerRankStrings;
 	int _rankSprite, _rankSpriteBattlescape, _rankSpriteTiny;
 	int _pilotRankSprite, _pilotRankSpriteBattlescape, _pilotRankSpriteTiny;
 	int _agentRankSprite, _agentRankSpriteBattlescape, _agentRankSpriteTiny;
@@ -180,8 +178,6 @@ public:
 	const std::vector<std::string> &getRequirements() const;
 	/// Gets the base functions required to hire this soldier type.
 	RuleBaseFacilityFunctions getRequiresBuyBaseFunc() const { return _requiresBuyBaseFunc; }
-	/// Gets the allied country name required to hire this soldier type.
-	const std::string& getRequiresBuyCountry() const { return _requiresBuyCountry; }
 	/// Gets the minimum stats for the random stats generator.
 	UnitStats getMinStats() const;
 	/// Gets the maximum stats for the random stats generator.
@@ -196,14 +192,12 @@ public:
 	int getMonthlyBuyLimit() const { return _monthlyBuyLimit; }
 	/// Gets the cost of the soldier.
 	int getBuyCost() const;
-	/// Does salary depend on rank?
-	bool isSalaryDynamic() const;
 	/// Gets the list of defined skills.
 	const std::vector<const RuleSkill*> &getSkills() const;
 	/// Returns the sprite index for the skill icon sprite.
 	int getSkillIconSprite() const;
-	/// Gets the monthly salary of the soldier (for a given rank).
-	int getSalaryCost(int rank) const;
+	/// Gets the monthly salary of the personnel member.
+	int getSalaryCost() const { return _costSalary; }
 	/// Gets the height of the soldier when it's standing.
 	int getStandHeight() const;
 	/// Gets the height of the soldier when it's kneeling.
@@ -224,8 +218,6 @@ public:
 	int getFlagOffset() const;
 	/// Gets the special weapon.
 	const RuleItem* getSpecialWeapon() const { return _specWeapon; }
-	/// Gets the allow promotion flag.
-	bool getAllowPromotion() const;
 	/// Gets the allow piloting flag.
 	bool getAllowPiloting() const;
 	/// Gets the female appearance ratio.
@@ -272,8 +264,6 @@ public:
 	int getMoraleLossWhenKilled() const { return _moraleLossWhenKilled; }
 	/// Gets the list of StatStrings.
 	const std::vector<StatString *> &getStatStrings() const;
-	/// Gets the list of strings for ranks.
-	const std::vector<std::string> &getRankStrings() const;
 	/// Gets the offset of the rank sprite in BASEBITS.PCK.
 	int getRankSprite() const;
 	/// Gets the offset of the rank sprite in SMOKE.PCK.
@@ -288,15 +278,15 @@ public:
 	int getAgentRankSpriteBattlescape() const { return _agentRankSpriteBattlescape; }
 	int getAgentRankSpriteTiny() const { return _agentRankSpriteTiny; }
 	int getScientistRankSprite() const { return _scientistRankSprite; }
-	int getScientistSpriteBattlescape() const { return _scientistRankSpriteBattlescape; }
-	int getScientistSpriteTiny() const { return _scientistRankSpriteTiny; }
+	int getScientistRankSpriteBattlescape() const { return _scientistRankSpriteBattlescape; }
+	int getScientistRankSpriteTiny() const { return _scientistRankSpriteTiny; }
 	int getEngineerRankSprite() const { return _engineerRankSprite; }
 	int getEngineerRankSpriteBattlescape() const { return _engineerRankSpriteBattlescape; }
 	int getEngineerRankSpriteTiny() const { return _engineerRankSpriteTiny; }
 	/// Gets the list of role experience requirements.
-	std::vector<SoldierRoleRanksRequirements *> getRoleExpRequirements() const { return _roleExpRequirements; }
+	const std::vector<SoldierRoleRanksRequirements *>& getRoleExpRequirements() const { return _roleExpRequirements; }
 	/// Gets the list of role rank strings.
-	std::vector<SoldierRoleRanksStrings *> getRoleRankStrings() const { return _roleRankStrings; }
+	const std::vector<SoldierRoleRanksStrings *>& getRoleRankStrings() const { return _roleRankStrings; }
 	/// Converts SoldierRole enum to string.
 	static std::string getRoleString(SoldierRole role);
 

@@ -146,7 +146,7 @@ void UnitFallBState::think()
 						_parent->getPathfinding()->abortPath();
 					}
 				}
-				// move our personal lighting with us
+				// move unit-carried light sources with us
 				int change = _parent->checkForProximityGrenades(unit);
 				_terrain->calculateLighting(change ? LL_ITEMS : LL_UNITS, unit->getPosition(), 2);
 				_terrain->calculateFOV(unit->getPosition(), 2, false); //update everyone else to see this unit, as well as all this unit's visible units.

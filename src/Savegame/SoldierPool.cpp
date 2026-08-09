@@ -74,8 +74,7 @@ void SoldierPool::save(YAML::YamlNodeWriter writer, const Mod* mod) const
 
 void SoldierPool::createSoldier(const RuleSoldier* rule, const Mod* mod, SavedGame* save)
 {
-	int nationality = save->selectSoldierNationalityByLocation(mod, rule, nullptr); //diplomacy factions are purely international
-	Soldier* soldier = mod->genSoldier(save, rule, nationality);
+	Soldier* soldier = mod->genSoldier(save, rule);
 	addSoldier(soldier);
 }
 

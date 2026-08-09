@@ -1,9 +1,19 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'OpenXcom'">
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'OpenXcom.2010'">
     <OpenXcomRuntimeRoot>$(MSBuildThisFileDirectory)..\bin\</OpenXcomRuntimeRoot>
+    <FtaRepackScript>$(MSBuildThisFileDirectory)..\..\tools\scripts\repack-official-content.ps1</FtaRepackScript>
   </PropertyGroup>
 
-  <Target Name="CopyOpenXcomRuntimeDependencies" AfterTargets="Build" Condition="'$(MSBuildProjectName)' == 'OpenXcom'">
+  <Target
+    Name="FtaRepackOfficialContent"
+    BeforeTargets="PrepareForBuild"
+    Condition="'$(Configuration)' == 'Debug' and '$(MSBuildProjectName)' == 'OpenXcom.2010' and '$(FtaAutoRepackOfficialContent)' == 'true' and '$(DesignTimeBuild)' != 'true'">
+    <Error Condition="!Exists('$(FtaRepackScript)')" Text="FTA official content repack script not found: $(FtaRepackScript)" />
+    <Message Importance="High" Text="FTA: checking whether official content packages require repacking..." />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(FtaRepackScript)&quot;" />
+  </Target>
+
+  <Target Name="CopyOpenXcomRuntimeDependencies" AfterTargets="Build" Condition="'$(MSBuildProjectName)' == 'OpenXcom.2010'">
     <ItemGroup>
       <OpenXcomRuntimeDll Include="$(MSBuildThisFileDirectory)..\deps\lib\$(Platform)\*.dll" Condition="Exists('$(MSBuildThisFileDirectory)..\deps\lib\$(Platform)')" />
       <OpenXcomCommonResource Include="$(OpenXcomRuntimeRoot)common\**\*.*" Condition="Exists('$(OpenXcomRuntimeRoot)common')" />

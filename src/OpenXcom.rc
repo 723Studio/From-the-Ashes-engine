@@ -15,8 +15,8 @@ CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "../res/windows/openxcom.manifest
 //
 
  VS_VERSION_INFO VERSIONINFO
- FILEVERSION OPENXCOM_FTA_VERSION_NUMBER
- PRODUCTVERSION OPENXCOM_FTA_VERSION_NUMBER
+ FILEVERSION FTA_PRODUCT_VERSION_NUMBER
+ PRODUCTVERSION FTA_PRODUCT_VERSION_NUMBER
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -32,13 +32,13 @@ BEGIN
         BLOCK "000004b0"
         BEGIN
             VALUE "CompanyName", "723 Studio"
-            VALUE "FileDescription", "OpenXcom FTA"
-            VALUE "FileVersion", OPENXCOM_FTA_VERSION_LONG
+            VALUE "FileDescription", "X-Com: From the Ashes"
+            VALUE "FileVersion", FTA_PRODUCT_VERSION_LONG
             VALUE "InternalName", "OpenXcomFTA.exe"
             VALUE "LegalCopyright", "Copyright 2010-2026 723 Studio"
             VALUE "OriginalFilename", "OpenXcomFTA.exe"
-            VALUE "ProductName", "OpenXcom FTA"
-            VALUE "ProductVersion", OPENXCOM_FTA_VERSION_LONG
+            VALUE "ProductName", FTA_PRODUCT_NAME
+            VALUE "ProductVersion", FTA_PRODUCT_VERSION_LONG
         END
     END
     BLOCK "VarFileInfo"

@@ -109,13 +109,16 @@ SoldierExperienceState::SoldierExperienceState(Soldier* soldier) :_soldier(soldi
 			break;;
 		}
 
-		if (rr->experience > 0 && !roleName.empty())
+		if (!roleName.empty())
 		{
 			std::ostringstream ssr, sse;
 			ssr << rr->rank;
 			sse << rr->experience;
-			sse << " / ";
-			sse << _soldier->getRules()->getRequiredExperience(rr->role, rr->rank);
+			const int nextRequirement = _soldier->getRules()->getRequiredExperience(rr->role, std::max(1, rr->rank));
+			if (nextRequirement >= 0)
+			{
+				sse << " / " << nextRequirement;
+			}
 
 			_lstExperience->addRow(3, tr(roleName).c_str(), ssr.str().c_str(), sse.str().c_str());
 		}

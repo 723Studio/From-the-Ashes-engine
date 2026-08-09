@@ -20,7 +20,6 @@
 #include <SDL_endian.h>
 #include "../Engine/Exception.h"
 #include "Polygon.h"
-#include "Polyline.h"
 #include "Texture.h"
 #include "../Engine/Palette.h"
 #include "../Geoscape/Globe.h"
@@ -45,10 +44,6 @@ RuleGlobe::~RuleGlobe()
 	for (auto* polygon : _polygons)
 	{
 		delete polygon;
-	}
-	for (auto* polyline : _polylines)
-	{
-		delete polyline;
 	}
 	for (auto& pair : _textures)
 	{
@@ -85,20 +80,6 @@ void RuleGlobe::load(const YAML::YamlNodeReader& reader, Mod* mod)
 			_polygons.push_back(polygon);
 		}
 	}
-	if (const auto& polylinesReader = reader["polylines"])
-	{
-		for (auto* polyline : _polylines)
-		{
-			delete polyline;
-		}
-		_polylines.clear();
-		for (const auto& polylineReader : polylinesReader.children())
-		{
-			Polyline *polyline = new Polyline(3);
-			polyline->load(polylineReader);
-			_polylines.push_back(polyline);
-		}
-	}
 	for (const auto& textureReader : reader["textures"].children())
 	{
 		if (textureReader["id"])
@@ -128,10 +109,8 @@ void RuleGlobe::load(const YAML::YamlNodeReader& reader, Mod* mod)
 		}
 	}
 
-	reader.tryRead("countryColor", Globe::COUNTRY_LABEL_COLOR);
 	reader.tryRead("cityColor", Globe::CITY_LABEL_COLOR);
 	reader.tryRead("baseColor", Globe::BASE_LABEL_COLOR);
-	reader.tryRead("lineColor", Globe::LINE_COLOR);
 	if (reader["oceanPalette"])
 	{
 		Globe::OCEAN_COLOR = Palette::blockOffset(reader["oceanPalette"].readVal(Globe::OCEAN_COLOR));
@@ -146,15 +125,6 @@ void RuleGlobe::load(const YAML::YamlNodeReader& reader, Mod* mod)
 std::list<Polygon*> *RuleGlobe::getPolygons()
 {
 	return &_polygons;
-}
-
-/**
- * Returns the list of polylines in the globe.
- * @return Pointer to the list of polylines.
- */
-std::list<Polyline*> *RuleGlobe::getPolylines()
-{
-	return &_polylines;
 }
 
 /**

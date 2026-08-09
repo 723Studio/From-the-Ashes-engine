@@ -45,7 +45,6 @@ AlienBase::~AlienBase()
 void AlienBase::load(const YAML::YamlNodeReader& reader)
 {
 	Target::load(reader);
-	reader.tryRead("pactCountry", _pactCountry);
 	reader.tryRead("race", _race);
 	reader.tryRead("inBattlescape", _inBattlescape);
 	reader.tryRead("discovered", _discovered);
@@ -63,7 +62,6 @@ void AlienBase::save(YAML::YamlNodeWriter writer) const
 	writer.setAsMap();
 	Target::save(writer);
 
-	writer.write("pactCountry", _pactCountry);
 	writer.write("race", _race);
 	if (_inBattlescape)
 		writer.write("inBattlescape", _inBattlescape);
@@ -94,24 +92,6 @@ int AlienBase::getMarker() const
 	if (!_discovered)
 		return -1;
 	return _deployment->getMarkerIcon();
-}
-
-/**
- * Returns the country this base has a pact with.
- * @return Country ID.
- */
-const std::string &AlienBase::getPactCountry() const
-{
-	return _pactCountry;
-}
-
-/**
- * Changes the country that has a pact with this alien base.
- * @param pactCountry Country ID.
- */
-void AlienBase::setPactCountry(const std::string &pactCountry)
-{
-	_pactCountry = pactCountry;
 }
 
 /**

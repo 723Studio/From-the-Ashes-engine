@@ -36,7 +36,6 @@ class AlienBase;
 class MissionSite;
 struct MissionArea;
 class AlienDeployment;
-class Country;
 class Base;
 
 /**
@@ -123,7 +122,7 @@ private:
 	/// Spawns a UFO, based on mission rules.
 	Ufo *spawnUfo(SavedGame &game, const Mod &mod, const Globe &globe, const MissionWave &wave, const UfoTrajectory &trajectory);
 	/// Spawn an alien base
-	AlienBase *spawnAlienBase(Country *pactCountry, Game &engine, std::pair<double, double> pos, AlienDeployment *deployment);
+	AlienBase *spawnAlienBase(Game &engine, std::pair<double, double> pos, AlienDeployment *deployment);
 	/// Chooses a mission type for a new alien base.
 	AlienDeployment *chooseAlienBaseType(const Mod &mod, const MissionArea &area);
 	/// Select a destination (lon/lat) based on the criteria of our trajectory and desired waypoint.

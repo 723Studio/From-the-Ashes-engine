@@ -206,7 +206,6 @@ private:
 	std::string _type;
 	std::vector<std::string> _requires;
 	RuleBaseFacilityFunctions _requiresBuyBaseFunc;
-	std::string _requiresBuyCountry;
 	int _sprite, _marker;
 	std::vector<int> _skinSprites;
 	int _weapons, _maxUnitsLimit, _pilots, _maxVehiclesAndLargeSoldiersLimit;
@@ -222,6 +221,7 @@ private:
 	RuleTerrain *_battlescapeTerrainData;
 	int _maxSkinIndex;
 	bool _keepCraftAfterFailedMission, _allowLanding, _spacecraft, _notifyWhenRefueled, _autoPatrol, _undetectable;
+	bool _synapticNavigation, _antigravityEngine;
 	int _missilePower;
 	int _listOrder, _maxAltitude;
 	std::string _defaultAltitude;
@@ -262,8 +262,6 @@ public:
 	const std::vector<std::string> &getRequirements() const;
 	/// Gets the base functions required to buy craft.
 	RuleBaseFacilityFunctions getRequiresBuyBaseFunc() const { return _requiresBuyBaseFunc; }
-	/// Gets the allied country name required to buy this craft.
-	const std::string& getRequiresBuyCountry() const { return _requiresBuyCountry; }
 	/// Gets the craft's sprite.
 	int getSprite(int skinIndex) const;
 	const std::vector<int> &getSkinSpritesRaw() const { return _skinSprites; }
@@ -352,6 +350,10 @@ public:
 	bool canAutoPatrol() const;
 	/// Is this craft immune to detection by HKs and alien bases?
 	bool isUndetectable() const { return _undetectable; }
+	/// Does this craft use a synaptic navigation system?
+	bool hasSynapticNavigation() const { return _synapticNavigation; }
+	/// Does this craft use an antigravity engine?
+	bool hasAntigravityEngine() const { return _antigravityEngine; }
 	/// Is this craft a self-destruct missile?
 	bool isMissile() const { return (_missilePower > 0); }
 	/// Gets the missile power.

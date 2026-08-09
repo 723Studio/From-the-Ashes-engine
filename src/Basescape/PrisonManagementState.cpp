@@ -177,7 +177,10 @@ void PrisonManagementState::fillPrisonList(size_t scrl)
 	{
 		std::ostringstream status, assigned;
 		auto pState = p->getPrisonerState();
-		bool dying = p->getRules()->getDamageOverTime() > 0 && pState != PRISONER_STATE_CONTAINING;
+		auto containReq = p->getRules()->getContainingRules().getReuiredResearch();
+		bool dying = p->getRules()->getDamageOverTime() > 0
+			&& containReq != nullptr
+			&& !_game->getSavedGame()->isResearched(containReq);
 		bool hasActiveState = true;
 		switch (pState)
 		{
@@ -218,7 +221,7 @@ void PrisonManagementState::fillPrisonList(size_t scrl)
 		}
 		assigned << n;
 
-		_lstPrisoners->addRow(3, p->getNameAndId(_game->getLanguage()).c_str(), assigned.str().c_str() ,status.str().c_str());
+		_lstPrisoners->addRow(3, p->getNameAndDesignation(_game->getLanguage()).c_str(), assigned.str().c_str() ,status.str().c_str());
 	}
 
 	auto recovery = _base->getSumRecoveryPerDay();

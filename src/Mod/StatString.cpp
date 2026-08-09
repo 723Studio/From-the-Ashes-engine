@@ -96,10 +96,9 @@ std::string StatString::getString() const
  * Calculates the list of StatStrings that apply to certain unit stats.
  * @param currentStats Unit stats.
  * @param statStrings List of statString rules.
- * @param psiStrengthEval Are psi stats available?
  * @return Resulting string of all valid StatStrings.
  */
-std::string StatString::calcStatString(UnitStats &currentStats, const std::vector<StatString *> &statStrings, bool psiStrengthEval, bool inTraining)
+std::string StatString::calcStatString(UnitStats &currentStats, const std::vector<StatString *> &statStrings, bool inTraining)
 {
 	std::string result;
 	std::map<std::string, int> currentStatsMap = getCurrentStats(currentStats);
@@ -116,7 +115,7 @@ std::string StatString::calcStatString(UnitStats &currentStats, const std::vecto
 			auto name = currentStatsMap.find(statStringCondition->getConditionName());
 			if (name != currentStatsMap.end())
 			{
-				conditionsMet = conditionsMet && statStringCondition->isMet(name->second, currentStats.psiSkill > 0 || psiStrengthEval);
+				conditionsMet = conditionsMet && statStringCondition->isMet(name->second, currentStats.psiSkill > 0);
 			}
 			else
 			{

@@ -96,7 +96,6 @@ private:
 	Base* _base;
 	size_t _soldier;
 
-	SoldierArmorOrigin _origin;
 	TextButton* _btnCancel;
 	Window* _window;
 	Text* _txtTitle, * _txtType, * _txtQuantity;
@@ -105,7 +104,7 @@ private:
 	std::vector<ArmorItem> _armors;
 public:
 	/// Creates the Soldier Armor state.
-	CovertOperationSoldierArmorState(Base* base, size_t soldier, SoldierArmorOrigin origin, std::vector<std::string> allowedArmor);
+	CovertOperationSoldierArmorState(Base* base, size_t soldier, std::vector<std::string> allowedArmor);
 	/// Cleans up the Soldier Armor state.
 	~CovertOperationSoldierArmorState();
 	/// Updates the armor list.

@@ -34,7 +34,6 @@
 #include "../Engine/Options.h"
 #include "../Interface/ComboBox.h"
 #include "../Mod/Mod.h"
-#include "../Basescape/SoldierInfoState.h"
 #include "../Basescape/SoldierSortUtil.h"
 #include "../Basescape/SoldierInfoStateFtA.h"
 #include <algorithm>
@@ -50,12 +49,9 @@ namespace OpenXcom
  */
 AllocateTrainingState::AllocateTrainingState(Base *base) : _sel(0), _base(base), _origSoldierOrder(*_base->getSoldiers()), _doNotReset(false)
 {
-
-	_ftaUI = _game->getMod()->isFTAGame();
-
 	// Create objects
 	_window = new Window(this, 320, 200, 0, 0);
-	_txtTitle = new Text(_ftaUI ? 168 : 300, 17, 16, 7);
+	_txtTitle = new Text(168, 17, 16, 7);
 	_txtRemaining = new Text(300, 10, 10, 24);
 	_txtName = new Text(64, 10, 10, 40);
 	_txtTraining = new Text(48, 20, 270, 32);
@@ -70,16 +66,8 @@ AllocateTrainingState::AllocateTrainingState(Base *base) : _sel(0), _base(base),
 	_txtMelee = new Text(18, 10, 228, 40);
 	_txtStrength = new Text(18, 10, 246, 40);
 	_btnPlus = new ToggleTextButton(18, 16, 294, 8);
-	if (_ftaUI)
-	{
-		_cbxSortBy = new ComboBox(this, 120, 16, 192, 8, false);
-		_cbxScreenActions = new ComboBox(this, 148, 16, 8, 176, true);
-	}
-	else
-	{
-		_cbxSortBy = new ComboBox(this, 148, 16, 8, 176, true);
-		_cbxScreenActions = new ComboBox(this, 17, 16, -16, -16, true); //would be hidden anyway
-	}
+	_cbxSortBy = new ComboBox(this, 120, 16, 192, 8, false);
+	_cbxScreenActions = new ComboBox(this, 148, 16, 8, 176, true);
 
 	// Set palette
 	setInterface("allocateMartial");
@@ -111,12 +99,10 @@ AllocateTrainingState::AllocateTrainingState(Base *base) : _sel(0), _base(base),
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&AllocateTrainingState::btnOkClick);
 	_btnOk->onKeyboardPress((ActionHandler)&AllocateTrainingState::btnOkClick, Options::keyCancel);
-	_btnOk->onKeyboardPress((ActionHandler)& AllocateTrainingState::btnDeassignAllSoldiersClick, Options::keyRemoveSoldiersFromTraining);
-	_btnOk->onKeyboardPress((ActionHandler)&AllocateTrainingState::btnAssignAllSoldiersClick, Options::keyAddSoldiersToTraining);
 
 	_btnPlus->setText("+");
 	_btnPlus->setPressed(false);
-	if (_game->getMod()->getSoldierBonusList().empty() || _ftaUI)
+	if (_game->getMod()->getSoldierBonusList().empty())
 	{
 		_btnPlus->setVisible(false);
 	}
@@ -126,7 +112,7 @@ AllocateTrainingState::AllocateTrainingState(Base *base) : _sel(0), _base(base),
 	}
 
 	_txtTitle->setBig();
-	_txtTitle->setAlign(_ftaUI ? ALIGN_LEFT : ALIGN_CENTER);
+	_txtTitle->setAlign(ALIGN_LEFT);
 	_txtTitle->setText(tr("STR_PHYSICAL_TRAINING"));
 
 	_space = base->getAvailableTraining() - base->getUsedTraining();
@@ -202,15 +188,8 @@ AllocateTrainingState::AllocateTrainingState(Base *base) : _sel(0), _base(base),
 	_cbxSortBy->onChange((ActionHandler)&AllocateTrainingState::cbxSortByChange);
 	_cbxSortBy->setText(tr("STR_SORT_BY"));
 
-	if (_ftaUI)
-	{
-		_availableOptions.push_back("STR_ALL_ROLES");
-		_availableOptions.push_back("STR_RECOMMENDED_ROLES");
-	}
-	else
-	{
-		_cbxScreenActions->setVisible(false);
-	}
+	_availableOptions.push_back("STR_ALL_ROLES");
+	_availableOptions.push_back("STR_RECOMMENDED_ROLES");
 
 	_cbxScreenActions->setOptions(_availableOptions, true);
 	_cbxScreenActions->setSelected(1);
@@ -325,7 +304,7 @@ void AllocateTrainingState::init()
 {
 	State::init();
 
-	// coming back from SoldierInfoState
+	// coming back from SoldierInfoStateFtA
 	if (_doNotReset)
 	{
 		_doNotReset = false;
@@ -358,8 +337,7 @@ void AllocateTrainingState::initList(size_t scrl)
 	{
 		if ((soldier->getRoleRank(ROLE_SOLDIER) > 0)
 			|| (selAction == "STR_ALL_ROLES"
-				&& !soldier->hasOnlyOneRole(ROLE_ROBOT)) //case we want to see everyone, except robots
-			|| !_ftaUI)
+				&& !soldier->hasOnlyOneRole(ROLE_ROBOT))) //case we want to see everyone, except robots
 		{
 			_filteredListOfSoldiers.push_back(soldier);
 			_soldierNumbers.push_back(i);
@@ -518,81 +496,6 @@ void AllocateTrainingState::cbxScreenActionsChange(Action* action)
 {
 	_cbxSortBy->setSelected(0);
 	initList(0);
-}
-
-/**
- * Removes all soldiers from Martial Training.
- * @param action Pointer to an action.
- */
-void AllocateTrainingState::btnDeassignAllSoldiersClick(Action* action)
-{
-	int row = 0;
-	for (auto* soldier : *_base->getSoldiers())
-	{
-		if (soldier->isInTraining())
-		{
-			soldier->setTraining(false);
-			soldier->setReturnToTrainingWhenHealed(false);
-
-			std::string status;
-			if (soldier->isFullyTrained())
-				status = tr("STR_NO_DONE");
-			else if (soldier->isWounded())
-				status = tr("STR_NO_WOUNDED");
-			else
-				status = tr("STR_NO");
-
-			_lstSoldiers->setCellText(row, 9, tr(status).c_str());
-			_lstSoldiers->setRowColor(row, _lstSoldiers->getColor());
-		}
-
-		row++;
-	}
-	_space = _base->getAvailableTraining() - _base->getUsedTraining();
-	_txtRemaining->setText(tr("STR_REMAINING_TRAINING_FACILITY_CAPACITY").arg(_space));
-}
-
-/**
- * Adds all soldiers to Martial Training.
- * @param action Pointer to an action.
- */
-void AllocateTrainingState::btnAssignAllSoldiersClick(Action* action)
-{
-	int row = 0;
-	for (auto* soldier : *_base->getSoldiers())
-	{
-		if (soldier->isFullyTrained() || soldier->getCovertOperation() != 0 || soldier->hasPendingTransformation())
-		{
-			// can't put fully trained soldiers back into training or busy
-		}
-		if (soldier->getResearchProject() != 0 || soldier->getProductionProject() != 0 || soldier->getIntelProject() != 0 || soldier->getActivePrisoner() != 0)
-		{
-			// don't assign busy soldier
-		}
-		else if (soldier->isWounded())
-		{
-			// wounded soldiers can be queued
-			if (!soldier->getReturnToTrainingWhenHealed())
-			{
-				_lstSoldiers->setCellText(row, 9, tr("STR_NO_QUEUED").c_str());
-				soldier->setReturnToTrainingWhenHealed(true);
-			}
-		}
-		else if (_space > 0 && !soldier->isInTraining())
-		{
-			// healthy soldiers can be assigned
-			_lstSoldiers->setCellText(row, 9, tr("STR_YES").c_str());
-			_lstSoldiers->setRowColor(row, _lstSoldiers->getSecondaryColor());
-			_space--;
-			soldier->setTraining(true);
-			soldier->setActivePrisoner(0);
-			soldier->setProductionProject(0);
-			soldier->setResearchProject(0);
-			soldier->setReturnToTrainingWhenHealed(false);
-		}
-		row++;
-	}
-	_txtRemaining->setText(tr("STR_REMAINING_TRAINING_FACILITY_CAPACITY").arg(_space));
 }
 
 }

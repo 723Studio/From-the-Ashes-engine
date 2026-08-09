@@ -57,8 +57,8 @@ private:
 	int _sizeX, _sizeY;
 	int _buildCost, _refundValue, _buildTime, _monthlyCost;
 	std::map<std::string, std::pair<int, int> > _buildCostItems;
-	int _storage, _personnel, _aliens, _crafts, _labs, _workshops, _psiLabs;
-	int _ftaPrisonSpace; //a FTA version of prison
+	int _storage, _personnel, _prisonSpace, _alienContainmentSpace,
+		_monsterContainmentSpace, _crafts, _labs, _workshops, _psiLabs;
 	bool _spriteEnabled;
 	int _sightRange, _sightChance;
 	int _radarRange, _radarChance, _defense, _hitRatio, _fireSound, _hitSound, _placeSound;
@@ -69,13 +69,12 @@ private:
 	const RuleItem* _ammoItem = nullptr;
 	std::string _ammoItemName;
 	std::string _mapName;
-	int _interrogationSpace;
+	int _interrogationSpace, _intelSpace, _containedAliensResearchSpace;
 	int _listOrder, _trainingRooms;
 	int _maxAllowedPerBase;
 	int _manaRecoveryPerDay = 0;
 	int _healthRecoveryPerDay = 0;
 	float _sickBayAbsoluteBonus, _sickBayRelativeBonus;
-	int _prisonType; // OXCE type of prison
 	int _rightClickActionType;
 	std::vector<VerticalLevel> _verticalLevels;
 	std::vector<const RuleBaseFacility*> _leavesBehindOnSell;
@@ -157,9 +156,16 @@ public:
 	int getStorage() const;
 	/// Gets the facility's personnel capacity.
 	int getPersonnel() const;
-	/// Gets the facility's alien capacity.
-	int getAliens() const;
+	/// Gets the facility's human-prisoner capacity.
+	int getPrisonSpace() const { return _prisonSpace; }
+	/// Gets the facility's contained-alien capacity.
+	int getAlienContainmentSpace() const { return _alienContainmentSpace; }
+	/// Gets the facility's contained-monster capacity.
+	int getMonsterContainmentSpace() const { return _monsterContainmentSpace; }
 	int getInterrogationSpace() const { return _interrogationSpace; }
+	/// Gets the facility's intelligence workspace capacity.
+	int getIntelSpace() const { return _intelSpace; }
+	int getContainedAliensResearchSpace() const { return _containedAliensResearchSpace; }
 	/// Gets the facility's craft capacity.
 	int getCrafts() const;
 	/// Gets the facility's laboratory space.
@@ -214,9 +220,6 @@ public:
 	float getSickBayAbsoluteBonus() const { return _sickBayAbsoluteBonus; }
 	/// Gets the facility's bonus to wound healing (as percentage of max hp of the soldier).
 	float getSickBayRelativeBonus() const { return _sickBayRelativeBonus; }
-	/// Gets the prison type.
-	int getPrisonType() const;
-	int getFtAPrisoneSpace() const { return _ftaPrisonSpace; }
 	/// Gets the action type to perform on right click.
 	int getRightClickActionType() const;
 	/// Gets the vertical levels for this facility map generation.

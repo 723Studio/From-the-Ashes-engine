@@ -23,17 +23,10 @@
 namespace OpenXcom
 {
 
-enum SoldierArmorOrigin
-{
-	SA_GEOSCAPE,
-	SA_BATTLESCAPE
-};
-
 class Base;
 class TextButton;
 class Window;
 class Text;
-class TextEdit;
 class TextList;
 class Armor;
 
@@ -56,9 +49,7 @@ private:
 	Base *_base;
 	size_t _soldier;
 
-	SoldierArmorOrigin _origin;
 	TextButton *_btnCancel;
-	TextEdit *_btnQuickSearch;
 	Window *_window;
 	Text *_txtTitle, *_txtType, *_txtQuantity;
 	TextList *_lstArmor;
@@ -66,16 +57,13 @@ private:
 	std::vector<int> _indices;
 public:
 	/// Creates the Soldier Armor state.
-	SoldierArmorState(Base *base, size_t soldier, SoldierArmorOrigin origin);
+	SoldierArmorState(Base *base, size_t soldier);
 	/// Cleans up the Soldier Armor state.
 	~SoldierArmorState();
 	/// Updates the armor list.
 	void updateList();
 	/// Handler for clicking the Cancel button.
 	void btnCancelClick(Action *action);
-	/// Handlers for Quick Search.
-	void btnQuickSearchToggle(Action* action);
-	void btnQuickSearchApply(Action* action);
 	/// Handler for clicking the Weapons list.
 	void lstArmorClick(Action *action);
 	/// Handler for clicking the Weapons list.

@@ -84,7 +84,6 @@ private:
 		_shotAtCounter10in1Mission,	_hitCounter5in1Mission, _timesWoundedTotal, _KIA, _allAliensKilledTotal, _allAliensStunnedTotal,
 		_woundsHealedTotal, _allUFOs, _allMissionTypes, _statGainTotal, _revivedUnitTotal, _wholeMedikitTotal, _braveryGainTotal, _bestOfRank, _MIA,
 		_martyrKillsTotal, _postMortemKills, _slaveKillsTotal, _bestSoldier, _revivedSoldierTotal, _revivedHostileTotal, _revivedNeutralTotal;
-	bool _globeTrotter;
 public:
 	/// Construct a diary.
 	SoldierDiary();
@@ -106,8 +105,6 @@ public:
 	std::map<std::string, int> getWeaponAmmoTotal() const;
 	/// Get the list of missions, mapped by region.
 	std::map<std::string, int> getRegionTotal(std::vector<MissionStatistics*>*) const;
-	/// Get the list of missions, mapped by country.
-	std::map<std::string, int> getCountryTotal(std::vector<MissionStatistics*>*) const;
 	/// Get the list of missions, mapped by type.
 	std::map<std::string, int> getTypeTotal(std::vector<MissionStatistics*>*) const;
 	/// Get the list of missions, mapped by UFO.

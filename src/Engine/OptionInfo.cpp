@@ -26,15 +26,14 @@ namespace OpenXcom
 
 /**
  * Creates info for a boolean option.
- * @param owner Owner ID.
  * @param id String ID used in serializing.
  * @param option Pointer to the option.
  * @param def Default option value.
  * @param desc Language ID for the option description (if any).
  * @param cat Language ID for the option category (if any).
  */
-OptionInfo::OptionInfo(OptionOwner owner, const std::string &id, bool *option, bool def, const std::string &desc, const std::string &cat) :
-	_id(id), _desc(desc), _cat(cat), _type(OPTION_BOOL), _owner(owner)
+OptionInfo::OptionInfo(const std::string &id, bool *option, bool def, const std::string &desc, const std::string &cat) :
+	_id(id), _desc(desc), _cat(cat), _type(OPTION_BOOL)
 {
 	_ref.b = option;
 	_def.b = def;
@@ -42,15 +41,14 @@ OptionInfo::OptionInfo(OptionOwner owner, const std::string &id, bool *option, b
 
 /**
  * Creates info for an integer option.
- * @param owner Owner ID.
  * @param id String ID used in serializing.
  * @param option Pointer to the option.
  * @param def Default option value.
  * @param desc Language ID for the option description (if any).
  * @param cat Language ID for the option category (if any).
  */
-OptionInfo::OptionInfo(OptionOwner owner, const std::string &id, int *option, int def, const std::string &desc, const std::string &cat) :
-	_id(id), _desc(desc), _cat(cat), _type(OPTION_INT), _owner(owner)
+OptionInfo::OptionInfo(const std::string &id, int *option, int def, const std::string &desc, const std::string &cat) :
+	_id(id), _desc(desc), _cat(cat), _type(OPTION_INT)
 {
 	_ref.i = option;
 	_def.i = def;
@@ -58,15 +56,14 @@ OptionInfo::OptionInfo(OptionOwner owner, const std::string &id, int *option, in
 
 /**
  * Creates info for a keyboard shortcut option.
- * @param owner Owner ID.
  * @param id String ID used in serializing.
  * @param option Pointer to the option.
  * @param def Default option value.
  * @param desc Language ID for the option description (if any).
  * @param cat Language ID for the option category (if any).
  */
-OptionInfo::OptionInfo(OptionOwner owner, const std::string &id, SDLKey *option, SDLKey def, const std::string &desc, const std::string &cat) :
-	_id(id), _desc(desc), _cat(cat), _type(OPTION_KEY), _owner(owner)
+OptionInfo::OptionInfo(const std::string &id, SDLKey *option, SDLKey def, const std::string &desc, const std::string &cat) :
+	_id(id), _desc(desc), _cat(cat), _type(OPTION_KEY)
 {
 	_ref.k = option;
 	_def.k = def;
@@ -74,15 +71,14 @@ OptionInfo::OptionInfo(OptionOwner owner, const std::string &id, SDLKey *option,
 
 /**
  * Creates info for a string option.
- * @param owner Owner ID.
  * @param id String ID used in serializing.
  * @param option Pointer to the option.
  * @param def Default option value.
  * @param desc Language ID for the option description (if any).
  * @param cat Language ID for the option category (if any).
  */
-OptionInfo::OptionInfo(OptionOwner owner, const std::string &id, std::string *option, const char *def, const std::string &desc, const std::string &cat) :
-	_id(id), _desc(desc), _cat(cat), _type(OPTION_STRING), _owner(owner)
+OptionInfo::OptionInfo(const std::string &id, std::string *option, const char *def, const std::string &desc, const std::string &cat) :
+	_id(id), _desc(desc), _cat(cat), _type(OPTION_STRING)
 {
 	_ref.s = option;
 	_def.s = def;

@@ -370,7 +370,6 @@ public:
 private:
 	std::string _ufopediaType;
 	std::string _type, _name, _nameAsAmmo; // two types of objects can have the same name
-	std::string _requiresBuyCountry;
 	std::vector<std::string> _requiresName;
 	std::vector<std::string> _requiresBuyName;
 	std::vector<const RuleResearch *> _requires, _requiresBuy;
@@ -454,8 +453,7 @@ private:
 	int _armor;
 	int _turretType;
 	int _aiUseDelay, _aiMeleeHitCount;
-	bool _recover, _recoverCorpse, _ignoreInBaseDefense, _ignoreInCraftEquip, _liveAlien, _missionObjective, _alienArtifact;
-	int _liveAlienPrisonType;
+	bool _recover, _recoverCorpse, _ignoreInBaseDefense, _ignoreInCraftEquip, _missionObjective, _alienArtifact;
 	int _attraction;
 	RuleItemUseFlatRule _flatUse, _flatThrow, _flatPrime, _flatUnprime;
 	bool _arcingShot;
@@ -532,8 +530,6 @@ public:
 	const std::vector<const RuleResearch*> &getRequirements() const;
 	/// Gets the item's buy requirements.
 	const std::vector<const RuleResearch*> &getBuyRequirements() const;
-	/// Gets the allied country name required to buy this item.
-	const std::string& getRequiresBuyCountry() const { return _requiresBuyCountry; }
 	/// Gets the base functions required to buy craft.
 	RuleBaseFacilityFunctions getRequiresBuyBaseFunc() const { return _requiresBuyBaseFunc; }
 	/// Gets the dividers used for recovery of special items.
@@ -917,10 +913,6 @@ public:
 	int getAIUseDelay(const Mod *mod = 0) const;
 	/// Gets how many melee hits AI should do.
 	int getAIMeleeHitCount() const;
-	/// Checks if this a live alien.
-	bool isAlien() const;
-	/// Returns to which type of prison does the live alien belong.
-	int getPrisonType() const;
 	/// Checks if this item is a mission objective.
 	bool isMissionObjective() const { return _missionObjective; } 
 	/// Checks if this item is an alien artifact.

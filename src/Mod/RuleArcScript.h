@@ -45,7 +45,6 @@ private:
 	std::map<std::string, bool> _facilityTriggers;
 	std::map<std::string, bool> _soldierTypeTriggers;
 	std::map<std::string, bool> _xcomBaseInRegionTriggers;
-	std::map<std::string, bool> _xcomBaseInCountryTriggers;
 
 public:
 	/// Creates a new arc script.
@@ -103,10 +102,8 @@ public:
 	const std::map<std::string, bool> &getFacilityTriggers() const { return _facilityTriggers; }
 	/// Gets the soldier type triggers that may apply to this command.
 	const std::map<std::string, bool> &getSoldierTypeTriggers() const { return _soldierTypeTriggers; }
-	/// Gets the xcom base triggers that may apply to this command.
+	/// Gets the X-COM base-in-region triggers that may apply to this command.
 	const std::map<std::string, bool> &getXcomBaseInRegionTriggers() const { return _xcomBaseInRegionTriggers; }
-	/// Gets the xcom base triggers that may apply to this command.
-	const std::map<std::string, bool> &getXcomBaseInCountryTriggers() const { return _xcomBaseInCountryTriggers; }
 
 };
 

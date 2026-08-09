@@ -171,7 +171,7 @@ class MapScript
 {
 private:
 	MapScriptCommand _type;
-	bool _canBeSkipped, _markAsReinforcementsBlock;
+	bool _canBeSkipped, _markAsSpawnBlock;
 	std::vector<SDL_Rect*> _rects;
 	std::vector<int> _craftGroups;
 	std::vector<int> _groups, _blocks, _frequencies, _maxUses, _conditionals;
@@ -201,8 +201,8 @@ public:
 	MapScriptCommand getType() const {return _type;};
 	/// Can this command be skipped if unsuccessful?
 	bool canBeSkipped() const { return _canBeSkipped; };
-	/// Should blocks added by this command be used as reinforcements blocks?
-	bool markAsReinforcementsBlock() const { return _markAsReinforcementsBlock; }
+	/// Should blocks added by this command be marked for scripted spawns?
+	bool markAsSpawnBlock() const { return _markAsSpawnBlock; }
 	/// Gets the rects, describing the areas this command applies to.
 	const std::vector<SDL_Rect*> *getRects() const {return &_rects;};
 	/// Gets the craft groups vector for iteration.

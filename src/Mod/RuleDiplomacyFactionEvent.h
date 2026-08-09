@@ -25,6 +25,8 @@
 namespace OpenXcom
 {
 
+class Mod;
+
 class RuleDiplomacyFactionEvent
 {
 private:
@@ -36,7 +38,7 @@ private:
 	int64_t _minFunds, _maxFunds, _fundsChange;
 	std::map<std::string, bool> _playerResearchTriggers, _factionResearchTriggers;
 	std::map<std::string, bool> _itemTriggers;
-	std::map<std::string, int> _itemsToAdd;
+	std::map<std::string, int> _itemsChange;
 	std::map<std::string, int> _staffToAdd;
 	std::vector<std::string> _discoveredResearches;
 public:
@@ -46,6 +48,8 @@ public:
 	~RuleDiplomacyFactionEvent();
 	/// Loads an event script from YAML.
 	void load(const YAML::YamlNodeReader& reader);
+	/// Validates cross-references used by faction event conditions and effects.
+	void afterLoad(const Mod* mod);
 	/// Gets the name of the script command.
 	const std::string& getType() const { return _type; }
 	/// Gets the first month this command will run.
@@ -83,8 +87,8 @@ public:
 	int64_t getFundsChange() const { return _fundsChange; }
 	/// Gets the value for factional vigilance change.
 	int getVigilanceChange() const { return _vigilanceChange; }
-	/// Gets the list of items to add to factional storage.
-	const std::map<std::string, int>& getItemsToAdd() const { return _itemsToAdd; }
+	/// Gets signed item quantity changes for factional storage.
+	const std::map<std::string, int>& getItemsChange() const { return _itemsChange; }
 	/// Gets the list of staff, that would join faction.
 	const std::map<std::string, int>& getStaffToAdd() const { return _staffToAdd; }
 	/// Gets the list of discovered researches.

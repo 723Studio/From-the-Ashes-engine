@@ -29,7 +29,6 @@ namespace OpenXcom
 class TextButton;
 class Window;
 class Text;
-class TextEdit;
 class TextList;
 class ComboBox;
 class Timer;
@@ -45,9 +44,8 @@ class CovertOperationEquipmentState : public State
 {
 private:
 	TextButton* _btnOk, * _btnInventory;
-	TextEdit* _btnQuickSearch;
 	Window* _window;
-	Text* _txtTitle, * _txtItem, * _txtStores, * _txtAvailable, * _txtChances, * _txtCrew;
+	Text* _txtTitle, * _txtItem, * _txtStores, * _txtChances, * _txtCrew, * _txtConcealment;
 	std::vector<std::string> _categoryStrings;
 	std::map<std::string, bool> _usedCategoryStrings;
 	ComboBox* _cbxFilterBy;
@@ -59,11 +57,11 @@ private:
 	const RuleCovertOperation* _rule;
 	CovertOperationStartState* _operation;
 	std::vector<std::string> _items;
-	double _totalItems;
 	Uint8 _ammoColor;
-	bool _reload;
 	/// Updates quantities of item.
 	void updateQuantity();
+	/// Updates the concealment/heavy-weapons indicator.
+	void updateConcealmentStatus();
 	/// initializes the displayed list
 	void initList();
 public:
@@ -79,9 +77,6 @@ public:
 	void think() override;
 	/// Handler for clicking the OK button.
 	void btnOkClick(Action* action);
-	/// Handlers for Quick Search.
-	void btnQuickSearchToggle(Action* action);
-	void btnQuickSearchApply(Action* action);
 	/// Handler for pressing a Move Left arrow in the list.
 	void lstEquipmentLeftArrowPress(Action* action);
 	/// Handler for releasing a Move Left arrow in the list.
@@ -103,7 +98,7 @@ public:
 	/// Moves an item to the craft.
 	void moveRight();
 	/// Moves the given number of items to the craft.
-	void moveRightByValue(int change, bool suppressErrors = false);
+	void moveRightByValue(int change);
 	/// Empties the contents of the craft, moving all of the items back to the base.
 	void btnClearClick(Action* action);
 	/// Handler for clicking the Inventory button.
@@ -111,4 +106,3 @@ public:
 };
 
 }
-

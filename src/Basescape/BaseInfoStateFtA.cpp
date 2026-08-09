@@ -376,13 +376,13 @@ void BaseInfoStateFtA::init()
 	_barStores->setValue((int)floor(_base->getUsedStores() + 0.05));
 
 	std::ostringstream ss4;
-	ss4 << _base->getUsedLaboratories(true) << ":" << _base->getAvailableLaboratories();
+	ss4 << _base->getUsedLaboratories() << ":" << _base->getAvailableLaboratories();
 	_numLaboratories->setText(ss4.str());
 	_barLaboratories->setMax(_base->getAvailableLaboratories());
 	_barLaboratories->setValue(_base->getUsedLaboratories());
 
 	std::ostringstream ss5;
-	ss5 << _base->getUsedWorkshops(true) << ":" << _base->getAvailableWorkshops();
+	ss5 << _base->getUsedWorkshops() << ":" << _base->getAvailableWorkshops();
 	_numWorkshops->setText(ss5.str());
 	_barWorkshops->setMax(_base->getAvailableWorkshops());
 	_barWorkshops->setValue(_base->getUsedWorkshops());
@@ -405,17 +405,17 @@ void BaseInfoStateFtA::init()
 	_barPrison->setMax(_base->getAvailablePrisonSpace());
 	_barPrison->setValue(_base->getUsedPrisonSpace());
 
-	std::ostringstream ss9; //monsters use containment type 1
-	ss9 << _base->getUsedContainment(1) << ":" << _base->getAvailableContainment(1);
+	std::ostringstream ss9;
+	ss9 << _base->getUsedContainedMonsterSpace() << ":" << _base->getAvailableContainedMonsterSpace();
 	_numMonsters->setText(ss9.str());
-	_barMonsters->setMax(_base->getAvailableContainment(1));
-	_barMonsters->setValue(_base->getUsedContainment(1));
+	_barMonsters->setMax(_base->getAvailableContainedMonsterSpace());
+	_barMonsters->setValue(_base->getUsedContainedMonsterSpace());
 
-	std::ostringstream ss10; //aliens use containment type 0
-	ss10 << _base->getUsedContainment(0) << ":" << _base->getAvailableContainment(0);
+	std::ostringstream ss10;
+	ss10 << _base->getUsedContainedAlienSpace() << ":" << _base->getAvailableContainedAlienSpace();
 	_numContainment->setText(ss10.str());
-	_barContainment->setMax(_base->getAvailableContainment(0));
-	_barContainment->setValue(_base->getUsedContainment(0));
+	_barContainment->setMax(_base->getAvailableContainedAlienSpace());
+	_barContainment->setValue(_base->getUsedContainedAlienSpace());
 
 	//#FINNIKTODO power generation here https://github.com/723Studio/OpenXcom_FTA/issues/177
 	//std::ostringstream ss11;
@@ -440,7 +440,7 @@ void BaseInfoStateFtA::init()
 	_barRadar->setValue(i);
 
 	std::ostringstream ss14;
-	int j = _base->getGlobalRadarStrength();
+	int j = _base->getGlobalRadarStrength(_game->getSavedGame());
 	ss14 << j;
 	_numGlobalDetection->setText(ss14.str());
 	_barGlobalDetection->setMax(j);

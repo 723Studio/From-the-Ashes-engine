@@ -219,7 +219,7 @@ void UnitWalkBState::think()
 			}
 
 			int change = _parent->checkForProximityGrenades(_unit);
-			// move our personal lighting with us
+			// move unit-carried light sources with us
 			_terrain->calculateLighting(change ? LL_ITEMS : LL_UNITS, _unit->getPosition(), 2);
 			_terrain->calculateFOV(_unit->getPosition(), 2, false); //update unit visibility for all units which can see last and current position.
 			//tile visibility for this unit is handled later.

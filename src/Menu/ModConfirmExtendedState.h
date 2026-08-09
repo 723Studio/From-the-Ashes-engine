@@ -21,28 +21,25 @@
 
 namespace OpenXcom
 {
-	class ModListState;
+	class OptionsModsState;
 	class ModInfo;
 	class TextButton;
 	class Window;
 	class Text;
-	class ModInfo;
 
 	/**
-	 * Confirmation window when enabling
-	 * mods that require OXCE.
+	 * Confirmation window when enabling a submod that requires a newer master package.
 	 */
 	class ModConfirmExtendedState : public State
 	{
 	private:
-		ModListState *_state;
-		bool _isMaster;
+		OptionsModsState *_state;
 		TextButton *_btnYes, *_btnNo;
 		Window *_window;
 		Text *_txtTitle;
 	public:
-		/// Creates the Confirm OXCE state.
-		ModConfirmExtendedState(ModListState *state, const ModInfo *modInfo, const ModInfo *masterInfo = nullptr);
+		/// Creates the master-version confirmation state.
+		ModConfirmExtendedState(OptionsModsState *state, const ModInfo *modInfo, const ModInfo *masterInfo = nullptr);
 		/// Cleans up the Confirm OXCE state.
 		~ModConfirmExtendedState();
 		/// Handler for clicking the Yes button.
@@ -50,15 +47,11 @@ namespace OpenXcom
 		/// Handler for clicking the No button.
 		void btnNoClick(Action *action);
 
-		/// Check if master mod is not valid.
-		static bool isMasterNotValid(const ModInfo *masterInfo);
 		/// Check if mod is not valid.
 		static bool isModNotValid(const ModInfo *modInfo, const ModInfo *masterInfo);
 
-		/// Show confirmation when mod require.
-		static bool tryShowMasterNotValidConfirmationState(ModListState *state, const ModInfo *masterInfo);
-		/// Show confirmation when mod require.
-		static bool tryShowModNotValidConfirmationState(ModListState *state, const ModInfo *modInfo, const ModInfo *masterInfo);
+		/// Show confirmation when a submod requires a newer master version.
+		static bool tryShowModNotValidConfirmationState(OptionsModsState *state, const ModInfo *modInfo, const ModInfo *masterInfo);
 	};
 
 }

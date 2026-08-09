@@ -30,8 +30,7 @@ namespace OpenXcom
 RuleEventScript::RuleEventScript(const std::string &type) :
 	_type(type), _firstMonth(0), _lastMonth(-1), _executionOdds(100), _minDifficulty(0), _maxDifficulty(4),
 	_minScore(INT_MIN), _maxScore(INT_MAX), _minLoyalty(INT_MIN), _maxLoyalty(INT_MAX), _minFunds(INT64_MIN), _maxFunds(INT64_MAX),
-	_allowedProcessor(0), _spawnGap(0), _randomSpawnGap(0), _counterMin(0), _counterMax(-1),
-	_affectsGameProgression(false)
+	_allowedProcessor(0), _spawnGap(0), _randomSpawnGap(0), _counterMin(0), _counterMax(-1)
 {
 }
 
@@ -96,9 +95,7 @@ void RuleEventScript::load(const YAML::YamlNodeReader& node)
 	reader.tryRead("facilityTriggers", _facilityTriggers);
 	reader.tryRead("soldierTypeTriggers", _soldierTypeTriggers);
 	reader.tryRead("xcomBaseInRegionTriggers", _xcomBaseInRegionTriggers);
-	reader.tryRead("xcomBaseInCountryTriggers", _xcomBaseInCountryTriggers);
 
-	reader.tryRead("affectsGameProgression", _affectsGameProgression);
 	reader.tryRead("allowedProcessor", _allowedProcessor); //0 - monthly only, 1 - faction only, 2 - xcom only, 3 - special scripts
 	reader.tryRead("spawnGap", _spawnGap);
 	reader.tryRead("randomSpawnGap", _randomSpawnGap);

@@ -36,7 +36,7 @@ SoldierDiary::SoldierDiary() : _daysWoundedTotal(0), _totalShotByFriendlyCounter
 	_timesWoundedTotal(0), _KIA(0), _allAliensKilledTotal(0), _allAliensStunnedTotal(0), _woundsHealedTotal(0), _allUFOs(0), _allMissionTypes(0),
 	_statGainTotal(0), _revivedUnitTotal(0), _wholeMedikitTotal(0), _braveryGainTotal(0), _bestOfRank(0),
 	_MIA(0), _martyrKillsTotal(0), _postMortemKills(0), _slaveKillsTotal(0), _bestSoldier(false),
-	_revivedSoldierTotal(0), _revivedHostileTotal(0), _revivedNeutralTotal(0), _globeTrotter(false)
+	_revivedSoldierTotal(0), _revivedHostileTotal(0), _revivedNeutralTotal(0)
 {
 }
 
@@ -112,7 +112,6 @@ void SoldierDiary::load(const YAML::YamlNodeReader& node, const Mod *mod)
 	reader.tryRead("bestSoldier", _bestSoldier);
 	reader.tryRead("martyrKillsTotal", _martyrKillsTotal);
 	reader.tryRead("postMortemKills", _postMortemKills);
-	reader.tryRead("globeTrotter", _globeTrotter);
 	reader.tryRead("slaveKillsTotal", _slaveKillsTotal);
 }
 
@@ -165,7 +164,6 @@ void SoldierDiary::save(YAML::YamlNodeWriter writer) const
 	if (_bestSoldier) writer.write("bestSoldier", _bestSoldier);
 	if (_martyrKillsTotal) writer.write("martyrKillsTotal", _martyrKillsTotal);
 	if (_postMortemKills) writer.write("postMortemKills", _postMortemKills);
-	if (_globeTrotter) writer.write("globeTrotter", _globeTrotter);
 	if (_slaveKillsTotal) writer.write("slaveKillsTotal", _slaveKillsTotal);
 }
 
@@ -222,8 +220,6 @@ void SoldierDiary::updateDiary(BattleUnitStatistics *unitStatistics, std::vector
 		_allUFOs = 1;
 	if ((getUFOTotal(allMissionStatistics).size() + getTypeTotal(allMissionStatistics).size()) == (rules->getUfosList().size() + rules->getDeploymentsList().size() - 2))
 		_allMissionTypes = 1;
-	if (getCountryTotal(allMissionStatistics).size() == 1 + rules->getCountriesList().size())
-		_globeTrotter = true;
 	_martyrKillsTotal += unitStatistics->martyr;
 	_slaveKillsTotal += unitStatistics->slaveKills;
 
@@ -392,7 +388,6 @@ bool SoldierDiary::manageCommendations(const Mod* mod, SavedGame* save, const So
 					(critName == "isMIA" && _MIA < nextLevelThreshold) ||
 					(critName == "totalMartyrKills" && _martyrKillsTotal < nextLevelThreshold) ||
 					(critName == "totalPostMortemKills" && _postMortemKills < nextLevelThreshold) ||
-					(critName == "globeTrotter" && (int)_globeTrotter < nextLevelThreshold) ||
 					(critName == "totalSlaveKills" && _slaveKillsTotal < nextLevelThreshold)
 				)
 			)
@@ -752,28 +747,6 @@ std::map<std::string, int> SoldierDiary::getRegionTotal(std::vector<MissionStati
 	}
 
 	return regionTotal;
-}
-
-/**
- *  Get a map of the amount of missions done in each country.
- *  @param MissionStatistics
- */
-std::map<std::string, int> SoldierDiary::getCountryTotal(std::vector<MissionStatistics*> *missionStatistics) const
-{
-	std::map<std::string, int> countryTotal;
-
-	for (const auto* ms : *missionStatistics)
-	{
-		for (int missionId : _missionIdList)
-		{
-			if (missionId == ms->id)
-			{
-				countryTotal[ms->country]++;
-			}
-		}
-	}
-
-	return countryTotal;
 }
 
 /**

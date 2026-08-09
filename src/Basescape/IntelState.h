@@ -18,6 +18,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "../Engine/State.h"
+#include <vector>
 
 namespace OpenXcom
 {
@@ -27,6 +28,7 @@ class Window;
 class Text;
 class TextList;
 class Base;
+class IntelProject;
 
 
 /**
@@ -41,6 +43,7 @@ private:
 	Window *_window;
 	Text *_txtTitle, *_txtAgentsAvailable, *_txtAgentsAllocated, *_txtIntelSpace, *_txtProject, *_txtAgents, *_txtProgress; //*_txtInterrogationSpaceAvailable,
 	TextList *_lstProjects;
+	std::vector<IntelProject*> _projects;
 public:
 	/// Creates the CovertOperation state.
 	IntelState(Base* base);

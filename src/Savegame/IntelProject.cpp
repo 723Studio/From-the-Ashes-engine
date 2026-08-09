@@ -3,28 +3,29 @@
  *
  * This file is part of OpenXcom.
  *
- * OpenXcom is free software: you can redistribute it and/or modify
+ * This file is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- *
- * OpenXcom is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "IntelProject.h"
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include "../Engine/Exception.h"
+#include "../Engine/Logger.h"
+#include "../Engine/RNG.h"
+#include "../Mod/Mod.h"
 #include "../Mod/RuleIntelProject.h"
-#include "../Engine/Game.h"
-#include "../FTA/MasterMind.h"
-#include "../Savegame/SavedGame.h"
-#include "../Savegame/Base.h"
-#include "../Savegame/Soldier.h"
+#include "Craft.h"
+#include "SavedGame.h"
+#include "Soldier.h"
 
 namespace OpenXcom
+{
+
+namespace
 {
 
 constexpr float PROGRESS_LIMIT_POOR = 0.1f;
@@ -32,312 +33,437 @@ constexpr float PROGRESS_LIMIT_AVERAGE = 0.2f;
 constexpr float PROGRESS_LIMIT_GOOD = 0.3f;
 constexpr float PROGRESS_LIMIT_GREAT = 0.4f;
 constexpr float PROGRESS_LIMIT_SUPERIOR = 0.5f;
+constexpr int64_t MAX_SAVED_PROGRESS = std::numeric_limits<int64_t>::max() -
+	static_cast<int64_t>(std::numeric_limits<int>::max());
+constexpr int64_t MAX_SAVED_EVENT_CYCLES = std::numeric_limits<int64_t>::max() - 1;
 
-IntelProject::IntelProject(const RuleIntelProject* rule, Base *base, int cost) :
-	_rules(rule), _base(base), _active(true), _spent(0), _rolls(0), _cost(cost)
+void checkedAdd(int64_t& value, int increment, const std::string& project, const char* field)
 {
+	if (increment < 0 || value > MAX_SAVED_PROGRESS - increment)
+	{
+		throw Exception("Intel project '" + project + "': " + field + " overflow");
+	}
+	value += increment;
 }
 
-int IntelProject::getStepProgress(std::map<Soldier*, int>& assignedAgents, Mod* mod, int rating, std::string& description, bool estimate)
+bool hasDisabledResearch(const SavedGame* save, const std::vector<const RuleResearch*>& research)
 {
-	int progress = 0;
-	if (assignedAgents.empty())
+	for (const auto* rule : research)
 	{
-		description = getState(progress);
-		return 0;
-	}
-
-	double effort = 0;
-	auto projStats = _rules->getStats();
-	int trainingFactor = mod->getIntelTrainingFactor();
-	double speedFactor = (double)mod->getIntelSpeedFactor() / 100;
-
-	for (auto s : assignedAgents)
-	{
-		Soldier* agent = s.first;
-		if (agent->getCraft() && agent->getCraft()->getStatus() == "STR_OUT")
+		if (save->isResearched(rule, false))
 		{
-			continue;
-		}
-
-		auto stats = agent->getCurrentStats();
-		auto caps = agent->getRules()->getStatCaps();
-		unsigned int statsN = 0;
-		double  soldierEffort = 0, statEffort = 0;
-		if (projStats.data > 0)
-		{
-			statEffort = stats->data;
-			soldierEffort += (statEffort / projStats.data);
-			if (!estimate && stats->data < caps.data && RNG::generate(0, caps.data) > stats->data && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				agent->getIntelExperience()->data++;
-			statsN++;
-		}
-		if (projStats.computers > 0)
-		{
-			statEffort = stats->computers;
-			soldierEffort += (statEffort / projStats.computers);
-			if (!estimate && stats->computers < caps.computers && RNG::generate(0, caps.computers) > stats->computers && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				agent->getIntelExperience()->computers++;
-			statsN++;
-		}
-		if (projStats.xenolinguistics > 0)
-		{
-			statEffort = stats->xenolinguistics;
-			soldierEffort += (statEffort / projStats.xenolinguistics);
-			if (!estimate && stats->xenolinguistics < caps.xenolinguistics && RNG::generate(0, caps.xenolinguistics) > stats->xenolinguistics && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				agent->getIntelExperience()->xenolinguistics++;
-			statsN++;
-		}
-		if (projStats.hacking > 0)
-		{
-			statEffort = stats->hacking;
-			soldierEffort += (statEffort / projStats.hacking);
-			if (!estimate && stats->hacking < caps.hacking && RNG::generate(0, caps.hacking) > stats->hacking && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				agent->getIntelExperience()->hacking++;
-			statsN++;
-		}
-		if (projStats.alienTech > 0)
-		{
-			statEffort = stats->alienTech;
-			soldierEffort += (statEffort / projStats.alienTech);
-			if (!estimate && stats->alienTech < caps.alienTech && RNG::generate(0, caps.alienTech) > stats->alienTech && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				agent->getIntelExperience()->alienTech++;
-			statsN++;
-		}
-		if (projStats.investigation > 0)
-		{
-			statEffort = stats->investigation;
-			soldierEffort += (statEffort / projStats.investigation);
-			if (!estimate && stats->investigation < caps.investigation && RNG::generate(0, caps.investigation) > stats->investigation && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				agent->getIntelExperience()->investigation++;
-			statsN++;
-		}
-
-		double insightBonus = RNG::generate(0, stats->insight / 2);
-		if (estimate)
-		{
-			insightBonus = stats->insight;
-			insightBonus /= 4; //just take average roll
-		}
-		insightBonus /= 10;
-		soldierEffort += insightBonus;
-		soldierEffort /= statsN + 1;
-		effort += soldierEffort;
-	}
-	// If one woman can carry a baby in nine months, nine women can't do it in a month...
-	if (assignedAgents.size() > 1)
-	{
-		effort *= (100 - (19 * log(assignedAgents.size()))) / 100;
-	}
-	effort *= (double)rating / 100;
-	effort *= speedFactor * 24;
-
-	//gets total effort to daily project progress
-	progress = static_cast<int>(ceil(effort));
-
-	description = getState(progress);
-
-	return progress;
-}
-
-/**
- * Called every day to compute time spent on this IntelProject
- * @return true if the ResearchProject is finished
- */
-bool IntelProject::roll(Game *game, const Globe& globe, int progress, bool &finalRoll)
-{
-	SavedGame* save = game->getSavedGame();
-
-	_spent += progress;
-	finalRoll = false;
-	bool specialRule = _rules->getSpecialRule() != INTEL_NONE;
-	_active = progress > 0 && specialRule;
-
-	if (_spent > _cost + (_rolls * getRules()->getCostIncrease()))
-	{
-		_spent = 0; //clear progress of the project, preparing it for the next stage roll.
-		_rolls++;
-		Log(LOG_INFO) << ">> Progress made with intelligence project: " << _rules->getName();
-		std::vector<const RuleIntelStage*> rolledStages;
-		for (auto stage : getAvailableStages(save))
-		{
-			if (stage->getRequireRolls() <= _rolls && RNG::percent(stage->getOdds()))
-			{
-				Log(LOG_INFO) << " - stage named: " << stage->getName() << " was added to the pool.";
-				rolledStages.push_back(stage); //populate list of stages
-			}
-		}
-
-		if (!rolledStages.empty())
-		{
-			auto pickedStage = rolledStages.at(RNG::generate(0, static_cast<int>(rolledStages.size()) - 1)); // only one stage processed at a time
-			//run all event scripts for chosen stage
-			Log(LOG_INFO) << "Stage picked for being processed: " << pickedStage->getName();
-			if (!pickedStage->getEventScripts().empty())
-			{
-				std::ostringstream sd;
-				for (auto& s : pickedStage->getEventScripts())
-				{
-					sd << s << " ";
-				}
-				Log(LOG_INFO) << " - processing eventScript: " << sd.str();
-				game->getMasterMind()->eventScriptProcessor(pickedStage->getEventScripts(), OTHER_SCRIPT);
-			}
-
-			//and create alien mission if any
-			if (!pickedStage->getSpawnedMission().empty())
-			{
-				Log(LOG_INFO) << " - spawning the mission: " << pickedStage->getSpawnedMission();
-				game->getMasterMind()->spawnAlienMission(pickedStage->getSpawnedMission(), globe, _base);
-			}
-
-			//update data if the project reaches its final stage and counted as completed.
-			if (pickedStage->isFinalStage())
-			{
-				Log(LOG_INFO) << " - it's a final roll for the project!";
-				_active = false;
-				finalRoll = true;
-			}
-
-			//update rolled stages information
-			auto it = _stageRolls.find(pickedStage->getName());
-			if (it != _stageRolls.end())
-			{
-				it->second++;
-			}
-			else
-			{
-				_stageRolls.insert(std::make_pair(pickedStage->getName(), 1));
-			}
-
-			return true; //we finish stage rolling, this would tell the game to prepare data for the next one
+			return true;
 		}
 	}
 	return false;
 }
 
-std::vector<const RuleIntelStage*> IntelProject::getAvailableStages(SavedGame* save)
-{
-	std::vector<const RuleIntelStage*> availableStages;
-
-	for (auto stage : _rules->getStages())
-	{
-		auto it = _stageRolls.find(stage->getName());
-		if (it != _stageRolls.end() && it->second >= stage->getAvailableRolls())
-		{
-			if (stage->isFinalStage()) //we already done with this project, abort the search with empty result.
-			{
-				availableStages.clear();
-				break;
-			}
-			continue;
-		}
-
-		const RuleResearch* requiredResearch = stage->getRequiredResearch();
-		if (requiredResearch && !save->isResearched(requiredResearch, false))
-		{
-			continue;
-		}
-
-		const RuleResearch* disabledByResearch = stage->getDisabledByResearch();
-		if (disabledByResearch && save->isResearched(disabledByResearch, false))
-		{
-			continue;
-		}
-
-		if ((~_base->getProvidedBaseFunc({}) & stage->getRequireBaseFunc()).any())
-		{
-			continue; //we don't have required facility, go to the next stage.
-		}
-
-		availableStages.push_back(stage);
-	}
-
-	return availableStages;
 }
 
-std::string IntelProject::getName() const
+IntelProject::IntelProject(const RuleIntelProject* rule) : _rules(rule)
+{
+	if (!_rules)
+	{
+		throw Exception("Cannot create an intelligence project without rules");
+	}
+	if (_rules->getFirstMilestone())
+	{
+		_currentMilestone = _rules->getFirstMilestone()->getId();
+	}
+}
+
+int IntelProject::getStepProgress(std::map<Soldier*, int>& assignedAgents, const Mod* mod, int rating,
+	std::string& description, bool estimate, std::map<Soldier*, UnitStats>* dailyExperience,
+	std::vector<Soldier*>* contributors)
+{
+	description.clear();
+	if (assignedAgents.empty() || _completed)
+	{
+		return 0;
+	}
+
+	double effort = 0.0;
+	size_t contributingAgents = 0;
+	const UnitStats projectStats = _rules->getStats();
+	const int trainingFactor = mod->getIntelTrainingFactor();
+	const double speedFactor = static_cast<double>(mod->getIntelSpeedFactor()) / 100.0;
+
+	for (const auto& assigned : assignedAgents)
+	{
+		Soldier* agent = assigned.first;
+		if (!agent || agent->getRoleRank(ROLE_AGENT) < 1)
+		{
+			continue;
+		}
+		if (agent->getCraft() && agent->getCraft()->getStatus() == "STR_OUT")
+		{
+			continue;
+		}
+		if (contributors)
+		{
+			contributors->push_back(agent);
+		}
+		const bool canTrain = !estimate && agent->canGainExperience();
+
+		const UnitStats* stats = agent->getCurrentStats();
+		const UnitStats caps = agent->getRules()->getStatCaps();
+		unsigned int statsCount = 0;
+		double soldierEffort = 0.0;
+
+#define INTEL_STAT(field) \
+		if (projectStats.field > 0) \
+		{ \
+			soldierEffort += static_cast<double>(stats->field) / projectStats.field; \
+			if (canTrain && dailyExperience && stats->field < caps.field && \
+				RNG::generate(0, caps.field) > stats->field && RNG::percent(trainingFactor) && \
+				RNG::percent(assigned.second)) \
+			{ \
+				auto inserted = dailyExperience->emplace(agent, UnitStats::scalar(0)); \
+				inserted.first->second.field++; \
+			} \
+			statsCount++; \
+		}
+
+		INTEL_STAT(data)
+		INTEL_STAT(computers)
+		INTEL_STAT(xenolinguistics)
+		INTEL_STAT(hacking)
+		INTEL_STAT(alienTech)
+		INTEL_STAT(investigation)
+
+#undef INTEL_STAT
+
+		double insightBonus = estimate ? stats->insight / 4.0 : RNG::generate(0, stats->insight / 2);
+		soldierEffort += insightBonus / 10.0;
+		soldierEffort /= statsCount + 1;
+		effort += soldierEffort;
+		contributingAgents++;
+	}
+
+	if (contributingAgents == 0)
+	{
+		return 0;
+	}
+	if (contributingAgents > 1)
+	{
+		effort *= std::max(0.0, (100.0 - 19.0 * std::log(static_cast<double>(contributingAgents))) / 100.0);
+	}
+	effort *= static_cast<double>(rating) / 100.0;
+	effort *= speedFactor * 24.0;
+
+	const double roundedEffort = std::ceil(std::max(0.0, effort));
+	if (roundedEffort > std::numeric_limits<int>::max())
+	{
+		throw Exception("Intel project '" + getName() + "': daily effort exceeds integer range");
+	}
+	return static_cast<int>(roundedEffort);
+}
+
+bool IntelProject::isCurrentMilestoneBlocked(const SavedGame* save) const
+{
+	if (_currentMilestone.empty())
+	{
+		return false;
+	}
+	const RuleIntelMilestone* milestone = _rules->getMilestone(_currentMilestone);
+	if (!milestone)
+	{
+		throw Exception("Intel project '" + getName() + "': current milestone '" +
+			_currentMilestone + "' does not exist");
+	}
+	return !save->isResearched(milestone->getRequiredResearch(), false);
+}
+
+std::vector<const RuleIntelEventOutput*> IntelProject::getAvailableEventOutputs(const SavedGame* save) const
+{
+	std::vector<const RuleIntelEventOutput*> result;
+	const RuleIntelEventCycle* cycle = _rules->getEventCycle();
+	if (!cycle)
+	{
+		return result;
+	}
+
+	if (_eventCycles >= MAX_SAVED_EVENT_CYCLES)
+	{
+		throw Exception("Intel project '" + getName() + "': eventCycles overflow");
+	}
+	const int64_t upcomingCycle = _eventCycles + 1;
+	for (const auto* output : cycle->getOutputs())
+	{
+		if (output->getMinCycles() > upcomingCycle)
+		{
+			continue;
+		}
+		if (!save->isResearched(output->getRequiredResearch(), false))
+		{
+			continue;
+		}
+		if (hasDisabledResearch(save, output->getDisabledByResearch()))
+		{
+			continue;
+		}
+		result.push_back(output);
+	}
+	return result;
+}
+
+IntelProjectDailyResult IntelProject::processDay(SavedGame* save, int progress)
+{
+	IntelProjectDailyResult result;
+	if (_completed || progress <= 0 || isCurrentMilestoneBlocked(save))
+	{
+		return result;
+	}
+
+	if (!_currentMilestone.empty() && !isCurrentMilestoneBlocked(save))
+	{
+		const RuleIntelMilestone* milestone = _rules->getMilestone(_currentMilestone);
+		checkedAdd(_milestoneProgress, progress, getName(), "milestoneProgress");
+		if (_milestoneProgress >= milestone->getCost())
+		{
+			_milestoneProgress -= milestone->getCost();
+			result.completedMilestone = milestone;
+			result.eventScripts.insert(result.eventScripts.end(),
+				milestone->getEventScripts().begin(), milestone->getEventScripts().end());
+			if (milestone->getSpawnMission())
+			{
+				result.spawnMissions.push_back(milestone->getSpawnMission());
+			}
+
+			if (milestone->completesProject())
+			{
+				result.completed = true;
+				return result;
+			}
+
+			const RuleIntelMilestone* next = _rules->getNextMilestone(milestone->getId());
+			_currentMilestone = next ? next->getId() : std::string();
+			if (!next)
+			{
+				_milestoneProgress = 0;
+			}
+			else if (isCurrentMilestoneBlocked(save))
+			{
+				// A newly reached gate stops the whole mixed project immediately,
+				// including its event cycle, until the required evidence exists.
+				return result;
+			}
+		}
+	}
+
+	const RuleIntelEventCycle* cycle = _rules->getEventCycle();
+	if (!cycle)
+	{
+		return result;
+	}
+
+	checkedAdd(_eventProgress, progress, getName(), "eventProgress");
+	if (_eventProgress < cycle->getCost())
+	{
+		return result;
+	}
+
+	const auto outputs = getAvailableEventOutputs(save);
+	if (outputs.empty())
+	{
+		_eventProgress = cycle->getCost();
+		return result;
+	}
+
+	int totalWeight = 0;
+	for (const auto* output : outputs)
+	{
+		totalWeight += output->getWeight();
+	}
+	int roll = RNG::generate(1, totalWeight);
+	const RuleIntelEventOutput* selected = outputs.back();
+	for (const auto* output : outputs)
+	{
+		roll -= output->getWeight();
+		if (roll <= 0)
+		{
+			selected = output;
+			break;
+		}
+	}
+
+	_eventProgress -= cycle->getCost();
+	if (_eventCycles >= MAX_SAVED_EVENT_CYCLES)
+	{
+		throw Exception("Intel project '" + getName() + "': eventCycles overflow");
+	}
+	++_eventCycles;
+	if (!selected->getEventScript().empty())
+	{
+		result.eventScripts.push_back(selected->getEventScript());
+	}
+	else
+	{
+		result.spawnMissions.push_back(selected->getSpawnMission());
+	}
+	return result;
+}
+
+std::string IntelProject::getProgressState(int dailyProgress, const SavedGame* save) const
+{
+	if (_completed || dailyProgress <= 0)
+	{
+		return "STR_NONE";
+	}
+	if (!_currentMilestone.empty())
+	{
+		if (isCurrentMilestoneBlocked(save))
+		{
+			return "STR_NONE";
+		}
+		return getState(dailyProgress, _rules->getMilestone(_currentMilestone)->getCost());
+	}
+	if (_rules->getEventCycle())
+	{
+		if (getAvailableEventOutputs(save).empty())
+		{
+			return "STR_NONE";
+		}
+		return getState(dailyProgress, _rules->getEventCycle()->getCost());
+	}
+	return "STR_NONE";
+}
+
+std::string IntelProject::getState(int progress, int cost) const
+{
+	if (progress <= 0 || cost <= 0)
+	{
+		return "STR_NONE";
+	}
+
+	const float rating = static_cast<float>(progress) / static_cast<float>(cost);
+	if (rating <= PROGRESS_LIMIT_POOR)
+		return "STR_POOR";
+	if (rating <= PROGRESS_LIMIT_AVERAGE)
+		return "STR_AVERAGE";
+	if (rating <= PROGRESS_LIMIT_GOOD)
+		return "STR_GOOD";
+	if (rating <= PROGRESS_LIMIT_GREAT)
+		return "STR_GREAT";
+	if (rating <= PROGRESS_LIMIT_SUPERIOR)
+		return "STR_SUPERIOR";
+	return "STR_EXCELLENT";
+}
+
+const std::string& IntelProject::getName() const
 {
 	return _rules->getName();
 }
 
-
-/**
- * Loads the research project from a YAML file.
- * @param node YAML node.
- */
-void IntelProject::load(const YAML::YamlNodeReader& reader)
+void IntelProject::complete()
 {
-	reader.tryRead("stageRolls", _stageRolls);
-	reader.tryRead("active", _active);
-	reader.tryRead("rolls", _rolls);
-	reader.tryRead("spent", _spent);
-	reader.tryRead("cost", _cost);
+	_completed = true;
+	_currentMilestone.clear();
+	_blockedMilestone.clear();
+	_milestoneProgress = 0;
+	_eventProgress = 0;
+	_eventCycles = 0;
 }
 
-/**
- * Saves the research project to a YAML file.
- * @return YAML node.
- */
+void IntelProject::markCurrentMilestoneBlocked()
+{
+	if (_currentMilestone.empty())
+	{
+		throw Exception("Intel project '" + getName() +
+			"': cannot mark a project without a current milestone as blocked");
+	}
+	_blockedMilestone = _currentMilestone;
+}
+
+void IntelProject::load(const YAML::YamlNodeReader& reader)
+{
+	reader.tryRead("completed", _completed);
+	reader.tryRead("currentMilestone", _currentMilestone);
+	reader.tryRead("blockedMilestone", _blockedMilestone);
+	reader.tryRead("milestoneProgress", _milestoneProgress);
+	reader.tryRead("eventProgress", _eventProgress);
+	reader.tryRead("eventCycles", _eventCycles);
+
+	if (_milestoneProgress < 0)
+	{
+		throw Exception("Intel project '" + getName() + "': milestoneProgress must be non-negative");
+	}
+	if (_milestoneProgress > MAX_SAVED_PROGRESS)
+	{
+		throw Exception("Intel project '" + getName() +
+			"': milestoneProgress is too large to safely advance");
+	}
+	if (_eventProgress < 0)
+	{
+		throw Exception("Intel project '" + getName() + "': eventProgress must be non-negative");
+	}
+	if (_eventProgress > MAX_SAVED_PROGRESS)
+	{
+		throw Exception("Intel project '" + getName() +
+			"': eventProgress is too large to safely advance");
+	}
+	if (_eventCycles < 0)
+	{
+		throw Exception("Intel project '" + getName() + "': eventCycles must be non-negative");
+	}
+	if (_eventCycles > MAX_SAVED_EVENT_CYCLES)
+	{
+		throw Exception("Intel project '" + getName() +
+			"': eventCycles is too large to safely advance");
+	}
+	if (!_currentMilestone.empty() && !_rules->getMilestone(_currentMilestone))
+	{
+		throw Exception("Intel project '" + getName() + "': saved currentMilestone '" +
+			_currentMilestone + "' does not exist");
+	}
+	if (_currentMilestone.empty() && _milestoneProgress != 0)
+	{
+		throw Exception("Intel project '" + getName() +
+			"': save contains milestoneProgress without a currentMilestone");
+	}
+	if (!_blockedMilestone.empty() && _blockedMilestone != _currentMilestone)
+	{
+		throw Exception("Intel project '" + getName() + "': saved blockedMilestone '" +
+			_blockedMilestone + "' does not match currentMilestone '" + _currentMilestone + "'");
+	}
+	if (!_rules->getEventCycle() && (_eventProgress != 0 || _eventCycles != 0))
+	{
+		throw Exception("Intel project '" + getName() +
+			"': save contains event cycle state but the project has no eventCycle");
+	}
+	if (_completed && (!_currentMilestone.empty() || !_blockedMilestone.empty() ||
+		_milestoneProgress != 0 || _eventProgress != 0 || _eventCycles != 0))
+	{
+		throw Exception("Intel project '" + getName() +
+			"': completed project contains active progress state");
+	}
+}
+
 void IntelProject::save(YAML::YamlNodeWriter writer) const
 {
 	writer.setAsMap();
-	writer.write("name", getRules()->getName());
-	if (!_stageRolls.empty())
+	writer.write("name", getName());
+	if (_completed)
 	{
-		writer.write("stageRolls", _stageRolls);
+		writer.write("completed", true);
 	}
-	if (_active)
+	writer.write("currentMilestone", _currentMilestone);
+	if (!_blockedMilestone.empty())
 	{
-		writer.write("active", _active);
+		writer.write("blockedMilestone", _blockedMilestone);
 	}
-	writer.write("rolls", _rolls);
-	writer.write("spent", _spent);
-	writer.write("cost", _cost);
-}
-
-/**
- * Return a string describing project progress.
- * @return a string describing project progress.
- */
-std::string IntelProject::getState(int progress) const
-{
-	std::string result;
-	if (progress <= 0)
+	if (_milestoneProgress != 0)
 	{
-		result = "STR_NONE";
+		writer.write("milestoneProgress", _milestoneProgress);
 	}
-	else
+	if (_eventProgress != 0)
 	{
-		float rating = static_cast<float>(progress);
-		rating /= static_cast<float>(_cost + (_rolls * getRules()->getCostIncrease()));
-		if (rating <= PROGRESS_LIMIT_POOR)
-		{
-			result = "STR_POOR";
-		}
-		else if (rating <= PROGRESS_LIMIT_AVERAGE)
-		{
-			result = "STR_AVERAGE";
-		}
-		else if (rating <= PROGRESS_LIMIT_GOOD)
-		{
-			result = "STR_GOOD";
-		}
-		else if (rating <= PROGRESS_LIMIT_GREAT)
-		{
-			result = "STR_GREAT";
-		}
-		else if (rating <= PROGRESS_LIMIT_SUPERIOR)
-		{
-			result = "STR_SUPERIOR";
-		}
-		else
-		{
-			result = "STR_EXCELLENT";
-		}
+		writer.write("eventProgress", _eventProgress);
 	}
-
-	return result;
+	if (_eventCycles != 0)
+	{
+		writer.write("eventCycles", _eventCycles);
+	}
 }
 
 }

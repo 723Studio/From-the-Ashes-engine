@@ -70,7 +70,7 @@ AbortMissionState::AbortMissionState(SavedBattleGame *battleGame, BattlescapeSta
 
 	// Check available areas (maybe should be cached somewhere)
 	bool exit = false, craft = true, entry = false;
-	AlienDeployment *deployment = _game->getMod()->getDeployment(_battleGame->getMissionType());
+	AlienDeployment *deployment = _battleGame->getActiveDeployment();
 	if (deployment != 0)
 	{
 		exit = !deployment->getNextStage().empty() || deployment->getEscapeType() == ESCAPE_EXIT || deployment->getEscapeType() == ESCAPE_EITHER;
@@ -141,20 +141,20 @@ AbortMissionState::AbortMissionState(SavedBattleGame *battleGame, BattlescapeSta
 	_txtInEntrance->setHighContrast(true);
 	if (craft)
 	{
-		_txtInEntrance->setText(tr("STR_UNITS_IN_CRAFT", _inEntrance + tally.vipInEntrance));
+		_txtInEntrance->setText(tr("STR_UNITS_IN_CRAFT", _inEntrance));
 	}
 	else
 	{
-		_txtInEntrance->setText(tr("STR_UNITS_IN_ENTRANCE", _inEntrance + tally.vipInEntrance));
+		_txtInEntrance->setText(tr("STR_UNITS_IN_ENTRANCE", _inEntrance));
 	}
 
 	_txtInExit->setBig();
 	_txtInExit->setHighContrast(true);
-	_txtInExit->setText(tr("STR_UNITS_IN_EXIT", _inExit + tally.vipInExit));
+	_txtInExit->setText(tr("STR_UNITS_IN_EXIT", _inExit));
 
 	_txtOutside->setBig();
 	_txtOutside->setHighContrast(true);
-	_txtOutside->setText(tr("STR_UNITS_OUTSIDE", _outside + tally.vipInField));
+	_txtOutside->setText(tr("STR_UNITS_OUTSIDE", _outside));
 
 
 	if (_battleGame->getMissionType() == "STR_BASE_DEFENSE")
@@ -190,7 +190,7 @@ AbortMissionState::AbortMissionState(SavedBattleGame *battleGame, BattlescapeSta
 	_btnOk->onMouseClick((ActionHandler)&AbortMissionState::btnOkClick);
 	_btnOk->onKeyboardPress((ActionHandler)&AbortMissionState::btnOkClick, Options::keyOk);
 	bool noAbort = false;
-	if (_game->getMod()->isFTAGame() && !_battleGame->isPreview())
+	if (!_battleGame->isPreview())
 	{
 		if (craft)
 		{

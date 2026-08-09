@@ -31,8 +31,6 @@
 #include "../Mod/Mod.h"
 #include "../Mod/RuleSoldier.h"
 #include "../Savegame/Base.h"
-#include "../Savegame/CovertOperation.h"
-#include "../Savegame/SavedBattleGame.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/Soldier.h"
 #include "PilotsState.h"
@@ -272,11 +270,11 @@ void PilotsState::initList(size_t scrl)
 				int dynStat = (*_dynGetter)(_game, *i);
 				std::ostringstream ss;
 				ss << dynStat;
-				_lstPilots->addRow(4, (*i)->getName(true).c_str(), tr((*i)->getRankString(true)).c_str(), duty.c_str(), ss.str().c_str());
+				_lstPilots->addRow(4, (*i)->getName(true).c_str(), tr((*i)->getRankString()).c_str(), duty.c_str(), ss.str().c_str());
 			}
 			else
 			{
-				_lstPilots->addRow(3, (*i)->getName(true).c_str(), tr((*i)->getRankString(true)).c_str(), duty.c_str());
+				_lstPilots->addRow(3, (*i)->getName(true).c_str(), tr((*i)->getRankString()).c_str(), duty.c_str());
 			}
 
 			if ((*i)->getCraft() == 0)

@@ -70,7 +70,7 @@ OptionsDefaultsState::OptionsDefaultsState(OptionsOrigin origin, OptionsBaseStat
 	_txtTitle->setWordWrap(true);
 	_txtTitle->setText(tr("STR_RESTORE_DEFAULTS_QUESTION"));
 
-	if (_origin == OPT_BATTLESCAPE)
+	if (_origin == OPT_BATTLESCAPE || _origin == OPT_MAPEDITOR)
 	{
 		applyBattlescapeTheme("optionsMenu");
 	}
@@ -91,7 +91,7 @@ OptionsDefaultsState::~OptionsDefaultsState()
 void OptionsDefaultsState::btnYesClick(Action *action)
 {
 	Options::resetDefault(false);
-	Options::save(true);
+	Options::save();
 	if (_game->isCtrlPressed())
 	{
 		// my development/debug defaults
@@ -103,18 +103,11 @@ void OptionsDefaultsState::btnYesClick(Action *action)
 		Options::keyFps = SDLK_UNKNOWN;
 		Options::playIntro = false;
 		Options::autosave = false;
-		Options::showFundsOnGeoscape = true;
 		Options::battleFireSpeed = 16;
 		Options::battleXcomSpeed = 1;
 		Options::battleNotifyDeath = true;
 		Options::battleNewPreviewPath = PATH_ARROW_TU;
-		Options::battleUFOExtenderAccuracy = true;
-		Options::showMoreStatsInInventoryView = true;
-		Options::battleAutoEnd = true;
-		Options::disableAutoEquip = true;
-		Options::strafe = true;
 		Options::skipNextTurnScreen = true;
-		Options::alienBleeding = true;
 	}
 	_game->loadLanguages();
 	_game->popState();

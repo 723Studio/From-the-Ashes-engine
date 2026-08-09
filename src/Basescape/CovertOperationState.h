@@ -52,8 +52,6 @@ public:
 	void btnNewClick(Action* action);
 	/// Handler for clicking the CovertOperation list.
 	void onSelectOperation(Action* action);
-	/// Handler for opening the Current Global Research UI.
-	void onCurrentGlobalResearchClick(Action* action);
 	/// Fills the CovertOperation list with Base CovertOperation.
 	void fillProjectList(size_t scrl);
 	/// Updates the CovertOperation list.

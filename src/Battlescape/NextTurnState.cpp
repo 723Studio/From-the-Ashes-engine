@@ -22,32 +22,19 @@
 #include "../Engine/Timer.h"
 #include "../Engine/RNG.h"
 #include "../Engine/Screen.h"
-#include "../Mod/AlienRace.h"
-#include "../Mod/Armor.h"
 #include "../Mod/Mod.h"
-#include "../Mod/RuleCraft.h"
 #include "../Mod/RuleEnviroEffects.h"
 #include "../Mod/RuleInterface.h"
-#include "../Mod/RuleTerrain.h"
-#include "../Mod/RuleUfo.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Palette.h"
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
-#include "../Interface/TextButton.h"
 #include "../Engine/Action.h"
-#include "../Savegame/BattleUnit.h"
-#include "../Savegame/Node.h"
 #include "../Savegame/SavedBattleGame.h"
-#include "../Savegame/SavedGame.h"
 #include "../Savegame/HitLog.h"
-#include "AIModule.h"
 #include "BattlescapeState.h"
 #include "BattlescapeGame.h"
-#include "BriefingState.h"
 #include "Map.h"
-#include "TileEngine.h"
-#include "Pathfinding.h"
 
 namespace OpenXcom
 {
@@ -58,7 +45,7 @@ namespace OpenXcom
  * @param battleGame Pointer to the saved game.
  * @param state Pointer to the Battlescape state.
  */
-NextTurnState::NextTurnState(SavedBattleGame *battleGame, BattlescapeState *state) : _battleGame(battleGame), _state(state), _timer(0), _currentTurn(0), _showBriefing(false)
+NextTurnState::NextTurnState(SavedBattleGame *battleGame, BattlescapeState *state) : _battleGame(battleGame), _state(state), _timer(0), _currentTurn(0)
 {
 	if (_battleGame->isPreview())
 	{
@@ -90,8 +77,6 @@ NextTurnState::NextTurnState(SavedBattleGame *battleGame, BattlescapeState *stat
 	int y = state->getMap()->getMessageY();
 
 	_window = new Window(this, 320, 200, 0, 0);
-	_txtMessageReinforcements = new Text(320, 33, 0, 8);
-	_btnBriefingReinforcements = new TextButton(120, 16, 100, 45);
 	_txtTitle = new Text(320, 17, 0, 68);
 	_txtTurn = new Text(320, 17, 0, 92);
 	_txtSide = new Text(320, 17, 0, 108);
@@ -105,8 +90,6 @@ NextTurnState::NextTurnState(SavedBattleGame *battleGame, BattlescapeState *stat
 
 	add(_bg);
 	add(_window);
-	add(_txtMessageReinforcements, "messageWindows", "battlescape");
-	add(_btnBriefingReinforcements, "messageWindowButtons", "battlescape");
 	add(_txtTitle, "messageWindows", "battlescape");
 	add(_txtTurn, "messageWindows", "battlescape");
 	add(_txtSide, "messageWindows", "battlescape");
@@ -133,8 +116,6 @@ NextTurnState::NextTurnState(SavedBattleGame *battleGame, BattlescapeState *stat
 	_bg->drawRect(&rect, Palette::blockOffset(0) + bgColor);
 	// make this screen line up with the hidden movement screen
 	_window->setY(y);
-	_txtMessageReinforcements->setY(y + 8);
-	_btnBriefingReinforcements->setY(y + 45);
 	_txtTitle->setY(y + 68);
 	_txtTurn->setY(y + 92);
 	_txtSide->setY(y + 108);
@@ -146,19 +127,6 @@ NextTurnState::NextTurnState(SavedBattleGame *battleGame, BattlescapeState *stat
 	_window->setColor(Palette::blockOffset(0)-1);
 	_window->setHighContrast(true);
 	_window->setBackground(_game->getMod()->getSurface(_battleGame->getHiddenMovementBackground()));
-
-
-	_txtMessageReinforcements->setBig();
-	_txtMessageReinforcements->setAlign(ALIGN_CENTER);
-	_txtMessageReinforcements->setVerticalAlign(ALIGN_BOTTOM);
-	_txtMessageReinforcements->setWordWrap(true);
-	_txtMessageReinforcements->setHighContrast(true);
-	_txtMessageReinforcements->setColor(_game->getMod()->getInterface("inventory")->getElement("weight")->color2); // red
-
-	_btnBriefingReinforcements->setText(tr("STR_TELL_ME_MORE"));
-	_btnBriefingReinforcements->setHighContrast(true);
-	_btnBriefingReinforcements->onMouseClick((ActionHandler)&NextTurnState::btnBriefingReinforcementsClick);
-	_btnBriefingReinforcements->setVisible(false);
 
 	_txtTitle->setBig();
 	_txtTitle->setAlign(ALIGN_CENTER);
@@ -281,23 +249,7 @@ NextTurnState::NextTurnState(SavedBattleGame *battleGame, BattlescapeState *stat
 		_state->bugHuntMessage();
 	}
 
-	std::string messageReinforcements;
-	bool allowReinforcements = _battleGame->getSide() == FACTION_HOSTILE && _battleGame->getTurn() > 0;
-	if (_battleGame->getSide() == FACTION_PLAYER && _battleGame->getTurn() == 0)
-	{
-		allowReinforcements = true;
-	}
-	if (allowReinforcements && !_battleGame->getBattleGame()->areAllEnemiesNeutralized())
-	{
-		bool showAlert = determineReinforcements();
-		if (showAlert && _battleGame->getTurn() > 0)
-		{
-			messageReinforcements = tr("STR_REINFORCEMENTS_ALERT");
-			_txtMessageReinforcements->setText(messageReinforcements);
-		}
-	}
-
-	if (Options::skipNextTurnScreen && message.empty() && messageReinforcements.empty())
+	if (Options::skipNextTurnScreen && message.empty())
 	{
 		_timer = new Timer(NEXT_TURN_DELAY);
 		_timer->onTimer((StateHandler)&NextTurnState::close);
@@ -478,18 +430,6 @@ void NextTurnState::handle(Action *action)
 		return;
 	}
 
-	if (_btnBriefingReinforcements->getVisible() && action->getDetails()->type == SDL_MOUSEBUTTONDOWN)
-	{
-		double mx = action->getAbsoluteXMouse();
-		double my = action->getAbsoluteYMouse();
-		if (mx >= _btnBriefingReinforcements->getX() && mx < _btnBriefingReinforcements->getX() + _btnBriefingReinforcements->getWidth() &&
-			my >= _btnBriefingReinforcements->getY() && my < _btnBriefingReinforcements->getY() + _btnBriefingReinforcements->getHeight())
-		{
-			// don't close on Briefing button click
-			return;
-		}
-	}
-
 	if (action->getDetails()->type == SDL_KEYDOWN || action->getDetails()->type == SDL_MOUSEBUTTONDOWN)
 	{
 		close();
@@ -535,8 +475,8 @@ void NextTurnState::close()
 		_battleGame->getBattleGame()->resetAllEnemiesNeutralized();
 	}
 
-	// not "escort the VIPs" missions, unprocessed battleScripts, not the final mission and all aliens dead.
-	bool killingAllAliensIsNotEnough = _battleGame->getObjectiveType() == MUST_DESTROY || (_battleGame->getVIPSurvivalPercentage() > 0 && _battleGame->getVIPEscapeType() != ESCAPE_NONE);
+	// objective destruction missions, unprocessed battleScripts, not the final mission and all aliens dead.
+	bool killingAllAliensIsNotEnough = _battleGame->getObjectiveType() == MUST_DESTROY;
 	bool toDoScripts = _battleGame->getBattleGame()->scriptsToProcess();
 
 	if ((!killingAllAliensIsNotEnough && tally.liveAliens == 0 && !toDoScripts) || tally.liveSoldiers == 0)
@@ -566,570 +506,6 @@ void NextTurnState::resize(int &dX, int &dY)
 	State::resize(dX, dY);
 	_bg->setX(0);
 	_bg->setY(0);
-}
-
-/**
- * Shows the custom briefing for reinforcements.
- * @param action Pointer to an action.
- */
-void NextTurnState::btnBriefingReinforcementsClick(Action*)
-{
-	if (_showBriefing)
-	{
-		_game->pushState(new BriefingState(0, 0, true, &_customBriefing));
-	}
-}
-
-/**
- * Runs reinforcements logic.
- */
-bool NextTurnState::determineReinforcements()
-{
-	const AlienDeployment* deployment = _game->getMod()->getDeployment(_battleGame->getReinforcementsDeployment(), true);
-
-	int currentTurnReinforcements = _battleGame->getTurn();
-
-	if (!deployment)
-	{
-		// for backwards-compatibility! this save does not contain the data needed for this functionality...
-		return false;
-	}
-
-	bool showAlert = false;
-	for (auto& wave : *deployment->getReinforcementsData())
-	{
-		// 1. check pre-requisites
-		{
-			if (_game->getSavedGame()->getDifficulty() < wave.minDifficulty || _game->getSavedGame()->getDifficulty() > wave.maxDifficulty)
-			{
-				continue;
-			}
-			if (wave.objectiveDestroyed)
-			{
-				if (!_battleGame->allObjectivesDestroyed())
-				{
-					continue;
-				}
-			}
-			else if (!wave.turns.empty())
-			{
-				if (std::find(wave.turns.begin(), wave.turns.end(), currentTurnReinforcements) == wave.turns.end())
-				{
-					continue;
-				}
-			}
-			else
-			{
-				if (currentTurnReinforcements < wave.minTurn || (wave.maxTurn != -1 && currentTurnReinforcements > wave.maxTurn))
-				{
-					continue;
-				}
-			}
-			if (wave.executionOdds < 100 && !RNG::percent(wave.executionOdds))
-			{
-				continue;
-			}
-			if (wave.maxRuns != -1 && _battleGame->getReinforcementsMemory()[wave.type] >= wave.maxRuns)
-			{
-				continue;
-			}
-		}
-
-		// 2a. calculate compliant blocks
-		{
-			_compliantBlocksMap.clear();
-			_compliantBlocksList.clear();
-
-			int sizeX = _battleGame->getMapSizeX() / 10;
-			int sizeY = _battleGame->getMapSizeY() / 10;
-
-			if (wave.mapBlockFilterType == MFT_BY_MAPSCRIPT)
-			{
-				_compliantBlocksMap = _battleGame->getReinforcementsBlocks(); // we're done
-			}
-			else if (wave.mapBlockFilterType == MFT_BY_REINFORCEMENTS || wave.mapBlockFilterType == MFT_BY_BOTH_UNION || wave.mapBlockFilterType == MFT_BY_BOTH_INTERSECTION)
-			{
-				if (wave.spawnBlocks.empty())
-					_compliantBlocksMap.resize((sizeX), std::vector<int>((sizeY), 1)); // start with all true
-				else
-					_compliantBlocksMap.resize((sizeX), std::vector<int>((sizeY), 0)); // start with all false
-			}
-			else //if (wave.mapBlockFilterType == MFT_NONE)
-			{
-				_compliantBlocksMap.resize((sizeX), std::vector<int>((sizeY), 1)); // all true (and we're done)
-			}
-
-			if (wave.mapBlockFilterType == MFT_BY_REINFORCEMENTS || wave.mapBlockFilterType == MFT_BY_BOTH_UNION || wave.mapBlockFilterType == MFT_BY_BOTH_INTERSECTION)
-			{
-				if (!wave.spawnBlocks.empty())
-				{
-					for (auto& dir : wave.spawnBlocks)
-					{
-						if (dir == "EDGES")
-						{
-							for (int x = 0; x < sizeX; ++x) _compliantBlocksMap[x][0] = 1;
-							for (int y = 0; y < sizeY; ++y) _compliantBlocksMap[0][y] = 1;
-							for (int x = 0; x < sizeX; ++x) _compliantBlocksMap[x][sizeY - 1] = 1;
-							for (int y = 0; y < sizeY; ++y) _compliantBlocksMap[sizeX - 1][y] = 1;
-							break;
-						}
-						if (dir == "NORTH")
-							for (int x = 0; x < sizeX; ++x) _compliantBlocksMap[x][0] = 1;
-						else if (dir == "WEST")
-							for (int y = 0; y < sizeY; ++y) _compliantBlocksMap[0][y] = 1;
-						else if (dir == "SOUTH")
-							for (int x = 0; x < sizeX; ++x) _compliantBlocksMap[x][sizeY - 1] = 1;
-						else if (dir == "EAST")
-							for (int y = 0; y < sizeY; ++y) _compliantBlocksMap[sizeX - 1][y] = 1;
-						else if (dir == "NW")
-							_compliantBlocksMap[0][0] = 1;
-						else if (dir == "NE")
-							_compliantBlocksMap[sizeX - 1][0] = 1;
-						else if (dir == "SW")
-							_compliantBlocksMap[0][sizeY - 1] = 1;
-						else if (dir == "SE")
-							_compliantBlocksMap[sizeX - 1][sizeY - 1] = 1;
-					}
-				}
-
-				if (wave.mapBlockFilterType == MFT_BY_BOTH_UNION)
-				{
-					auto& toMerge = _battleGame->getReinforcementsBlocks();
-					for (int x = 0; x < sizeX; ++x)
-						for (int y = 0; y < sizeY; ++y)
-							_compliantBlocksMap[x][y] = _compliantBlocksMap[x][y] + toMerge[x][y];
-				}
-				else if (wave.mapBlockFilterType == MFT_BY_BOTH_INTERSECTION)
-				{
-					auto& toMerge = _battleGame->getReinforcementsBlocks();
-					for (int x = 0; x < sizeX; ++x)
-						for (int y = 0; y < sizeY; ++y)
-							_compliantBlocksMap[x][y] = _compliantBlocksMap[x][y] * toMerge[x][y];
-				}
-			}
-
-			bool checkGroups = !wave.spawnBlockGroups.empty();
-
-			_compliantBlocksList.reserve(sizeX * sizeY);
-
-			for (int x = 0; x < sizeX; ++x)
-			{
-				for (int y = 0; y < sizeY; ++y)
-				{
-					if (_compliantBlocksMap[x][y] > 0)
-					{
-						if (checkGroups)
-						{
-							auto* terrain = _game->getMod()->getTerrain(_battleGame->getFlattenedMapTerrainNames()[x][y], false);
-							if (!terrain)
-							{
-								auto* craft = _game->getMod()->getCraft(_battleGame->getFlattenedMapTerrainNames()[x][y], false);
-								if (craft)
-								{
-									terrain = craft->getBattlescapeTerrainData();
-								}
-							}
-							if (!terrain)
-							{
-								auto* ufo = _game->getMod()->getUfo(_battleGame->getFlattenedMapTerrainNames()[x][y], false);
-								if (ufo)
-								{
-									terrain = ufo->getBattlescapeTerrainData();
-								}
-							}
-							if (terrain)
-							{
-								auto* mapblock = terrain->getMapBlock(_battleGame->getFlattenedMapBlockNames()[x][y]);
-								if (mapblock)
-								{
-									bool groupMatched = false;
-									for (int group : wave.spawnBlockGroups)
-									{
-										if (mapblock->isInGroup(group))
-										{
-											groupMatched = true;
-											break;
-										}
-									}
-									if (!groupMatched)
-									{
-										continue; // don't add this map block into _compliantBlocksList
-									}
-								}
-							}
-						}
-						_compliantBlocksList.push_back(Position(x, y, 0));
-					}
-				}
-			}
-		}
-
-		// synchronize _compliantBlocksList and _compliantBlocksMap
-		{
-			for (int x = 0; x < _battleGame->getMapSizeX() / 10; ++x)
-				for (int y = 0; y < _battleGame->getMapSizeY() / 10; ++y)
-					_compliantBlocksMap[x][y] = 0;
-
-			for (const auto& pos : _compliantBlocksList)
-				_compliantBlocksMap[pos.x][pos.y] = 1;
-		}
-
-		// 2b. calculate compliant nodes
-		_compliantNodesList.clear();
-		if (wave.useSpawnNodes)
-		{
-			bool checkBlocks = wave.mapBlockFilterType != MFT_NONE;
-			bool checkNodeRanks = !wave.spawnNodeRanks.empty();
-			bool checkZLevels = !wave.spawnZLevels.empty();
-
-			_compliantNodesList.reserve(_battleGame->getNodes()->size());
-
-			for (auto* node : *_battleGame->getNodes())
-			{
-				if (node->isDummy())
-				{
-					continue;
-				}
-				if (checkNodeRanks && std::find(wave.spawnNodeRanks.begin(), wave.spawnNodeRanks.end(), (int)node->getRank()) == wave.spawnNodeRanks.end())
-				{
-					continue;
-				}
-				if (checkZLevels && std::find(wave.spawnZLevels.begin(), wave.spawnZLevels.end(), node->getPosition().z) == wave.spawnZLevels.end())
-				{
-					continue;
-				}
-				if (checkBlocks && _compliantBlocksMap[node->getPosition().x / 10][node->getPosition().y / 10] == 0)
-				{
-					continue;
-				}
-				auto* tileToCheck = _battleGame->getTile(node->getPosition());
-				if (tileToCheck && tileToCheck->getUnit())
-				{
-					continue;
-				}
-				if (wave.minDistanceFromXcomUnits > 1)
-				{
-					bool foundXcomUnitNearby = false;
-					for (auto* xcomUnit : *_battleGame->getUnits())
-					{
-						if (xcomUnit->getOriginalFaction() == FACTION_PLAYER &&
-							!xcomUnit->isOut() &&
-							Position::distanceSq(xcomUnit->getPosition(), node->getPosition()) < wave.minDistanceFromXcomUnits * wave.minDistanceFromXcomUnits)
-						{
-							foundXcomUnitNearby = true;
-							break;
-						}
-					}
-					if (foundXcomUnitNearby) continue;
-				}
-				if (wave.maxDistanceFromBorders > 0 && wave.maxDistanceFromBorders < 10)
-				{
-					if (node->getPosition().x >= wave.maxDistanceFromBorders &&
-						node->getPosition().x < _battleGame->getMapSizeX() - wave.maxDistanceFromBorders &&
-						node->getPosition().y >= wave.maxDistanceFromBorders &&
-						node->getPosition().y < _battleGame->getMapSizeY() - wave.maxDistanceFromBorders)
-					{
-						continue;
-					}
-				}
-				_compliantNodesList.push_back(node);
-			}
-
-			// let's simulate selecting at random even when iterating sequentially
-			RNG::shuffle(_compliantNodesList);
-		}
-
-		// 3. deploy units
-		bool success = deployReinforcements(wave);
-
-		// 4. post-processing
-		if (success)
-		{
-			// remember success
-			_battleGame->getReinforcementsMemory()[wave.type] += 1;
-
-			if (!wave.briefing.title.empty())
-			{
-				_customBriefing = wave.briefing;
-				_showBriefing = true;
-			}
-			showAlert = true;
-		}
-	}
-	if (_showBriefing)
-	{
-		_btnBriefingReinforcements->setVisible(true);
-	}
-
-	return showAlert;
-}
-
-/**
- * Deploys the reinforcements, according to the alien reinforcements deployment rules.
- * @param wave Pointer to the reinforcements deployment rules.
- */
-bool NextTurnState::deployReinforcements(const ReinforcementsData &wave)
-{
-	const AlienRace* race = _game->getMod()->getAlienRace(_battleGame->getReinforcementsRace(), true);
-	const int month = _battleGame->getReinforcementsItemLevel();
-	bool success = false;
-
-	for (const auto& dd : wave.data)
-	{
-		int quantity;
-
-		switch (_game->getSavedGame()->getDifficulty())
-		{
-		case DIFF_BEGINNER:
-			quantity = dd.lowQty;
-			break;
-		case DIFF_EXPERIENCED:
-			quantity = dd.medQty > 0 ? dd.lowQty + ((dd.medQty - dd.lowQty) / 2) : dd.lowQty;
-			break;
-		case DIFF_VETERAN:
-			quantity = dd.medQty > 0 ? dd.medQty : dd.lowQty + ((dd.highQty - dd.lowQty) / 2);
-			break;
-		case DIFF_GENIUS:
-			quantity = dd.medQty > 0 ? dd.medQty + ((dd.highQty - dd.medQty) / 2) : dd.lowQty + ((dd.highQty - dd.lowQty) / 2);
-			break;
-		case DIFF_SUPERHUMAN:
-		default:
-			quantity = dd.highQty;
-		}
-
-		quantity += RNG::generate(0, dd.dQty);
-		quantity += RNG::generate(0, dd.extraQty);
-
-		for (int i = 0; i < quantity; ++i)
-		{
-			std::string alienName = dd.customUnitType.empty() ? race->getMember(dd.alienRank) : dd.customUnitType;
-			Unit* rule = _game->getMod()->getUnit(alienName, true);
-			bool civilian = dd.percentageOutsideUfo != 0; // small misuse of an unused attribute ;) pls don't kill me
-			BattleUnit* unit = addReinforcement(wave, rule, dd.alienRank, civilian);
-			size_t itemLevel = (size_t)(_game->getMod()->getAlienItemLevels().at(month).at(RNG::generate(0, 9)));
-			if (unit)
-			{
-				success = true;
-				_battleGame->initUnit(unit, itemLevel);
-				if (!rule->isLivingWeapon())
-				{
-					if (dd.itemSets.empty())
-					{
-						throw Exception("Reinforcements generator encountered an error: item set not defined");
-					}
-					if (itemLevel >= dd.itemSets.size())
-					{
-						itemLevel = dd.itemSets.size() - 1;
-					}
-					for (auto& itemType : dd.itemSets.at(itemLevel).items)
-					{
-						RuleItem* ruleItem = _game->getMod()->getItem(itemType);
-						if (ruleItem)
-						{
-							_battleGame->createItemForUnit(ruleItem, unit);
-						}
-					}
-					for (auto& iset : dd.extraRandomItems)
-					{
-						if (iset.items.empty())
-							continue;
-						int pick = RNG::generate(0, iset.items.size() - 1);
-						RuleItem* ruleItem = _game->getMod()->getItem(iset.items[pick]);
-						if (ruleItem)
-						{
-							_battleGame->createItemForUnit(ruleItem, unit);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	return success;
-}
-
-/**
- * Adds a reinforcements unit to the game and places him on a free spawnpoint.
- * @param wave Pointer to the reinforcements deployment rules.
- * @param rules Pointer to the Unit which holds info about the alien.
- * @param alienRank The rank of the alien, used for spawn point search.
- * @param civilian Spawn as a civilian?
- * @return Pointer to the created unit.
- */
-BattleUnit* NextTurnState::addReinforcement(const ReinforcementsData &wave, Unit *rules, int alienRank, bool civilian)
-{
-	BattleUnit* unit = _battleGame->createTempUnit(rules, civilian ? FACTION_NEUTRAL : FACTION_HOSTILE);
-
-	// 1. try nodes first
-	bool unitPlaced = false;
-	if (wave.useSpawnNodes && !_compliantNodesList.empty())
-	{
-		for (auto* node : _compliantNodesList)
-		{
-			if (_battleGame->setUnitPosition(unit, node->getPosition()))
-			{
-				unit->getAIModule()->setStartNode(node);
-				unit->setRankInt(alienRank);
-				unit->setDirection(RNG::generate(0, 7));
-				_battleGame->getUnits()->push_back(unit);
-				unitPlaced = true;
-				break;
-			}
-		}
-	}
-
-	// 2. then try random positions on compliant blocks
-	if (!unitPlaced && !_compliantBlocksList.empty())
-	{
-		std::vector<int> tmpZList = wave.spawnZLevels; // copy
-		if (tmpZList.empty())
-		{
-			tmpZList.reserve(_battleGame->getMapSizeZ());
-			for (int z = 0; z < _battleGame->getMapSizeZ(); ++z)
-			{
-				tmpZList.push_back(z);
-			}
-		}
-		if (wave.randomizeZLevels)
-		{
-			RNG::shuffle(tmpZList);
-		}
-		int tries = 100;
-		int randomX = 0;
-		int randomY = 0;
-		int edgeX = (_battleGame->getMapSizeX() / 10) - 1;
-		int edgeY = (_battleGame->getMapSizeY() / 10) - 1;
-		while (!unitPlaced && tries)
-		{
-			int randomBlockIndex = RNG::generate(0, _compliantBlocksList.size() - 1);
-			if (wave.maxDistanceFromBorders > 0 && wave.maxDistanceFromBorders < 10)
-			{
-				// Note: we assume that the modder has done the necessary work and allowed only border blocks to come this far
-				if (_compliantBlocksList[randomBlockIndex].x == 0)
-				{
-					randomX = RNG::generate(0, wave.maxDistanceFromBorders - 1);
-				}
-				else if (_compliantBlocksList[randomBlockIndex].x == edgeX)
-				{
-					randomX = RNG::generate(10 - wave.maxDistanceFromBorders, 9);
-				}
-				else
-				{
-					randomX = RNG::generate(0, 9); // modder fail
-				}
-				if (_compliantBlocksList[randomBlockIndex].y == 0)
-				{
-					randomY = RNG::generate(0, wave.maxDistanceFromBorders - 1);
-				}
-				else if (_compliantBlocksList[randomBlockIndex].y == edgeY)
-				{
-					randomY = RNG::generate(10 - wave.maxDistanceFromBorders, 9);
-				}
-				else
-				{
-					randomY = RNG::generate(0, 9); // modder fail
-				}
-			}
-			else
-			{
-				randomX = RNG::generate(0, 9);
-				randomY = RNG::generate(0, 9);
-			}
-			Position randomPos = Position(_compliantBlocksList[randomBlockIndex].x * 10 + randomX, _compliantBlocksList[randomBlockIndex].y * 10 + randomY, 0);
-
-			bool foundXcomUnitNearby = false;
-			if (wave.minDistanceFromXcomUnits > 1)
-			{
-				for (auto* xcomUnit : *_battleGame->getUnits())
-				{
-					if (xcomUnit->getOriginalFaction() == FACTION_PLAYER &&
-						!xcomUnit->isOut() &&
-						Position::distanceSq(xcomUnit->getPosition(), randomPos) < wave.minDistanceFromXcomUnits * wave.minDistanceFromXcomUnits)
-					{
-						foundXcomUnitNearby = true;
-						break;
-					}
-				}
-			}
-			if (!foundXcomUnitNearby)
-			{
-				for (int tryZ : tmpZList)
-				{
-					Position finalPos = randomPos + Position(0, 0, tryZ);
-					if (unit->getMovementType() != MT_FLY)
-					{
-						Tile* t = _battleGame->getTile(finalPos);
-						if (t == 0 || t->getTUCost(O_FLOOR, unit->getMovementType()) == Pathfinding::INVALID_MOVE_COST)
-						{
-							// non-flying units cannot spawn on e.g. a water tile (e.g. in the POLAR terrain)
-							continue;
-						}
-					}
-					if (_battleGame->setUnitPosition(unit, finalPos))
-					{
-						unit->setRankInt(alienRank);
-						unit->setDirection(RNG::generate(0, 7));
-						_battleGame->getUnits()->push_back(unit);
-						unitPlaced = true;
-						break;
-					}
-				}
-			}
-			--tries;
-		}
-	}
-
-	// 3. finally just place it somewhere
-	if (!unitPlaced && wave.forceSpawnNearFriend && placeReinforcementNearFriend(unit))
-	{
-		unit->setRankInt(alienRank);
-		unit->setDirection(RNG::generate(0, 7));
-		_battleGame->getUnits()->push_back(unit);
-		unitPlaced = true;
-	}
-
-	// 4. dude, seriously?
-	if (!unitPlaced)
-	{
-		delete unit;
-		unit = nullptr;
-	}
-
-	return unit;
-}
-
-/**
- * Places a unit near a friendly unit.
- * @param unit Pointer to the unit in question.
- * @return If we successfully placed the unit.
- */
-bool NextTurnState::placeReinforcementNearFriend(BattleUnit *unit)
-{
-	if (_battleGame->getUnits()->empty())
-	{
-		return false;
-	}
-	for (int i = 0; i != 10; ++i)
-	{
-		Position entryPoint = TileEngine::invalid;
-		int tries = 100;
-		bool largeUnit = false;
-		while (entryPoint == TileEngine::invalid && tries)
-		{
-			BattleUnit* k = _battleGame->getUnits()->at(RNG::generate(0, _battleGame->getUnits()->size() - 1));
-			if (k->getFaction() == unit->getFaction() && k->getPosition() != TileEngine::invalid && k->getArmor()->getSize() >= unit->getArmor()->getSize())
-			{
-				entryPoint = k->getPosition();
-				largeUnit = k->isBigUnit();
-			}
-			--tries;
-		}
-		if (tries && _battleGame->placeUnitNearPosition(unit, entryPoint, largeUnit))
-		{
-			return true;
-		}
-	}
-	return false;
 }
 
 }

@@ -18,7 +18,6 @@
  */
 #include "SoldierArmorState.h"
 #include <sstream>
-#include <algorithm>
 #include "../Engine/Action.h"
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
@@ -27,7 +26,6 @@
 #include "../Interface/TextButton.h"
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
-#include "../Interface/TextEdit.h"
 #include "../Interface/TextList.h"
 #include "../Menu/ErrorMessageState.h"
 #include "../Mod/Armor.h"
@@ -56,31 +54,21 @@ struct compareArmorName
  * @param base Pointer to the base to get info from.
  * @param soldier ID of the selected soldier.
  */
-SoldierArmorState::SoldierArmorState(Base *base, size_t soldier, SoldierArmorOrigin origin) : _base(base), _soldier(soldier), _origin(origin)
+SoldierArmorState::SoldierArmorState(Base *base, size_t soldier) : _base(base), _soldier(soldier)
 {
 	_screen = false;
 
 	// Create objects
 	_window = new Window(this, 192, 160, 64, 20, POPUP_BOTH);
-	_btnQuickSearch = new TextEdit(this, 48, 9, 80, 43);
 	_btnCancel = new TextButton(140, 16, 90, 156);
 	_txtTitle = new Text(182, 16, 69, 28);
 	_txtType = new Text(90, 9, 80, 52);
 	_txtQuantity = new Text(70, 9, 190, 52);
 	_lstArmor = new TextList(160, 80, 73, 68);
 
-	// Set palette
-	if (_origin == SA_BATTLESCAPE)
-	{
-		setStandardPalette("PAL_BATTLESCAPE");
-	}
-	else
-	{
-		setInterface("soldierArmor");
-	}
+	setInterface("soldierArmor");
 
 	add(_window, "window", "soldierArmor");
-	add(_btnQuickSearch, "button", "soldierArmor");
 	add(_btnCancel, "button", "soldierArmor");
 	add(_txtTitle, "text", "soldierArmor");
 	add(_txtType, "text", "soldierArmor");
@@ -142,20 +130,9 @@ SoldierArmorState::SoldierArmorState(Base *base, size_t soldier, SoldierArmorOri
 		}
 	}
 
-	_btnQuickSearch->setText(""); // redraw
-	_btnQuickSearch->onEnter((ActionHandler)&SoldierArmorState::btnQuickSearchApply);
-	_btnQuickSearch->setVisible(Options::oxceQuickSearchButton);
-
-	_btnCancel->onKeyboardRelease((ActionHandler)&SoldierArmorState::btnQuickSearchToggle, Options::keyToggleQuickSearch);
-
 	_lstArmor->onMouseClick((ActionHandler)&SoldierArmorState::lstArmorClick);
 	_lstArmor->onMouseClick((ActionHandler)&SoldierArmorState::lstArmorClickMiddle, SDL_BUTTON_MIDDLE);
 
-	// switch to battlescape theme if called from inventory
-	if (_origin == SA_BATTLESCAPE)
-	{
-		applyBattlescapeTheme("soldierArmor");
-	}
 }
 
 /**
@@ -172,9 +149,6 @@ SoldierArmorState::~SoldierArmorState()
 */
 void SoldierArmorState::updateList()
 {
-	std::string searchString = _btnQuickSearch->getText();
-	Unicode::upperCase(searchString);
-
 	_lstArmor->clearList();
 	_indices.clear();
 
@@ -182,17 +156,6 @@ void SoldierArmorState::updateList()
 	for (const auto& armorItem : _armors)
 	{
 		++index;
-
-		// quick search
-		if (!searchString.empty())
-		{
-			std::string armorName = armorItem.name;
-			Unicode::upperCase(armorName);
-			if (armorName.find(searchString) == std::string::npos)
-			{
-				continue;
-			}
-		}
 
 		_lstArmor->addRow(2, armorItem.name.c_str(), armorItem.quantity.c_str());
 		_indices.push_back(index);
@@ -206,34 +169,6 @@ void SoldierArmorState::updateList()
 void SoldierArmorState::btnCancelClick(Action *)
 {
 	_game->popState();
-}
-
-/**
- * Quick search toggle.
- * @param action Pointer to an action.
- */
-void SoldierArmorState::btnQuickSearchToggle(Action* action)
-{
-	if (_btnQuickSearch->getVisible())
-	{
-		_btnQuickSearch->setText("");
-		_btnQuickSearch->setVisible(false);
-		btnQuickSearchApply(action);
-	}
-	else
-	{
-		_btnQuickSearch->setVisible(true);
-		_btnQuickSearch->setFocus(true);
-	}
-}
-
-/**
- * Quick search.
- * @param action Pointer to an action.
- */
-void SoldierArmorState::btnQuickSearchApply(Action*)
-{
-	updateList();
 }
 
 /**

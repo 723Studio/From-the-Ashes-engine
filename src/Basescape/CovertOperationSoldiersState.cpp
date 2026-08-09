@@ -19,7 +19,6 @@
 #include "CovertOperationSoldiersState.h"
 #include "CovertOperationStartState.h"
 #include <algorithm>
-#include <algorithm>
 #include "../Engine/Action.h"
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
@@ -35,7 +34,6 @@
 #include "../Savegame/Craft.h"
 #include "../Savegame/SavedGame.h"
 #include "SoldierInfoStateFtA.h"
-#include "../Mod/Armor.h"
 #include "../Mod/RuleCovertOperation.h"
 #include "../Mod/RuleInterface.h"
 #include "../Engine/Unicode.h"
@@ -353,11 +351,11 @@ void CovertOperationSoldiersState::initList(size_t scrl)
 			int dynStat = (*_dynGetter)(_game, filteredSoldier);
 			std::ostringstream ss;
 			ss << dynStat;
-			_lstSoldiers->addRow(4, filteredSoldier->getName(true, 19).c_str(), tr(filteredSoldier->getRankString(true)).c_str(), duty.c_str(), ss.str().c_str());
+			_lstSoldiers->addRow(4, filteredSoldier->getName(true, 19).c_str(), tr(filteredSoldier->getRankString()).c_str(), duty.c_str(), ss.str().c_str());
 		}
 		else
 		{
-			_lstSoldiers->addRow(3, filteredSoldier->getName(true, 19).c_str(), tr(filteredSoldier->getRankString(true)).c_str(), duty.c_str());
+			_lstSoldiers->addRow(3, filteredSoldier->getName(true, 19).c_str(), tr(filteredSoldier->getRankString()).c_str(), duty.c_str());
 		}
 
 		Uint8 color;
@@ -499,7 +497,7 @@ void CovertOperationSoldiersState::lstSoldiersClick(Action* action)
 */
 void CovertOperationSoldiersState::btnDeassignCraftSoldiersClick(Action* action)
 {
-	_operation->getSoldiers().clear();
+	_operation->setSoldiers({});
 	updateStrings();
 	initList(0);
 }

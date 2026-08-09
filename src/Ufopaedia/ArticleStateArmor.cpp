@@ -26,7 +26,6 @@
 #include "../Engine/Game.h"
 #include "../Engine/Surface.h"
 #include "../Engine/LocalizedText.h"
-#include "../Engine/FileMap.h"
 #include "../Engine/Unicode.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextButton.h"
@@ -97,7 +96,7 @@ namespace OpenXcom
 		else if (armor->hasLayersDefinition())
 		{
 			// dummy default soldier (M0)
-			Soldier *s = new Soldier(_game->getMod()->getSoldier(_game->getMod()->getSoldiersList().front(), true), armor, 0 /*nationality*/, 0 /*id*/);
+			Soldier *s = new Soldier(_game->getMod()->getSoldier(_game->getMod()->getSoldiersList().front(), true), armor, 0 /*id*/, 0 /*name pool*/);
 			s->setGender(GENDER_MALE);
 			s->setLook(LOOK_BLONDE);
 			s->setLookVariant(0);
@@ -159,12 +158,9 @@ namespace OpenXcom
 			int percentage = (int)Round(armor->getDamageModifier(dt) * 100.0f);
 			std::string damage = getDamageTypeText(dt);
 			bool unlocked = true;
-			if (_game->getMod()->isFTAGame())
+			if (!_game->getSavedGame()->isResearched(damage))
 			{
-				if (!_game->getSavedGame()->isResearched(damage))
-				{
-					unlocked = false; //hide unresearched damage types 
-				}
+				unlocked = false; //hide unresearched damage types
 			}
 			if (percentage != 100 && damage != "STR_UNKNOWN" && unlocked)
 			{

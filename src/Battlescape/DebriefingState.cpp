@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <functional>
 #include <climits>
+#include <map>
 #include "TileEngine.h"
 #include "DebriefingState.h"
 #include "CannotReequipState.h"
@@ -35,20 +36,21 @@
 #include "CommendationState.h"
 #include "CommendationLateState.h"
 #include "../Mod/Mod.h"
-#include "../Mod/RuleCountry.h"
 #include "../Mod/RuleCraft.h"
 #include "../Mod/RuleItem.h"
 #include "../Mod/RuleRegion.h"
 #include "../Mod/RuleSoldier.h"
 #include "../Mod/RulePrisoner.h"
+#include "../Mod/RuleContainedMonster.h"
 #include "../Mod/RuleUfo.h"
 #include "../Mod/Armor.h"
 #include "../Savegame/AlienBase.h"
 #include "../Savegame/AlienMission.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/BasePrisoner.h"
+#include "../Savegame/BaseContainedAlien.h"
+#include "../Savegame/BaseContainedMonster.h"
 #include "../Savegame/BattleItem.h"
-#include "../Savegame/Country.h"
 #include "../Savegame/Craft.h"
 #include "../Savegame/ItemContainer.h"
 #include "../Savegame/Region.h"
@@ -57,6 +59,7 @@
 #include "../Savegame/SoldierDiary.h"
 #include "../Savegame/MissionSite.h"
 #include "../Savegame/Tile.h"
+#include "../Savegame/Transfer.h"
 #include "../Savegame/Ufo.h"
 #include "../Savegame/Vehicle.h"
 #include "../Savegame/BaseFacility.h"
@@ -69,19 +72,19 @@
 #include "../Engine/Exception.h"
 #include "../Engine/Options.h"
 #include "../Engine/RNG.h"
-#include "../Basescape/ManageAlienContainmentState.h"
 #include "../Basescape/PrisonManagementState.h"
+#include "../Basescape/ContainedAlienManagementState.h"
+#include "../Basescape/ContainedMonsterManagementState.h"
 #include "../Basescape/TransferBaseState.h"
-#include "../FTA/DiplomacyStartState.h"
+#include "../Basescape/DiplomacyStartState.h"
 #include "../Engine/Screen.h"
-#include "../Basescape/SellState.h"
 #include "../Menu/SaveGameState.h"
 #include "../Mod/AlienDeployment.h"
 #include "../Mod/RuleInterface.h"
 #include "../Mod/RuleResearch.h"
 #include "../Savegame/MissionStatistics.h"
 #include "../Savegame/BattleUnitStatistics.h"
-#include "../FTA/MasterMind.h"
+#include "../Geoscape/GeoscapeState.h"
 #include "../Ufopaedia/Ufopaedia.h"
 #include "../fallthrough.h"
 #include "../Mod/AlienRace.h"
@@ -120,12 +123,11 @@ bool hasNonCombatStatIncrease(const UnitStats& stats)
  * @param game Pointer to the core game.
  */
 DebriefingState::DebriefingState() :
-	_eventToSpawn(nullptr), _region(0), _country(0),
-	_pageNumber(0), _positiveScore(true), _destroyBase(false), _promotions(false), _showSellButton(true), _initDone(false),
+	_eventToSpawn(nullptr), _region(0),
+	_pageNumber(0), _positiveScore(true), _destroyBase(false), _showSellButton(true), _initDone(false),
 	_recoveredItemObjs(0)
 {
 	_missionStatistics = new MissionStatistics();
-	_fta = _game->getMod()->isFTAGame();
 
 	Options::baseXResolution = Options::baseXGeoscape;
 	Options::baseYResolution = Options::baseYGeoscape;
@@ -133,8 +135,6 @@ DebriefingState::DebriefingState() :
 
 	// Restore the cursor in case something weird happened
 	_game->getCursor()->setVisible(true);
-	_limitsEnforced = Options::containmentLimitsEnforced ? 1 : 0;
-
 	// Create objects
 	_window = new Window(this, 320, 200, 0, 0);
 	_btnOk = new TextButton(40, 12, 16, 180);
@@ -146,16 +146,8 @@ DebriefingState::DebriefingState() :
 	_txtQuantity = new Text(60, 9, 200, 24);
 	_txtScore = new Text(55, 9, 270, 24);
 	_txtRecovery = new Text(180, 9, 16, 60);
-	if (!_fta)
-	{
-		_txtRating = new Text(200, 9, 64, 180);
-		_txtLoyalty = new Text(200, 9, 64, 180);
-	}
-	else
-	{
-		_txtRating = new Text(104, 9, 64, 180);
-		_txtLoyalty = new Text(73, 9, 173, 180);
-	}
+	_txtRating = new Text(104, 9, 64, 180);
+	_txtLoyalty = new Text(73, 9, 173, 180);
 
 	_lstStats = new TextList(290, 80, 16, 32);
 	_lstRecovery = new TextList(290, 80, 16, 32);
@@ -395,12 +387,8 @@ void DebriefingState::applyVisibility()
 	bool showItems = _pageNumber == 2;
 	bool showNonCombatStats = showStats && _btnNonCombatStats->getPressed();
 	bool showCombatStats = showStats && !showNonCombatStats;
-	bool showPsi = true;
-	if (_game->getMod()->isFTAGame())
-	{
-		showPsi = _game->getSavedGame()->isResearched(_game->getMod()->getPsiRequirements()) &&
-			_game->getSavedGame()->isResearched(_game->getMod()->getManaUnlockResearch());
-	}
+	bool showPsi = _game->getSavedGame()->isResearched(_game->getMod()->getPsiRequirements()) &&
+		_game->getSavedGame()->isResearched(_game->getMod()->getManaUnlockResearch());
 
 	// First page (scores)
 	_txtItem->setVisible(showScore || showItems);
@@ -408,7 +396,7 @@ void DebriefingState::applyVisibility()
 	_txtScore->setVisible(showScore);
 	_txtRecovery->setVisible(showScore);
 	_txtRating->setVisible(showScore);
-	_txtLoyalty->setVisible(showScore && _game->getMod()->isFTAGame());
+	_txtLoyalty->setVisible(showScore);
 	_lstStats->setVisible(showScore);
 	_lstRecovery->setVisible(showScore);
 	_lstTotal->setVisible(showScore);
@@ -435,18 +423,14 @@ void DebriefingState::applyVisibility()
 	_lstRecoveredItems->setVisible(showItems);
 
 	// Hide sell button if there are no contacts with factions yet
-	bool showSellButtonFTA = true; //for non-FTA cases
-	if (_game->getMod()->isFTAGame())
+	bool showSellButtonFTA = false;
+	for (std::vector<DiplomacyFaction *>::iterator i = _game->getSavedGame()->getDiplomacyFactions().begin();
+		 i != _game->getSavedGame()->getDiplomacyFactions().end(); ++i)
 	{
-		showSellButtonFTA = false;
-		for (std::vector<DiplomacyFaction *>::iterator i = _game->getSavedGame()->getDiplomacyFactions().begin();
-			 i != _game->getSavedGame()->getDiplomacyFactions().end(); ++i)
+		if ((*i)->isDiscovered())
 		{
-			if ((*i)->isDiscovered())
-			{
-				showSellButtonFTA = true;
-				break;
-			}
+			showSellButtonFTA = true;
+			break;
 		}
 	}
 
@@ -535,14 +519,14 @@ void DebriefingState::init()
 	// compare stuff from after and before recovery
 	if (_base)
 	{
-		int row = 0;
+		int recoveredRow = 0;
 		ItemContainer *origBaseItems = _game->getSavedGame()->getSavedBattle()->getBaseStorageItems();
 		for (auto& itemType : _game->getMod()->getItemsList())
 		{
 			RuleItem *rule = _game->getMod()->getItem(itemType);
 
 			int qty = _base->getStorageItems()->getItem(rule);
-			if (qty > 0 && (Options::canSellLiveAliens || !rule->isAlien()))
+			if (qty > 0)
 			{
 
 				// IGNORE vehicles and their ammo
@@ -569,13 +553,13 @@ void DebriefingState::init()
 					{
 						item.insert(0, "  ");
 						_lstRecoveredItems->addRow(2, item.c_str(), ss.str().c_str());
-						_lstRecoveredItems->setRowColor(row, _ammoColor);
+						_lstRecoveredItems->setRowColor(recoveredRow, _ammoColor);
 					}
 					else
 					{
 						_lstRecoveredItems->addRow(2, item.c_str(), ss.str().c_str());
 					}
-					++row;
+					++recoveredRow;
 				}
 			}
 		}
@@ -634,14 +618,10 @@ void DebriefingState::init()
 	{
 		_region->addActivityXcom(total);
 	}
-	if (_country)
-	{
-		_country->addActivityXcom(total);
-	}
 
 	// update FtA Loyalty
-	int loyalty = _game->getMasterMind()->updateLoyalty(total, XCOM_BATTLESCAPE);
-	if (_game->getMod()->isFTAGame() && _game->getSavedGame()->isResearched("STR_LOYALTY"))
+	int loyalty = _game->getGeoscapeState()->updateLoyalty(total, XCOM_BATTLESCAPE);
+	if (_game->getSavedGame()->isResearched("STR_LOYALTY"))
 	{
 		_txtLoyalty->setText(tr("STR_LOYALTY_UPDATE").arg(loyalty));
 	}
@@ -750,8 +730,8 @@ void DebriefingState::init()
 	save->getMissionStatistics()->push_back(_missionStatistics);
 
 	// Award Best-of commendations.
-	int bestScoreID[7] = {0, 0, 0, 0, 0, 0, 0};
-	int bestScore[7] = {0, 0, 0, 0, 0, 0, 0};
+	std::map<int, int> bestScoreID;
+	std::map<int, int> bestScore;
 	int bestOverallScorersID = 0;
 	int bestOverallScore = 0;
 
@@ -793,17 +773,10 @@ void DebriefingState::init()
 		}
 		deadUnit->getGeoscapeSoldier()->getDiary()->awardPostMortemKill(postMortemKills);
 
-		SoldierRank rank;
-		if (_fta)
-		{
-			rank = (SoldierRank)deadUnit->getGeoscapeSoldier()->getBestRoleRank().second;
-		}
-		else
-		{
-			rank = deadUnit->getGeoscapeSoldier()->getRank();
-		}
-		// Rookies don't get this next award. No one likes them.
-		if (rank == RANK_ROOKIE)
+		const int rank = deadUnit->getGeoscapeSoldier()->getRoleRank(ROLE_SOLDIER);
+		// Combat commendations are grouped only by military qualification; a
+		// senior scientist or engineer is still a combat novice without it.
+		if (rank <= 1)
 		{
 			continue;
 		}
@@ -840,14 +813,10 @@ void DebriefingState::init()
 			continue;
 		}
 
-		SoldierRank rank;
-		if (_fta)
+		const int rank = deadUnit->getGeoscapeSoldier()->getRoleRank(ROLE_SOLDIER);
+		if (rank <= 1)
 		{
-			rank = (SoldierRank)deadUnit->getGeoscapeSoldier()->getBestRoleRank().second;
-		}
-		else
-		{
-			rank = deadUnit->getGeoscapeSoldier()->getRank();
+			continue;
 		}
 
 		if (deadUnit->getId() == bestScoreID[rank])
@@ -955,7 +924,7 @@ void DebriefingState::init()
 		if (soldier)
 		{
 			soldier->addExperience(ROLE_SOLDIER, missionExp, "mission score experience");
-			if (Options::fieldPromotions && !bu->hasGainedAnyExperience())
+			if (!bu->hasGainedAnyExperience())
 			{
 				// Note: difference from OXC, soldier needs to actually have done something during the mission
 				continue;
@@ -964,20 +933,13 @@ void DebriefingState::init()
 		}
 	}
 
-	if (_fta)
+	for (auto* soldier : participants)
 	{
-		for (auto* soldier : participants)
+		RolePromotion promotion;
+		if (soldier->rolePromoteSoldier(ROLE_SOLDIER, &promotion))
 		{
-			if (soldier->rolePromoteSoldier(ROLE_SOLDIER))
-			{
-				_promotions = true;
-			}
+			_promotions.push_back(promotion);
 		}
-	}
-	else if (Options::oxceAutomaticPromotions)
-	{
-
-		_promotions = _game->getSavedGame()->handlePromotions(participants, _game->getMod());
 	}
 
 	_game->getSavedGame()->setBattleGame(nullptr);
@@ -1032,14 +994,7 @@ void DebriefingState::btnSellClick(Action *)
 {
 	if (!_destroyBase)
 	{
-		if (_game->getMod()->isFTAGame())
-		{
-			_game->pushState(new DiplomacyStartState(_base, false));
-		}
-		else
-		{
-			_game->pushState(new SellState(_base, this, OPT_BATTLESCAPE));
-		}
+		_game->pushState(new DiplomacyStartState(_base, false));
 	}
 }
 
@@ -1102,9 +1057,11 @@ void DebriefingState::btnOkClick(Action *)
 		}
 		if (!_destroyBase)
 		{
-			if (_promotions)
+			if (!_promotions.empty())
 			{
-				_game->pushState(new PromotionsState(true));
+				// Post-mission debriefing is the intentional exception to the
+				// Geoscape rule that Promotions must be opened by an explicit button.
+				_game->pushState(new PromotionsState(_promotions));
 			}
 			if (!_missingItems.empty())
 			{
@@ -1115,45 +1072,13 @@ void DebriefingState::btnOkClick(Action *)
 			{
 				if (soldier->getCraft() != nullptr && soldier->isWounded())
 				{
-					soldier->setCraftAndMoveEquipment(nullptr, _base, _game->getSavedGame()->getMonthsPassed() == -1);
-				}
-			}
-
-			// refresh! (we may have sold some prisoners in the meantime; directly from Debriefing)
-			for (const auto& pair : _containmentStateInfo)
-			{
-				if (pair.second == 2 && pair.first >= 0) // we don't count BasePrisoners here with pair.first == -1, as we can't sell it in debriefing
-				{
-					int availableContainment = _base->getAvailableContainment(pair.first);
-					int usedContainment = _base->getUsedContainment(pair.first);
-					int freeContainment = availableContainment - (usedContainment * _limitsEnforced);
-					if ((availableContainment > 0 && freeContainment >= 0) || usedContainment == 0)
-					{
-						_containmentStateInfo[pair.first] = 0; // 0 = OK
-					}
+					soldier->setCraft(nullptr);
 				}
 			}
 
 			for (const auto& pair : _containmentStateInfo)
 			{
-				if (pair.first >= 0) //OXC(E) "alien" prisoners
-				{
-					if (pair.second == 2)
-					{
-						_game->pushState(new ManageAlienContainmentState(_base, pair.first, OPT_BATTLESCAPE));
-						_game->pushState(new ErrorMessageState(trAlt("STR_CONTAINMENT_EXCEEDED", pair.first).arg(_base->getName()), _palette, _game->getMod()->getInterface("debriefing")->getElement("errorMessage")->color, "BACK01.SCR", _game->getMod()->getInterface("debriefing")->getElement("errorPalette")->color));
-					}
-					else if (pair.second == 1)
-					{
-						_game->pushState(new ErrorMessageState(
-							trAlt("STR_ALIEN_DIES_NO_ALIEN_CONTAINMENT_FACILITY", pair.first),
-							_palette,
-							_game->getMod()->getInterface("debriefing")->getElement("errorMessage")->color,
-							"BACK01.SCR",
-							_game->getMod()->getInterface("debriefing")->getElement("errorPalette")->color));
-					}
-				}
-				else //FtA BasePrisoner case
+				if (pair.first == -1) // FtA BasePrisoner case
 				{
 					if (pair.second == 2) // we have to transport prisoners
 					{
@@ -1174,13 +1099,51 @@ void DebriefingState::btnOkClick(Action *)
 							_game->getMod()->getInterface("debriefing")->getElement("errorPalette")->color));
 					}
 				}
+				else if (pair.first == -2) // contained alien case
+				{
+					if (pair.second == 2)
+					{
+						_game->pushState(new ContainedAlienManagementState(_base, true));
+						_game->pushState(new ErrorMessageState(
+							tr("STR_CONTAINED_ALIEN_CAPACITY_EXCEEDED").arg(_base->getName()),
+							_palette,
+							_game->getMod()->getInterface("debriefing")->getElement("errorMessage")->color,
+							"BACK01.SCR",
+							_game->getMod()->getInterface("debriefing")->getElement("errorPalette")->color));
+					}
+					else if (pair.second == 1)
+					{
+						_game->pushState(new ErrorMessageState(
+							tr("STR_CONTAINED_ALIEN_DIES_NO_CONTAINMENT_FACILITY"),
+							_palette,
+							_game->getMod()->getInterface("debriefing")->getElement("errorMessage")->color,
+							"BACK01.SCR",
+							_game->getMod()->getInterface("debriefing")->getElement("errorPalette")->color));
+					}
+				}
+				else if (pair.first == -3) // contained monster case
+				{
+					if (pair.second == 2)
+					{
+						_game->pushState(new ContainedMonsterManagementState(_base, true));
+						_game->pushState(new ErrorMessageState(
+							tr("STR_MONSTER_CONTAINMENT_OVERFLOW").arg(_base->getName()),
+							_palette,
+							_game->getMod()->getInterface("debriefing")->getElement("errorMessage")->color,
+							"BACK01.SCR",
+							_game->getMod()->getInterface("debriefing")->getElement("errorPalette")->color));
+					}
+					else if (pair.second == 1)
+					{
+						_game->pushState(new ErrorMessageState(
+							tr("STR_NO_MONSTER_CONTAINMENT"),
+							_palette,
+							_game->getMod()->getInterface("debriefing")->getElement("errorMessage")->color,
+							"BACK01.SCR",
+							_game->getMod()->getInterface("debriefing")->getElement("errorPalette")->color));
+					}
+				}
 
-			}
-
-			if (Options::storageLimitsEnforced && _base->storesOverfull())
-			{
-				_game->pushState(new SellState(_base, 0, OPT_BATTLESCAPE));
-				_game->pushState(new ErrorMessageState(tr("STR_STORAGE_EXCEEDED").arg(_base->getName()), _palette, _game->getMod()->getInterface("debriefing")->getElement("errorMessage")->color, "BACK01.SCR", _game->getMod()->getInterface("debriefing")->getElement("errorPalette")->color));
 			}
 		}
 	}
@@ -1213,6 +1176,7 @@ void DebriefingState::addStat(const std::string &name, int quantity, int score)
  */
 void DebriefingState::prepareDebriefing()
 {
+	_recoveredCaptiveUnits.clear();
 	for (auto& itemType : _game->getMod()->getItemsList())
 	{
 		RuleItem *rule = _game->getMod()->getItem(itemType);
@@ -1229,26 +1193,7 @@ void DebriefingState::prepareDebriefing()
 	SavedGame *save = _game->getSavedGame();
 	SavedBattleGame *battle = save->getSavedBattle();
 
-	_ruleDeploy = _game->getMod()->getDeployment(battle->getMissionType());
-	// OXCE: Don't forget custom mission overrides
-	AlienDeployment* alienCustomMission = _game->getMod()->getDeployment(battle->getAlienCustomMission());
-	if (alienCustomMission)
-	{
-		_ruleDeploy = alienCustomMission;
-	}
-	// OXCE: Don't forget about UFO landings/crash sites
-	if (!_ruleDeploy)
-	{
-		for (auto* ufo : *save->getUfos())
-		{
-			if (ufo->isInBattlescape())
-			{
-				// Note: fake underwater UFO deployment was already considered above (via alienCustomMission)
-				_ruleDeploy = _game->getMod()->getDeployment(ufo->getRules()->getType());
-				break;
-			}
-		}
-	}
+	_ruleDeploy = battle->getActiveDeployment();
 
 	bool aborted = battle->isAborted();
 	_missionStatistics->aborted = aborted;
@@ -1302,12 +1247,6 @@ void DebriefingState::prepareDebriefing()
 			addStat("STR_MISSION_ABORTED", 1, -_ruleDeploy->getAbortPenalty());
 		}
 	}
-	if (battle->getVIPSurvivalPercentage() > 0)
-	{
-		_stats.push_back(new DebriefingStat("STR_VIPS_LOST", false));
-		_stats.push_back(new DebriefingStat("STR_VIPS_SAVED", false));
-	}
-
 	_stats.push_back(new DebriefingStat("STR_CIVILIANS_KILLED_BY_ALIENS", false));
 	_stats.push_back(new DebriefingStat("STR_CIVILIANS_KILLED_BY_XCOM_OPERATIVES", false));
 	_stats.push_back(new DebriefingStat("STR_CIVILIANS_SAVED", false));
@@ -1349,15 +1288,6 @@ void DebriefingState::prepareDebriefing()
 					{
 						_region = region;
 						_missionStatistics->region = _region->getRules()->getType();
-						break;
-					}
-				}
-				for (auto* country : *save->getCountries())
-				{
-					if (country->getRules()->insideCountry(xcraft->getLongitude(), xcraft->getLatitude()))
-					{
-						_country = country;
-						_missionStatistics->country = _country->getRules()->getType();
 						break;
 					}
 				}
@@ -1410,7 +1340,9 @@ void DebriefingState::prepareDebriefing()
 				covertOperation = (*c);
 				base = xbase;
 				covertOperation->setInBattlescape(false);
-				covertOperation->finishOperation();
+				// Keep the operation registered until its persisted strategic result
+				// is acknowledged. GeoscapeState restores that notification after a
+				// tactical save/load, then FinishedCoverOperationState finishes it.
 				break;
 			}
 		}
@@ -1426,15 +1358,6 @@ void DebriefingState::prepareDebriefing()
 				{
 					_region = region;
 					_missionStatistics->region = _region->getRules()->getType();
-					break;
-				}
-			}
-			for (auto* country : *save->getCountries())
-			{
-				if (country->getRules()->insideCountry(base->getLongitude(), base->getLatitude()))
-				{
-					_country = country;
-					_missionStatistics->country = _country->getRules()->getType();
 					break;
 				}
 			}
@@ -1471,6 +1394,28 @@ void DebriefingState::prepareDebriefing()
 			}
 			// this may cause the base to become disjointed, destroy the disconnected parts.
 			base->destroyDisconnectedFacilities();
+			// Voluntary facility changes are rejected before removal. Battle damage
+			// is unavoidable, so resolve any resulting captive overflow through the
+			// existing forced debriefing management flow.
+			const bool resolvePrisoners = base->getFreePrisonSpace() < 0;
+			const bool resolveContainedAliens =
+				base->getFreeContainedAlienSpace() < 0;
+			const bool resolveContainedMonsters =
+				base->getFreeContainedMonsterSpace() < 0;
+			base->forceDeliverIncomingCaptives(resolvePrisoners,
+				resolveContainedAliens, resolveContainedMonsters);
+			if (resolvePrisoners)
+			{
+				_containmentStateInfo[-1] = 2;
+			}
+			if (resolveContainedAliens)
+			{
+				_containmentStateInfo[-2] = 2;
+			}
+			if (resolveContainedMonsters)
+			{
+				_containmentStateInfo[-3] = 2;
+			}
 		}
 	}
 
@@ -1675,7 +1620,7 @@ void DebriefingState::prepareDebriefing()
 				{
 					addStat(objectiveCompleteText, 1, objectiveCompleteScore);
 				}
-				save->clearLinksForAlienBase(ab, _game->getMod());
+				save->clearLinksForAlienBase(ab);
 				delete ab;
 				save->getAlienBases()->erase(abIt);
 				break;
@@ -1693,7 +1638,7 @@ void DebriefingState::prepareDebriefing()
 		// Set up new xcom base
 		Base* hiddenBase = new Base(_game->getMod());
 		YAML::YamlRootNodeReader hiddenBaseReader(_game->getMod()->getHiddenXcomBase(), "(hidden base template)");
-		hiddenBase->load(hiddenBaseReader, save, true);
+		hiddenBase->load(hiddenBaseReader, save);
 		hiddenBase->setLongitude(craft->getLongitude());
 		hiddenBase->setLatitude(craft->getLatitude());
 
@@ -1723,8 +1668,7 @@ void DebriefingState::prepareDebriefing()
 		UnitFaction faction = bu->getFaction();
 		// convert it, and mind control the resulting unit.
 		// reason: zombies don't create unconscious bodies... ever.
-		// the only way we can get into this situation is if psi-capture is enabled.
-		// we can use that knowledge to our advantage to save having to make it unconscious and spawn a body item for it.
+		// Preserve the current faction while converting the unit, without creating an unconscious body first.
 		if (ignore)
 		{
 			//simplified handling for unit from previous stage
@@ -1741,7 +1685,6 @@ void DebriefingState::prepareDebriefing()
 	}
 
 	// time to care for units.
-	bool psiStrengthEval = (Options::psiStrengthEval && save->isResearched(_game->getMod()->getPsiRequirements()));
 	bool ignoreLivingCivilians = false;
 	if (_ruleDeploy)
 	{
@@ -1801,7 +1744,7 @@ void DebriefingState::prepareDebriefing()
 					type = race->getRaceType();
 				}
 
-				if (!_fta || type == RACE_TYPE_ALIEN)
+				if (type == RACE_TYPE_ALIEN)
 				{
 					addStat("STR_ALIENS_KILLED", 1, value);
 				}
@@ -1942,7 +1885,7 @@ void DebriefingState::prepareDebriefing()
 					if (soldier != 0)
 					{
 						// calculate new statString
-						soldier->calcStatString(_game->getMod()->getStatStrings(), (Options::psiStrengthEval && _game->getSavedGame()->isResearched(_game->getMod()->getPsiRequirements())));
+						soldier->calcStatString(_game->getMod()->getStatStrings());
 					}
 					else
 					{ // non soldier player = tank
@@ -2019,17 +1962,17 @@ void DebriefingState::prepareDebriefing()
 					battle->getTileEngine()->itemDropInventory(bunit->getTile(), bunit);
 				}
 
-				if (_fta && bunit->getUnitRules()->getPrisoner())
+				if (bunit->getUnitRules()->getContainedMonster())
+				{
+					recoverContainedMonster(bunit, base);
+				}
+				else if (bunit->getUnitRules()->getContainedAlien())
+				{
+					recoverContainedAlien(bunit, base);
+				}
+				else if (bunit->getUnitRules()->getPrisoner())
 				{
 					recoverPrisoner(bunit, base);
-				}
-				else if (!bunit->getArmor()->getCorpseBattlescape().empty())
-				{
-					auto* corpseRule = bunit->getArmor()->getCorpseBattlescape().front();
-					if (corpseRule && corpseRule->isRecoverable())
-					{
-						recoverAlien(bunit, base, craft);
-					}
 				}
 			}
 			else if (oldFaction == FACTION_HOSTILE && !aborted && !_destroyBase
@@ -2041,17 +1984,17 @@ void DebriefingState::prepareDebriefing()
 				{
 					battle->getTileEngine()->itemDropInventory(bunit->getTile(), bunit);
 				}
-				if (_fta && bunit->getUnitRules()->getPrisoner())
+				if (bunit->getUnitRules()->getContainedMonster())
+				{
+					recoverContainedMonster(bunit, base);
+				}
+				else if (bunit->getUnitRules()->getContainedAlien())
+				{
+					recoverContainedAlien(bunit, base);
+				}
+				else if (bunit->getUnitRules()->getPrisoner())
 				{
 					recoverPrisoner(bunit, base);
-				}
-				else if (!bunit->getArmor()->getCorpseBattlescape().empty())
-				{
-					auto* corpseRule = bunit->getArmor()->getCorpseBattlescape().front();
-					if (corpseRule && corpseRule->isRecoverable())
-					{
-						recoverAlien(bunit, base, craft);
-					}
 				}
 			}
 			else if (oldFaction == FACTION_NEUTRAL && !ignoreLivingCivilians)
@@ -2113,54 +2056,6 @@ void DebriefingState::prepareDebriefing()
 		success = false;
 	}
 
-	bool savedEnoughVIPs = true;
-	if (battle->getVIPSurvivalPercentage() > 0)
-	{
-		bool retreated = aborted && (playersSurvived > 0);
-
-		// 1. correct our initial assessment if necessary
-		battle->correctVIPStats(success, retreated);
-		int vipSubtotal = battle->getSavedVIPs() + battle->getLostVIPs();
-
-		// 2. add non-fake civilian VIPs, no scoring
-		for (auto* unit : *battle->getUnits())
-		{
-			if (unit->isVIP() && unit->getOriginalFaction() == FACTION_NEUTRAL && !unit->isResummonedFakeCivilian())
-			{
-				if (unit->getStatus() == STATUS_DEAD)
-					battle->addLostVIP(0);
-				else if (success)
-					battle->addSavedVIP(0);
-				else
-					battle->addLostVIP(0);
-			}
-		}
-
-		// 3. check if we saved enough VIPs
-		int vipTotal = battle->getSavedVIPs() + battle->getLostVIPs();
-		if (vipTotal > 0)
-		{
-			int ratio = battle->getSavedVIPs() * 100 / vipTotal;
-			if (ratio < battle->getVIPSurvivalPercentage())
-			{
-				savedEnoughVIPs = false; // didn't save enough VIPs
-				success = false;
-			}
-		}
-		else
-		{
-			savedEnoughVIPs = false; // nobody to save?
-			success = false;
-		}
-
-		// 4. add stats
-		if (vipSubtotal > 0 || (vipTotal > 0 && !savedEnoughVIPs))
-		{
-			addStat("STR_VIPS_LOST", battle->getLostVIPs(), battle->getLostVIPsScore());
-			addStat("STR_VIPS_SAVED", battle->getSavedVIPs(), battle->getSavedVIPsScore());
-		}
-	}
-
 	if ((!aborted || success) && playersSurvived > 0) 	// RECOVER UFO : run through all tiles to recover UFO components and items
 	{
 		if (target == "STR_BASE")
@@ -2178,15 +2073,7 @@ void DebriefingState::prepareDebriefing()
 		else
 		{
 			_txtTitle->setText(tr("STR_ALIENS_DEFEATED"));
-			if (!aborted && !savedEnoughVIPs)
-			{
-				// Special case: mission was NOT aborted, all enemies were neutralized, but we couldn't save enough VIPs...
-				if (!objectiveFailedText.empty())
-				{
-					addStat(objectiveFailedText, 1, objectiveFailedScore);
-				}
-			}
-			else if (!objectiveCompleteText.empty())
+			if (!objectiveCompleteText.empty())
 			{
 				int victoryStat = 0;
 				if (_ruleDeploy->getEscapeType() != ESCAPE_NONE)
@@ -2204,27 +2091,10 @@ void DebriefingState::prepareDebriefing()
 				{
 					victoryStat = 1;
 				}
-				if (battle->getVIPSurvivalPercentage() > 0)
-				{
-					victoryStat = 1; // TODO: maybe show battle->getSavedVIPs() instead? need feedback...
-				}
-
 				addStat(objectiveCompleteText, victoryStat, objectiveCompleteScore);
 			}
 		}
-		if (!aborted && !savedEnoughVIPs)
-		{
-			// Special case: mission was NOT aborted, all enemies were neutralized, but we couldn't save enough VIPs...
-			if (!missionFailedText.empty())
-			{
-				_txtTitle->setText(tr(missionFailedText));
-			}
-			else
-			{
-				_txtTitle->setText(tr("STR_TERROR_CONTINUES"));
-			}
-		}
-		else if (!missionCompleteText.empty())
+		if (!missionCompleteText.empty())
 		{
 			_txtTitle->setText(tr(missionCompleteText));
 		}
@@ -2376,6 +2246,7 @@ void DebriefingState::prepareDebriefing()
 			}
 			else
 			{
+				success = true;
 				_txtTitle->setText(tr("STR_MISSION_ACCOMPLISHED"));
 				if (!objectiveCompleteText.empty())
 				{
@@ -2884,6 +2755,17 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base, C
 	{
 		const RuleItem *rule = bi->getRules();
 		int points = rule->getRecoveryPoints();
+		BattleUnit* recoveryUnit =
+			rule->getBattleType() == BT_CORPSE ? bi->getUnit() : nullptr;
+		const bool hasExplicitCaptureProfile = recoveryUnit &&
+			(recoveryUnit->getUnitRules()->getPrisoner() ||
+				recoveryUnit->getUnitRules()->getContainedAlien() ||
+				recoveryUnit->getUnitRules()->getContainedMonster());
+		const bool isLivingCaptiveBody = recoveryUnit &&
+			recoveryUnit->getOriginalFaction() == FACTION_HOSTILE &&
+			(recoveryUnit->getStatus() == STATUS_UNCONSCIOUS ||
+				(recoveryUnit->isIgnored() && recoveryUnit->getHealth() > 0 &&
+					recoveryUnit->getHealth() < recoveryUnit->getStunlevel()));
 		if (rule->getName() == _game->getMod()->getAlienFuelName())
 		{
 			// special case of an item counted as a stat
@@ -2891,7 +2773,13 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base, C
 		}
 		else
 		{
-			if (rule->isRecoverable() && !bi->getXCOMProperty())
+			// A technical corpse item may deliberately be non-recoverable even
+			// though its living BattleUnit has an explicit persistent capture
+			// profile. Route that unit without ever adding the technical item to
+			// base stores.
+			if ((rule->isRecoverable() ||
+					(hasExplicitCaptureProfile && isLivingCaptiveBody)) &&
+				!bi->getXCOMProperty())
 			{
 				bool awardItemPoints = false;
 				if (rule->isMissionObjective())
@@ -2912,7 +2800,7 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base, C
 						if (rule->isCorpseRecoverable())
 						{
 							addItemsToBaseStores(corpseUnit->getArmor()->getCorpseGeoscape(), base, 1, true);
-							if (!_fta || type == RACE_TYPE_ALIEN)
+							if (type == RACE_TYPE_ALIEN)
 							{
 								addStat("STR_ALIEN_CORPSES_RECOVERED", 1, points);
 							}
@@ -2934,14 +2822,20 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base, C
 						bool capturedCiv = corpseUnit->getOriginalFaction() == FACTION_NEUTRAL
 						                   && _missionStatistics->aborted
 						                   && _game->getMod()->getCraft(_missionStatistics->craft);
+						bool canBeContainedMonster = corpseUnit->getUnitRules()->getContainedMonster() != nullptr;
+						bool canBeContained = corpseUnit->getUnitRules()->getContainedAlien() != nullptr;
 						bool canBeImprisoned = corpseUnit->getUnitRules()->getPrisoner() || corpseUnit->getGeoscapeSoldier();
-						if (_fta && canBeImprisoned && (corpseUnit->getOriginalFaction() == FACTION_HOSTILE || capturedCiv))
+						if (canBeContainedMonster && corpseUnit->getOriginalFaction() == FACTION_HOSTILE)
+						{
+							recoverContainedMonster(corpseUnit, base);
+						}
+						else if (canBeContained && corpseUnit->getOriginalFaction() == FACTION_HOSTILE)
+						{
+							recoverContainedAlien(corpseUnit, base);
+						}
+						else if (canBeImprisoned && (corpseUnit->getOriginalFaction() == FACTION_HOSTILE || capturedCiv))
 						{
 							recoverPrisoner(corpseUnit, base);
-						}
-						else if (corpseUnit->getOriginalFaction() == FACTION_HOSTILE) // OXCE case
-						{
-							recoverAlien(corpseUnit, base, craft);
 						}
 					}
 				}
@@ -2952,7 +2846,7 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base, C
 
 				if (awardItemPoints)
 				{
-					if (rule->isAlienArtifact() || !_game->getMod()->isFTAGame())
+					if (rule->isAlienArtifact())
 					{
 						addStat("STR_ALIEN_ARTIFACTS_RECOVERED", 1, points);
 					}
@@ -3081,6 +2975,10 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base, C
 */
 void DebriefingState::recoverPrisoner(BattleUnit* from, Base* base)
 {
+	if (!_recoveredCaptiveUnits.insert(from).second)
+	{
+		return;
+	}
 	const RulePrisoner* rules = from->getUnitRules()->getPrisoner();
 	// we check for the rules first
 	if (!rules)
@@ -3104,12 +3002,14 @@ void DebriefingState::recoverPrisoner(BattleUnit* from, Base* base)
 		bool noContainment = base->getAvailablePrisonSpace() <= 0;
 		if (noContainment)
 		{
-			_containmentStateInfo[-1] = 1;
+			_containmentStateInfo[-1] = std::max(_containmentStateInfo[-1], 1);
 		}
 		else
 		{
 			//now we can create a Prisoner!
-			BasePrisoner* p = new BasePrisoner(rules, base, rules->getType(), RNG::randomString(8));
+			BasePrisoner* p = new BasePrisoner(rules, base, rules->getType(),
+				_game->getSavedGame()->getId("STR_CAPTIVE"),
+				_game->getSavedGame()->generateCaptiveDesignation());
 			base->addPrisoner(p);
 			//Populate BasePrisoner data;
 			p->setArmor(_game->getMod()->getArmor(from->getArmor()->getType()));
@@ -3123,7 +3023,7 @@ void DebriefingState::recoverPrisoner(BattleUnit* from, Base* base)
 			}
 			else
 			{
-				p->setRoles(std::vector<SoldierRole>(ROLE_SOLDIER));
+				p->setRoles({ROLE_SOLDIER});
 			}
 
 			p->setFaction(from->getFaction());
@@ -3131,7 +3031,7 @@ void DebriefingState::recoverPrisoner(BattleUnit* from, Base* base)
 			p->setHealth(from->getHealth());
 			p->setCooperation(p->getRules()->getStartingCooperation());
 
-			int morale = from->getMorale() + p->getStats()->bravery * 2;
+			int morale = from->getMorale();
 			if (from->isSurrendering())
 			{
 				morale /= 2;
@@ -3145,11 +3045,95 @@ void DebriefingState::recoverPrisoner(BattleUnit* from, Base* base)
 
 			addStat("STR_PRISONER_CAPTURED", 1, points);
 
-			if (base->getFreePrisonSpace() <= 0 && _limitsEnforced > 0)
+			if (base->getFreePrisonSpace() < 0)
 			{
 				_containmentStateInfo[-1] = 2; // -1 says its a prisoner, 2 = overfull
 			}
 		}
+	}
+}
+
+void DebriefingState::recoverContainedAlien(BattleUnit* from, Base* base)
+{
+	if (!_recoveredCaptiveUnits.insert(from).second)
+	{
+		return;
+	}
+	const auto* rules = from->getUnitRules()->getContainedAlien();
+	if (!rules)
+	{
+		throw Exception("Contained-alien capture profile is missing for unit '" + from->getType() + "'");
+	}
+	if (base->getAvailableContainedAlienSpace() <= 0)
+	{
+		// Match BasePrisoner ownership: without an operational facility there is
+		// never a SaveGame specimen, so no captive identity is consumed.
+		const RuleItem* corpse = rules->getCorpseItem();
+		RaceType type = RACE_TYPE_ALIEN;
+		if (const AlienRace* race = _game->getMod()->getAlienRace(from->getUnitRules()->getRace()))
+		{
+			type = race->getRaceType();
+		}
+		if (type == RACE_TYPE_ALIEN)
+		{
+			addStat("STR_ALIEN_CORPSES_RECOVERED", 1, corpse->getRecoveryPoints());
+		}
+		else if (type == RACE_TYPE_MONSTER)
+		{
+			addStat("STR_MONSTER_CORPSES_RECOVERED", 1, corpse->getRecoveryPoints());
+		}
+		else
+		{
+			addStat("STR_ENEMY_CORPSES_RECOVERED", 1, corpse->getRecoveryPoints());
+		}
+		addItemsToBaseStores(corpse, base, 1, false);
+		_containmentStateInfo[-2] = std::max(_containmentStateInfo[-2], 1);
+		return;
+	}
+	SavedGame* save = _game->getSavedGame();
+	auto* alien = new BaseContainedAlien(rules, base, save->getId("STR_CAPTIVE"),
+		save->generateCaptiveDesignation());
+	alien->initialize(from->getHealth(), from->getBaseStats()->health,
+		from->getFatalWounds(), save);
+	base->addContainedAlien(alien);
+	addStat("STR_CONTAINED_ALIENS_CAPTURED", 1, from->getUnitRules()->getValue());
+	if (base->getFreeContainedAlienSpace() < 0)
+	{
+		_containmentStateInfo[-2] = 2;
+	}
+}
+
+void DebriefingState::recoverContainedMonster(BattleUnit* from, Base* base)
+{
+	if (!_recoveredCaptiveUnits.insert(from).second)
+	{
+		return;
+	}
+	const auto* rules = from->getUnitRules()->getContainedMonster();
+	if (!rules)
+	{
+		throw Exception("Contained-monster capture profile is missing for unit '" + from->getType() + "'");
+	}
+	if (base->getAvailableContainedMonsterSpace() <= 0)
+	{
+		if (const RuleItem* corpse = rules->getCorpseItem())
+		{
+			addStat("STR_MONSTER_CORPSES_RECOVERED", 1, corpse->getRecoveryPoints());
+			addItemsToBaseStores(corpse, base, 1, false);
+		}
+		_containmentStateInfo[-3] = std::max(_containmentStateInfo[-3], 1);
+		return;
+	}
+
+	SavedGame* save = _game->getSavedGame();
+	auto* monster = new BaseContainedMonster(rules, base, save->getId("STR_CAPTIVE"),
+		save->generateCaptiveDesignation());
+	monster->initialize(from->getHealth(), from->getBaseStats()->health);
+	base->addContainedMonster(monster);
+	addStat("STR_LIVE_MONSTERS_RECOVERED", 1, from->getUnitRules()->getValue());
+	if (base->getFreeContainedMonsterSpace() < 0)
+	{
+		_containmentStateInfo[-3] = 2;
 	}
 }
 
@@ -3160,240 +3144,41 @@ void DebriefingState::recoverPrisoner(BattleUnit* from, Base* base)
 */
 void DebriefingState::recoverCivilian(BattleUnit *from, Base *base, Craft* craft)
 {
+	(void)craft; // Retained in the interface for callers shared with other recovery paths.
 	const Unit* rule = from->getUnitRules();
 	if (rule->isRecoverableAsCivilian() == false)
 	{
 		return;
 	}
-	if (rule->isRecoverableAsScientist())
+	const RuleSoldier *ruleSoldier = rule->getCivilianRecoverySoldierType();
+	if (ruleSoldier != 0)
 	{
 		Transfer *t = new Transfer(24);
-		t->setScientists(1);
-		base->getTransfers()->push_back(t);
-	}
-	else if (rule->isRecoverableAsEngineer())
-	{
-		Transfer *t = new Transfer(24);
-		t->setEngineers(1);
-		base->getTransfers()->push_back(t);
-	}
-	else
-	{
-		const RuleSoldier *ruleSoldier = rule->getCivilianRecoverySoldierType();
-		if (ruleSoldier != 0)
+		Soldier *s = _game->getMod()->genSoldier(_game->getSavedGame(), ruleSoldier);
+		YAML::YamlRootNodeReader reader(from->getUnitRules()->getSpawnedSoldierTemplate(), "(spawned soldier template)");
+		s->load(reader.toBase(), _game->getMod(), _game->getSavedGame(), _game->getMod()->getScriptGlobal(), true); // load from soldier template
+		if (!from->getUnitRules()->getSpawnedPersonName().empty())
 		{
-			Transfer *t = new Transfer(24);
-			Target* target = craft;
-			if (!target)
-			{
-				target = base;
-			}
-			int nationality = _game->getSavedGame()->selectSoldierNationalityByLocation(_game->getMod(), ruleSoldier, target);
-			Soldier *s = _game->getMod()->genSoldier(_game->getSavedGame(), ruleSoldier, nationality);
-			YAML::YamlRootNodeReader reader(from->getUnitRules()->getSpawnedSoldierTemplate(), "(spawned soldier template)");
-			s->load(reader.toBase(), _game->getMod(), _game->getSavedGame(), _game->getMod()->getScriptGlobal(), true); // load from soldier template
-			if (!from->getUnitRules()->getSpawnedPersonName().empty())
-			{
-				s->setName(tr(from->getUnitRules()->getSpawnedPersonName()));
-			}
-			else
-			{
-				s->genName();
-			}
-			t->setSoldier(s);
-			base->getTransfers()->push_back(t);
-		}
-		else if (from->getUnitRules()->getPrisoner() != nullptr)
-		{
-			recoverPrisoner(from, base);
-		}
-		else if (!_fta)
-		{
-			const RuleItem *ruleItem = rule->getCivilianRecoveryItemType();
-			if (ruleItem != 0)
-			{
-				if (!ruleItem->isAlien())
-				{
-					addItemsToBaseStores(ruleItem, base, 1, true);
-				}
-				else
-				{
-					const RuleItem *ruleLiveAlienItem = ruleItem;
-					bool killPrisonersAutomatically = base->getAvailableContainment(ruleLiveAlienItem->getPrisonType()) == 0;
-					if (killPrisonersAutomatically)
-					{
-						// check also other bases, maybe we can transfer/redirect prisoners there
-						for (auto* xbase : *_game->getSavedGame()->getBases())
-						{
-							if (xbase->getAvailableContainment(ruleLiveAlienItem->getPrisonType()) > 0)
-							{
-								killPrisonersAutomatically = false;
-								break;
-							}
-						}
-					}
-					if (killPrisonersAutomatically)
-					{
-						_containmentStateInfo[ruleLiveAlienItem->getPrisonType()] = 1; // 1 = not available in any base
-					}
-					else
-					{
-						addItemsToBaseStores(ruleLiveAlienItem, base, 1, false);
-						int availableContainment = base->getAvailableContainment(ruleLiveAlienItem->getPrisonType());
-						int usedContainment = base->getUsedContainment(ruleLiveAlienItem->getPrisonType());
-						int freeContainment = availableContainment - (usedContainment * _limitsEnforced);
-						// no capacity, or not enough capacity
-						if (availableContainment == 0 || freeContainment < 0)
-						{
-							_containmentStateInfo[ruleLiveAlienItem->getPrisonType()] = 2; // 2 = overfull
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
-/**
- * Recovers a live alien from the battlescape.
- * @param from Battle unit to recover.
- * @param base Base to add items to.
- */
-void DebriefingState::recoverAlien(BattleUnit *from, Base *base, Craft* craft)
-{
-	auto *ruleLiveAlienItem = from->getUnitRules()->getLiveAlienGeoscape();
-	auto altUnit = from->getUnitRules()->getAltUnit();
-	if (altUnit != nullptr)
-	{
-		ruleLiveAlienItem = _game->getMod()->getItem(altUnit->getType());
-	}
-
-	// Transform a live alien into one or more recovered items?
-	if (ruleLiveAlienItem && !ruleLiveAlienItem->getRecoveryTransformations().empty())
-	{
-		addItemsToBaseStores(ruleLiveAlienItem, base, 1, true);
-
-		// Ignore everything else, e.g. no points for live/dead aliens (since you did NOT recover them)
-		// Also no points or anything else for the recovered items
-		return;
-	}
-
-	if (!ruleLiveAlienItem)
-	{
-		if (from->getUnitRules()->isRecoverableAsCivilian())
-		{
-			recoverCivilian(from, base, craft);
-			return;
-		}
-
-		// This ain't good! Let's display at least some useful info before we crash...
-		std::ostringstream ss;
-		ss << "Live alien item definition is missing. Unit ID = " << from->getId();
-		ss << "; Type = " << from->getType();
-		ss << "; Status = " << from->getStatus();
-		ss << "; Faction = " << from->getFaction();
-		ss << "; Orig. faction = " << from->getOriginalFaction();
-		if (from->getSpawnUnit())
-		{
-			ss << "; Spawn unit = [" << from->getSpawnUnit()->getType() << "]";
-		}
-		ss << "; isSurrendering = " << from->isSurrendering();
-		if (_fta)
-		{
-			Log(LOG_ERROR) << ss.str(); // we suppose nothing extremly bad happen, just do not recover it...
-			return;
+			s->setName(tr(from->getUnitRules()->getSpawnedPersonName()));
 		}
 		else
 		{
-			throw Exception(ss.str());
+			s->genName();
 		}
+		t->setSoldier(s);
+		base->getTransfers()->push_back(t);
 	}
-
-	bool killPrisonersAutomatically = base->getAvailableContainment(ruleLiveAlienItem->getPrisonType()) == 0;
-	if (killPrisonersAutomatically)
+	else if (from->getUnitRules()->getContainedAlien() != nullptr)
 	{
-		// check also other bases, maybe we can transfer/redirect prisoners there
-		for (auto* xbase : *_game->getSavedGame()->getBases())
-		{
-			if (xbase->getAvailableContainment(ruleLiveAlienItem->getPrisonType()) > 0)
-			{
-				killPrisonersAutomatically = false;
-				break;
-			}
-		}
+		recoverContainedAlien(from, base);
 	}
-	if (killPrisonersAutomatically)
+	else if (from->getUnitRules()->getContainedMonster() != nullptr)
 	{
-		_containmentStateInfo[ruleLiveAlienItem->getPrisonType()] = 1; // 1 = not available in any base
-
-		if (!from->getArmor()->getCorpseBattlescape().empty())
-		{
-			auto* corpseRule = from->getArmor()->getCorpseBattlescape().front();
-			if (corpseRule && corpseRule->isRecoverable())
-			{
-				if (corpseRule->isCorpseRecoverable())
-				{
-					RaceType type = RACE_TYPE_ALIEN;
-					AlienRace* race = _game->getMod()->getAlienRace(from->getUnitRules()->getRace());
-					if (race)
-					{
-						type = _game->getMod()->getAlienRace(from->getUnitRules()->getRace())->getRaceType();
-					}
-
-					if (!_fta || type == RACE_TYPE_ALIEN)
-					{
-						addStat("STR_ALIEN_CORPSES_RECOVERED", 1, corpseRule->getRecoveryPoints());
-					}
-					else if (type == RACE_TYPE_MONSTER)
-					{
-						addStat("STR_MONSTER_CORPSES_RECOVERED", 1, corpseRule->getRecoveryPoints());
-					}
-					else
-					{
-						addStat("STR_ENEMY_CORPSES_RECOVERED", 1, corpseRule->getRecoveryPoints());
-					}
-
-					auto* corpseItem = from->getArmor()->getCorpseGeoscape();
-					addItemsToBaseStores(corpseItem, base, 1, true);
-				}
-			}
-		}
+		recoverContainedMonster(from, base);
 	}
-	else
+	else if (from->getUnitRules()->getPrisoner() != nullptr)
 	{
-		RuleResearch *research = _game->getMod()->getResearch(ruleLiveAlienItem->getType());
-		bool surrendered = (!from->isOut() || from->isIgnored())
-			&& (from->isSurrendering() || _game->getSavedGame()->getSavedBattle()->getChronoTrigger() == FORCE_WIN_SURRENDER);
-
-		auto type = _game->getMod()->getAlienRace(from->getUnitRules()->getRace())->getRaceType();
-		int points = 10;
-		if (_game->getMod()->getGiveScoreAlsoForResearchedArtifacts() || (research != 0 && !_game->getSavedGame()->isResearched(research)))
-		{
-			points = from->getValue() * 2;
-		}
-
-		if (!_fta || type == RACE_TYPE_ALIEN)
-		{
-			addStat(surrendered ? "STR_LIVE_ALIENS_SURRENDERED" : "STR_LIVE_ALIENS_RECOVERED", 1, points);
-		}
-		else if (type == RACE_TYPE_MONSTER)
-		{
-			addStat(surrendered ? "STR_LIVE_MONSTERS_SURRENDERED" : "STR_LIVE_MONSTERS_RECOVERED", 1, points);
-		}
-		else
-		{
-			addStat(surrendered ? "STR_LIVE_ENEMIES_SURRENDERED" : "STR_LIVE_ENEMIES_RECOVERED", 1, points);
-		}
-
-		addItemsToBaseStores(ruleLiveAlienItem, base, 1, false);
-		int availableContainment = base->getAvailableContainment(ruleLiveAlienItem->getPrisonType());
-		int usedContainment = base->getUsedContainment(ruleLiveAlienItem->getPrisonType());
-		int freeContainment = availableContainment - (usedContainment * _limitsEnforced);
-		// no capacity, or not enough capacity
-		if (availableContainment == 0 || freeContainment < 0)
-		{
-			_containmentStateInfo[ruleLiveAlienItem->getPrisonType()] = 2; // 2 = overfull
-		}
+		recoverPrisoner(from, base);
 	}
 }
 

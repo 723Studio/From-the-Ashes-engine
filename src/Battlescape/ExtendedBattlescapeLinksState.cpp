@@ -18,7 +18,6 @@
  */
 
 #include "ExtendedBattlescapeLinksState.h"
-#include "BattlescapeGame.h"
 #include "BattlescapeState.h"
 #include "BriefingState.h"
 #include "InfoboxState.h"
@@ -27,14 +26,10 @@
 #include "../Engine/Game.h"
 #include "../Engine/Action.h"
 #include "../Engine/Options.h"
-#include "../Engine/Unicode.h"
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextButton.h"
 #include "../Battlescape/ExperienceOverviewState.h"
-#include "../Menu/NotesState.h"
-#include "../Mod/Mod.h"
-#include "../Savegame/HitLog.h"
 #include "../Savegame/SavedBattleGame.h"
 
 namespace OpenXcom
@@ -50,33 +45,13 @@ ExtendedBattlescapeLinksState::ExtendedBattlescapeLinksState(BattlescapeState* p
 	// Create objects
 	_window = new Window(this, 256, 180, 32, 10, POPUP_BOTH);
 	_txtTitle = new Text(220, 17, 50, 33);
-	if (Options::oxceFatFingerLinks)
-	{
-		_btnTouch = new TextButton(116, 25, 44, 50);
-		_btnNightVision = new TextButton(116, 25, 161, 50);
-		_btnPersonalLights = new TextButton(116, 25, 44, 76);
-		_btnBrightness = new TextButton(116, 25, 161, 76);
-		_btnTurnDiary = new TextButton(116, 25, 44, 102);
-		_btnBriefing = new TextButton(116, 25, 161, 102);
-		_btnNotes = new TextButton(116, 25, 44, 128);
-		_btnMusic = new TextButton(116, 25, 161, 128);
-		_btnKillAll = new TextButton(116, 25, 44, 154);
-		_btnOk = new TextButton(116, 25, 161, 154);
-	}
-	else
-	{
-		_btnTouch = new TextButton(220, 12, 50, 50);
-		_btnNightVision = new TextButton(220, 12, 50, 63);
-		_btnPersonalLights = new TextButton(220, 12, 50, 76);
-		_btnBrightness = new TextButton(220, 12, 50, 89);
-		_btnTurnDiary = new TextButton(220, 12, 50, 102);
-		_btnBriefing = new TextButton(220, 12, 50, 115);
-		_btnNotes = new TextButton(220, 12, 50, 128);
-		_btnMusic = new TextButton(220, 12, 50, 141);
-		_btnKillAll = new TextButton(220, 12, 50, 154);
-		_btnOk = new TextButton(220, 12, 50, 167);
-	}
-
+	_btnTouch = new TextButton(220, 16, 50, 50);
+	_btnNightVision = new TextButton(220, 16, 50, 69);
+	_btnTurnDiary = new TextButton(220, 16, 50, 88);
+	_btnBriefing = new TextButton(220, 16, 50, 107);
+	_btnExperienceOverview = new TextButton(220, 16, 50, 126);
+	_btnMultilevel = new TextButton(220, 16, 50, 145);
+	_btnOk = new TextButton(220, 16, 50, 164);
 	// Set palette
 	setInterface("oxceLinks", false, _save);
 
@@ -86,13 +61,10 @@ ExtendedBattlescapeLinksState::ExtendedBattlescapeLinksState(BattlescapeState* p
 
 	add(_btnTouch, "button", "oxceLinks");
 	add(_btnNightVision, "button", "oxceLinks");
-	add(_btnPersonalLights, "button", "oxceLinks");
-	add(_btnBrightness, "button", "oxceLinks");
 	add(_btnTurnDiary, "button", "oxceLinks");
 	add(_btnBriefing, "button", "oxceLinks");
-	add(_btnNotes, "button", "oxceLinks");
-	add(_btnMusic, "button", "oxceLinks");
-	add(_btnKillAll, "button", "oxceLinks");
+	add(_btnExperienceOverview, "button", "oxceLinks");
+	add(_btnMultilevel, "button", "oxceLinks");
 
 	centerAllSurfaces();
 
@@ -113,33 +85,17 @@ ExtendedBattlescapeLinksState::ExtendedBattlescapeLinksState(BattlescapeState* p
 	_btnNightVision->setText(tr("STR_TOGGLE_NIGHT_VISION"));
 	_btnNightVision->onMouseClick((ActionHandler)&ExtendedBattlescapeLinksState::btnNightVisionClick);
 
-	_btnPersonalLights->setText(tr("STR_TOGGLE_PERSONAL_LIGHTING"));
-	_btnPersonalLights->onMouseClick((ActionHandler)&ExtendedBattlescapeLinksState::btnPersonalLightsClick);
-
-	_btnBrightness->setText(tr("STR_TOGGLE_BRIGHTNESS"));
-	_btnBrightness->onMouseClick((ActionHandler)&ExtendedBattlescapeLinksState::btnBrightnessClick);
-
 	_btnTurnDiary->setText(tr("STR_HIT_LOG"));
 	_btnTurnDiary->onMouseClick((ActionHandler)&ExtendedBattlescapeLinksState::btnTurnDiaryClick);
 
 	_btnBriefing->setText(tr("STR_BRIEFING"));
 	_btnBriefing->onMouseClick((ActionHandler)&ExtendedBattlescapeLinksState::btnBriefingClick);
 
-	_btnNotes->setText(tr("STR_NOTES"));
-	_btnNotes->onMouseClick((ActionHandler)&ExtendedBattlescapeLinksState::btnNotesClick);
+	_btnExperienceOverview->setText(tr("STR_EXPERIENCE_OVERVIEW"));
+	_btnExperienceOverview->onMouseClick((ActionHandler)&ExtendedBattlescapeLinksState::btnExperienceOverviewClick);
 
-	_btnMusic->setText(tr("STR_SELECT_MUSIC_TRACK"));
-	_btnMusic->onMouseClick((ActionHandler)&ExtendedBattlescapeLinksState::btnMusicClick);
-
-	if (Options::debug)
-	{
-		_btnKillAll->setText(_save->getDebugMode() ? tr("STR_DEBUG_KILL_ALL_ALIENS") : tr("STR_TOGGLE_DEBUG_MODE"));
-	}
-	else
-	{
-		_btnKillAll->setText(tr("STR_MULTI_LEVEL_VIEW"));
-	}
-	_btnKillAll->onMouseClick((ActionHandler)&ExtendedBattlescapeLinksState::btnKillAllClick);
+	_btnMultilevel->setText(tr("STR_MULTI_LEVEL_VIEW"));
+	_btnMultilevel->onMouseClick((ActionHandler)&ExtendedBattlescapeLinksState::btnMultilevelClick);
 
 	applyBattlescapeTheme("oxceLinks");
 }
@@ -156,17 +112,6 @@ void ExtendedBattlescapeLinksState::btnNightVisionClick(Action *)
 	_parent->btnNightVisionClick(nullptr);
 }
 
-void ExtendedBattlescapeLinksState::btnPersonalLightsClick(Action *)
-{
-	_game->popState();
-	_parent->btnPersonalLightingClick(nullptr);
-}
-
-void ExtendedBattlescapeLinksState::btnBrightnessClick(Action *)
-{
-	_game->popState();
-	_parent->getMap()->toggleDebugVisionMode();
-}
 
 void ExtendedBattlescapeLinksState::btnTurnDiaryClick(Action *)
 {
@@ -188,48 +133,17 @@ void ExtendedBattlescapeLinksState::btnBriefingClick(Action *)
 	_game->pushState(new BriefingState(0, 0, true));
 }
 
-void ExtendedBattlescapeLinksState::btnNotesClick(Action *)
+void ExtendedBattlescapeLinksState::btnExperienceOverviewClick(Action *)
 {
 	_game->popState();
 	_game->pushState(new ExperienceOverviewState(_parent));
 }
 
-void ExtendedBattlescapeLinksState::btnMusicClick(Action *)
+void ExtendedBattlescapeLinksState::btnMultilevelClick(Action*)
 {
 	_game->popState();
-	_parent->btnSelectMusicTrackClick(nullptr);
-}
-
-void ExtendedBattlescapeLinksState::btnKillAllClick(Action *)
-{
-	_game->popState();
-
-	if (!Options::debug)
-	{
-		_parent->btnShowLayersClickOrig(nullptr);
-		return;
-	}
-
-	if (_save->getDebugMode())
-	{
-		// kill all
-		_parent->debug("Influenza bacterium dispersed");
-		for (auto* unit : *_save->getUnits())
-		{
-			if (unit->getOriginalFaction() == FACTION_HOSTILE && !unit->isOut())
-			{
-				unit->damage(Position(0, 0, 0), 1000, _game->getMod()->getDamageType(DT_MELEE), _save, { });
-			}
-		}
-		_save->getBattleGame()->checkForCasualties(nullptr, BattleActionAttack{}, true, false);
-		_save->getBattleGame()->handleState();
-	}
-	else
-	{
-		// enable debug mode
-		_save->setDebugMode();
-		_parent->debug("Debug Mode");
-	}
+	_parent->btnShowLayersClickOrig(nullptr);
+	return;
 }
 
 /**

@@ -33,7 +33,6 @@
 #include "../Mod/Mod.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/SavedBattleGame.h"
-#include "../FTA/MasterMind.h"
 #include "Action.h"
 #include "Exception.h"
 #include "Options.h"
@@ -41,11 +40,11 @@
 #include "FileMap.h"
 #include "Unicode.h"
 #include "../Ufopaedia/UfopaediaStartState.h"
-#include "../Menu/NotesState.h"
 #include "../Geoscape/GeoscapeState.h"
 #include "../Menu/TestState.h"
 #include <algorithm>
 #include "../fallthrough.h"
+#include "../Battlescape/MapEditor.h"
 
 namespace OpenXcom
 {
@@ -57,11 +56,16 @@ const double Game::VOLUME_GRADIENT = 10.0;
  * creates the display screen and sets up the cursor.
  * @param title Title of the game window.
  */
-Game::Game(const std::string &title) : _screen(0), _cursor(0), _lang(0), _save(0), _mod(0), _mind(0), _quit(false), _init(false), _update(false),  _mouseActive(true), _timeUntilNextFrame(0),
-	_ctrl(false), _alt(false), _shift(false), _rmb(false), _mmb(false), _scrollStep(1)
+Game::Game(const std::string &title) : _screen(0), _cursor(0), _lang(0), _save(0), _mod(0), _quit(false), _init(false), _update(false),  _mouseActive(true), _timeUntilNextFrame(0),
+	_ctrl(false), _alt(false), _shift(false), _rmb(false), _mmb(false), _scrollStep(1), _mapEditor(0)
 {
 	Options::reload = false;
 	Options::mute = false;
+
+#ifdef __NO_OPENGL
+	Options::useOpenGL = false;
+	Options::newOpenGL = false;
+#endif
 
 	// Initialize SDL
 	if (SDL_Init(SDL_INIT_VIDEO) < 0)
@@ -106,8 +110,6 @@ Game::Game(const std::string &title) : _screen(0), _cursor(0), _lang(0), _save(0
 	_lang = new Language();
 
 	_timeOfLastFrame = 0;
-
-	_mind = new MasterMind(this);
 }
 
 /**
@@ -128,10 +130,10 @@ Game::~Game()
 	delete _cursor;
 	delete _lang;
 	delete _save;
-	delete _mind;
 	delete _mod;
 	delete _screen;
 	delete _fpsCounter;
+	delete _mapEditor;
 
 	Mix_CloseAudio();
 
@@ -230,10 +232,17 @@ void Game::run()
 				case SDL_VIDEORESIZE:
 					if (Options::allowResize)
 					{
-						if (!startupEvent)
+						const int width = std::max(Screen::ORIGINAL_WIDTH, _event.resize.w);
+						const int height = std::max(Screen::ORIGINAL_HEIGHT, _event.resize.h);
+						const bool redundantStartupEvent = startupEvent &&
+							_event.resize.w == Options::displayWidth &&
+							_event.resize.h == Options::displayHeight;
+
+						startupEvent = false;
+						if (!redundantStartupEvent)
 						{
-							Options::newDisplayWidth = Options::displayWidth = std::max(Screen::ORIGINAL_WIDTH, _event.resize.w);
-							Options::newDisplayHeight = Options::displayHeight = std::max(Screen::ORIGINAL_HEIGHT, _event.resize.h);
+							Options::newDisplayWidth = Options::displayWidth = width;
+							Options::newDisplayHeight = Options::displayHeight = height;
 							int dX = 0, dY = 0;
 							Screen::updateScale(Options::battlescapeScale, Options::baseXBattlescape, Options::baseYBattlescape, false);
 							Screen::updateScale(Options::geoscapeScale, Options::baseXGeoscape, Options::baseYGeoscape, false);
@@ -242,10 +251,6 @@ void Game::run()
 								state->resize(dX, dY);
 							}
 							_screen->resetDisplay();
-						}
-						else
-						{
-							startupEvent = false;
 						}
 					}
 					break;
@@ -289,24 +294,6 @@ void Game::run()
 							Options::captureMouse = (SDL_GrabMode)(!Options::captureMouse);
 							SDL_WM_GrabInput(Options::captureMouse);
 						}
-						// "ctrl-n" notes UI
-						else if (action.getDetails()->key.keysym.sym == SDLK_n && isCtrlPressed() && !isAltPressed())
-						{
-							if (_save && !containsNotesState())
-							{
-								if (_save->getSavedBattle())
-								{
-									if (!_save->getSavedBattle()->isBattlescapeStateBusy())
-									{
-										pushState(new NotesState(OPT_BATTLESCAPE));
-									}
-								}
-								else
-								{
-									pushState(new NotesState(OPT_GEOSCAPE));
-								}
-							}
-						}
 						else if (Options::debug)
 						{
 							if (action.getDetails()->key.keysym.sym == SDLK_t && isCtrlPressed())
@@ -338,7 +325,7 @@ void Game::run()
 			// Process logic
 			_states.back()->think();
 			_fpsCounter->think();
-			if (Options::FPS > 0 && !(Options::useOpenGL && Options::vSyncForOpenGL))
+			if (Options::FPS > 0 && !(Screen::useOpenGL() && Options::vSyncForOpenGL))
 			{
 				// Update our FPS delay time based on the time of the last draw.
 				int fps = SDL_GetAppState() & SDL_APPINPUTFOCUS ? Options::FPS : Options::FPSInactive;
@@ -543,23 +530,6 @@ bool Game::containsUfopaediaStartState() const
 	{
 		auto* pedia = dynamic_cast<UfopaediaStartState*>(state);
 		if (pedia)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-/**
- * Returns whether a NotesState is in the background.
- * @return Is there a NotesState in the background?
- */
-bool Game::containsNotesState() const
-{
-	for (auto* state : _states)
-	{
-		auto* notes = dynamic_cast<NotesState*>(state);
-		if (notes)
 		{
 			return true;
 		}
@@ -811,6 +781,24 @@ void Game::resetTouchButtonFlags()
 	_rmb = false;
 	_mmb = false;
 	_scrollStep = 1;
+}
+
+/**
+ * Sets the pointer to the Map Editor to save it for multiple states.
+ * @param mapEditor Pointer to the new Map Editor.
+ */
+void Game::setMapEditor(MapEditor *mapEditor)
+{
+	delete _mapEditor;
+	_mapEditor = mapEditor;
+}
+
+/**
+ * Gets the Map Editor.
+ */
+MapEditor *Game::getMapEditor()
+{
+	return _mapEditor;
 }
 
 }

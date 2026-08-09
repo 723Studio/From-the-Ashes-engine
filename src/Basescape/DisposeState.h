@@ -19,10 +19,8 @@
  */
 #include "../Engine/State.h"
 #include "../Savegame/Transfer.h"
-#include "../Menu/OptionsBaseState.h"
 #include <vector>
 #include <string>
-#include <set>
 
 namespace OpenXcom
 {
@@ -30,7 +28,6 @@ namespace OpenXcom
 class TextButton;
 class Window;
 class Text;
-class TextEdit;
 class TextList;
 class ComboBox;
 class Timer;
@@ -47,8 +44,7 @@ class DisposeState : public State
 private:
 	Base* _base;
 	DebriefingState* _debriefingState;
-	TextButton* _btnOk, * _btnCancel, * _btnTransfer;
-	TextEdit* _btnQuickSearch;
+	TextButton* _btnOk, * _btnCancel;
 	Window* _window;
 	Text* _txtTitle, * _txtSales, * _txtFunds, * _txtQuantity, * _txtSell, * _txtValue, * _txtSpaceUsed;
 	ComboBox* _cbxCategory;
@@ -62,8 +58,6 @@ private:
 	double _spaceChange;
 	Timer* _timerInc, * _timerDec;
 	Uint8 _ammoColor;
-	OptionsOrigin _origin;
-	bool _reset;
 	bool _sellAllButOne;
 	bool _delayedInitDone;
 	/// Gets the category of the current selection.
@@ -74,7 +68,7 @@ private:
 	TransferRow& getRow() { return _items[_rows[_sel]]; }
 public:
 	/// Creates the Sell state.
-	DisposeState(Base* base, DebriefingState* debriefingState, OptionsOrigin origin = OPT_GEOSCAPE);
+	DisposeState(Base* base, DebriefingState* debriefingState);
 	void delayedInit();
 	/// Cleans up the Sell state.
 	~DisposeState();
@@ -88,11 +82,6 @@ public:
 	void btnOkClick(Action* action);
 	/// Handler for clicking the Cancel button.
 	void btnCancelClick(Action* action);
-	/// Handler for clicking the Transfer button.
-	void btnTransferClick(Action* action);
-	/// Handlers for Quick Search.
-	void btnQuickSearchToggle(Action* action);
-	void btnQuickSearchApply(Action* action);
 	/// Handler for pressing the "Sell all" hotkey.
 	void btnSellAllClick(Action* action);
 	/// Handler for pressing the "Sell all but one" hotkey.

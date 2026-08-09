@@ -17,6 +17,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "CovertOperation.h"
+#include <algorithm>
 #include "SerializationHelper.h"
 #include "../fmath.h"
 #include "../Engine/Language.h"
@@ -33,25 +34,26 @@
 #include "../Savegame/ItemContainer.h"
 #include "../Savegame/Soldier.h"
 #include "../Savegame/DiplomacyFaction.h"
-#include "../Savegame/AlienMission.h"
 #include "../Savegame/SavedBattleGame.h"
 #include "../Savegame/AlienBase.h"
+#include "../Savegame/AlienMission.h"
 #include "../Mod/Mod.h"
 #include "../Mod/RuleCovertOperation.h"
 #include "../Mod/RuleSoldier.h"
 #include "../Mod/RuleDiplomacyFaction.h"
 #include "../Mod/RuleAlienMission.h"
-#include "../Mod/RuleRegion.h"
 #include "../Mod/AlienDeployment.h"
 #include "../Mod/AlienRace.h"
 #include "../Mod/Unit.h"
-#include "../FTA/MasterMind.h"
+#include "../Geoscape/GeoscapeState.h"
+#include "../Ufopaedia/Ufopaedia.h"
 
 namespace OpenXcom
 {
 CovertOperation::CovertOperation(const RuleCovertOperation* rule, const Mod* mod, Base* base, int cost, int chances) :
 	_rule(rule), _mod(mod), _base(base), _spent(0), _cost(cost), _successChance(chances),
-	_results(0), _inBattlescape(false), _hasBattlescapeResolve(false), _over(false), _hasPsi(false), _progressEventSpawned(false)
+	_results(0), _inBattlescape(false), _hasBattlescapeResolve(false), _over(false), _hasPsi(false), _progressEventSpawned(false), _cancelled(false),
+	_resultNotificationClaimed(false)
 {
 	_items = new ItemContainer();
 	if (base != 0)
@@ -63,6 +65,7 @@ CovertOperation::CovertOperation(const RuleCovertOperation* rule, const Mod* mod
 CovertOperation::~CovertOperation()
 {
 	delete _items;
+	delete _results;
 }
 
 /**
@@ -79,7 +82,15 @@ void CovertOperation::load(const YAML::YamlNodeReader& reader)
 	reader.tryRead("hasPsi", _hasPsi);
 	reader.tryRead("over", _over);
 	reader.tryRead("progressEventSpawned", _progressEventSpawned);
+	reader.tryRead("cancelled", _cancelled);
+	reader.tryRead("finishedResult", _finishedResult);
+	reader.tryRead("researchName", _researchName);
 	_items->load(reader["items"], _mod);
+	if (const auto& resultsReader = reader["results"])
+	{
+		_results = new CovertOperationResults(getOperationName(), _finishedResult, "0");
+		_results->load(resultsReader);
+	}
 }
 
 /**
@@ -97,11 +108,24 @@ void CovertOperation::save(YAML::YamlNodeWriter writer) const
 	writer.write("inBattlescape", _inBattlescape);
 	writer.write("hasBattlescapeResolve", _hasBattlescapeResolve);
 	writer.write("progressEventSpawned", _progressEventSpawned);
+	writer.write("finishedResult", _finishedResult);
+	if (!_researchName.empty())
+	{
+		writer.write("researchName", _researchName);
+	}
+	if (_cancelled)
+	{
+		writer.write("cancelled", _cancelled);
+	}
 	if (_over)
 	{
 		writer.write("over", _over);
 	}
 	_items->save(writer["items"]);
+	if (_results)
+	{
+		_results->save(writer["results"]);
+	}
 }
 
 
@@ -129,12 +153,120 @@ std::vector<Soldier*> CovertOperation::getSoldiers()
 	std::vector<Soldier*> soldiers;
 	for (auto& soldier : *_base->getSoldiers())
 	{
-		if (soldier->getCovertOperation() != 0 && soldier->getCovertOperation()->getOperationName() == this->getOperationName())
+		if (soldier->getCovertOperation() == this)
 		{
 			soldiers.push_back(soldier);
 		}
 	}
 	return soldiers;
+}
+
+bool CovertOperation::claimResultNotification()
+{
+	if (_resultNotificationClaimed || _over || _inBattlescape)
+	{
+		return false;
+	}
+	_resultNotificationClaimed = true;
+	return true;
+}
+
+void CovertOperationResults::load(const YAML::YamlNodeReader& reader)
+{
+	reader.tryRead("operationName", _operationName);
+	reader.tryRead("result", _result);
+	reader.tryRead("finishDate", _finishDate);
+	reader.tryRead("score", _score);
+	reader.tryRead("funds", _funds);
+	reader.tryRead("items", _bountyItems);
+	reader.tryRead("reputation", _reputation);
+	reader.tryRead("soldierDamage", _soldierDamage);
+	reader.tryRead("specialMessage", _specialMessage);
+	reader.tryRead("newResearchNotifications", _newResearchNotifications);
+	reader.tryRead("containedAlienStudiesUnblocked", _containedAlienStudiesUnblocked);
+	reader.tryRead("researchArticleIds", _researchArticleIds);
+	for (const auto& promotionReader : reader["promotions"].children())
+	{
+		RolePromotion promotion;
+		int role = static_cast<int>(ROLE_NONE);
+		promotionReader.tryRead("soldierId", promotion.soldierId);
+		promotionReader.tryRead("role", role);
+		promotionReader.tryRead("previousRank", promotion.previousRank);
+		promotionReader.tryRead("newRank", promotion.newRank);
+		promotion.role = static_cast<SoldierRole>(role);
+		_promotions.push_back(promotion);
+	}
+	for (const auto& statsReader : reader["soldierStats"].children())
+	{
+		std::string soldierName;
+		UnitStats stats;
+		statsReader.tryRead("name", soldierName);
+		statsReader.tryRead("stats", stats);
+		_soldierStats.emplace_back(soldierName, stats);
+	}
+}
+
+void CovertOperationResults::save(YAML::YamlNodeWriter writer) const
+{
+	writer.setAsMap();
+	writer.write("operationName", _operationName);
+	writer.write("result", _result);
+	writer.write("finishDate", _finishDate);
+	writer.write("score", _score);
+	writer.write("funds", _funds);
+	if (!_bountyItems.empty())
+		writer.write("items", _bountyItems);
+	if (!_reputation.empty())
+		writer.write("reputation", _reputation);
+	if (!_soldierDamage.empty())
+		writer.write("soldierDamage", _soldierDamage);
+	if (!_specialMessage.empty())
+		writer.write("specialMessage", _specialMessage);
+	if (!_newResearchNotifications.empty())
+		writer.write("newResearchNotifications", _newResearchNotifications);
+	if (_containedAlienStudiesUnblocked)
+		writer.write("containedAlienStudiesUnblocked", _containedAlienStudiesUnblocked);
+	if (!_researchArticleIds.empty())
+		writer.write("researchArticleIds", _researchArticleIds);
+	if (!_promotions.empty())
+	{
+		auto promotionsWriter = writer["promotions"];
+		promotionsWriter.setAsSeq();
+		for (const auto& promotion : _promotions)
+		{
+			auto entryWriter = promotionsWriter.write();
+			entryWriter.setAsMap();
+			entryWriter.write("soldierId", promotion.soldierId);
+			entryWriter.write("role", static_cast<int>(promotion.role));
+			entryWriter.write("previousRank", promotion.previousRank);
+			entryWriter.write("newRank", promotion.newRank);
+		}
+	}
+	if (!_soldierStats.empty())
+	{
+		auto statsWriter = writer["soldierStats"];
+		statsWriter.setAsSeq();
+		for (const auto& soldierStats : _soldierStats)
+		{
+			auto entryWriter = statsWriter.write();
+			entryWriter.setAsMap();
+			entryWriter.write("name", soldierStats.first);
+			entryWriter.write("stats", soldierStats.second);
+		}
+	}
+}
+
+void CovertOperationResults::addPromotion(const RolePromotion& promotion)
+{
+	const auto existing = std::find_if(_promotions.begin(), _promotions.end(),
+		[&promotion](const RolePromotion& candidate)
+		{
+			return candidate.soldierId == promotion.soldierId && candidate.role == promotion.role;
+		});
+	if (existing == _promotions.end())
+	{
+		_promotions.push_back(promotion);
+	}
 }
 
 /**
@@ -189,14 +321,37 @@ bool CovertOperation::think(Game& engine, const Globe& globe)
 	SavedGame& save = *engine.getSavedGame();
 	if (_over)
 	{
-		finishOperation(); //case we should over it ASAP
 		return false;
+	}
+	// Results are persisted before any optional battlescape is created. Never
+	// roll them a second time after load: while combat is active there is nothing
+	// to report, and afterwards the stored strategic result must be shown as-is.
+	if (_results || _hasBattlescapeResolve)
+	{
+		return !_inBattlescape;
+	}
+	if (_cancelled)
+	{
+		return true;
+	}
+	for (const auto& research : _rule->getDisabledByResearch())
+	{
+		if (save.isResearched(research, false))
+		{
+			// Cancellation is a distinct terminal outcome: do not advance time,
+			// roll success, apply side effects, or erase from the active vector here.
+			_cancelled = true;
+			return true;
+		}
 	}
 
 	// are we there yet?
 	if (_spent < _cost)
 	{
 		++_spent;
+	}
+	if (_spent < _cost)
+	{
 		//should we spawn ongoing event?
 		std::string progressEvent = _rule->chooseProgressEvent();
 		if (!progressEvent.empty())
@@ -253,8 +408,8 @@ bool CovertOperation::think(Game& engine, const Globe& globe)
 	int funds = 0;
 	std::string eventName;
 	std::vector<std::string> researchList;
-	std::map<const RuleItem*, int> itemsToAdd;
-	std::string missionName;
+	std::map<const RuleItem*, int> resultItems;
+	const RuleAlienMission* missionRules = nullptr;
 	std::string deploymentName;
 	std::map<std::string, int> reputationScore;
 
@@ -267,7 +422,7 @@ bool CovertOperation::think(Game& engine, const Globe& globe)
 		researchList = _rule->getSuccessResearchList();
 		eventName = _rule->getSuccessEvent();
 		reputationScore = _rule->getSuccessReputationScoreList();
-		missionName = _rule->chooseGenSuccessMissionType();
+		missionRules = _rule->chooseGenSuccessMission();
 		deploymentName = _rule->chooseGenInstantSuccessDeploymentType();
 		if (!_rule->getSuccessItems().empty())
 		{
@@ -278,14 +433,15 @@ bool CovertOperation::think(Game& engine, const Globe& globe)
 			}
 
 			int runningTotal = 0;
+			int itemSetRoll = RNG::generate(1, totalWeight);
 			for (const auto& itemSet : _rule->getSuccessItems())
 			{
 				runningTotal += itemSet.first;
-				if (runningTotal >= RNG::generate(1, totalWeight))
+				if (runningTotal >= itemSetRoll)
 				{
 					for (const auto& i : itemSet.second)
 					{
-						itemsToAdd[i.first] += i.second;
+						resultItems[i.first] += i.second;
 					}
 					break; // break outer loop
 				}
@@ -301,7 +457,7 @@ bool CovertOperation::think(Game& engine, const Globe& globe)
 		researchList = _rule->getFailureResearchList();
 		eventName = _rule->getFailureEvent();
 		reputationScore = _rule->getFailureReputationScoreList();
-		missionName = _rule->chooseGenFailureMissionType();
+		missionRules = _rule->chooseGenFailureMission();
 		deploymentName = _rule->chooseGenInstantTrapDeploymentType();
 		if (!_rule->getFailureItems().empty())
 		{
@@ -311,14 +467,15 @@ bool CovertOperation::think(Game& engine, const Globe& globe)
 				totalWeight += itemSet.first;
 			}
 			int runningTotal = 0;
+			int itemSetRoll = RNG::generate(1, totalWeight);
 			for (const auto& itemSet : _rule->getFailureItems())
 			{
 				runningTotal += itemSet.first;
-				if (runningTotal >= RNG::generate(1, totalWeight))
+				if (runningTotal >= itemSetRoll)
 				{
 					for (const auto& i : itemSet.second)
 					{
-						itemsToAdd[i.first] += i.second;
+						resultItems[i.first] += i.second;
 					}
 					break; // break outer loop
 				}
@@ -330,12 +487,12 @@ bool CovertOperation::think(Game& engine, const Globe& globe)
 	{
 		save.addResearchScore(score);
 		_results->addScore(score);
-		engine.getMasterMind()->updateLoyalty(score, XCOM_GEOSCAPE);
+		engine.getGeoscapeState()->updateLoyalty(score, XCOM_GEOSCAPE);
 	}
 
 	if (loyalty != 0)
 	{
-		engine.getMasterMind()->updateLoyalty(loyalty, ABSOLUTE_COEF);
+		engine.getGeoscapeState()->updateLoyalty(loyalty, ABSOLUTE_COEF);
 	}
 
 	if (funds != 0)
@@ -344,9 +501,9 @@ bool CovertOperation::think(Game& engine, const Globe& globe)
 		_results->addFunds(funds);
 	}
 
-	if (!itemsToAdd.empty())
+	if (!resultItems.empty())
 	{
-		for (auto& addItems : itemsToAdd)
+		for (auto& addItems : resultItems)
 		{
 			this->getItems()->addItem(addItems.first, addItems.second);
 			_results->addItem(addItems.first->getType(), addItems.second);
@@ -374,37 +531,41 @@ bool CovertOperation::think(Game& engine, const Globe& globe)
 		if (!possibilities.empty())
 		{
 			const RuleResearch* eventResearch = possibilities.at(0);
-			save.addFinishedResearch(eventResearch, &mod, _base, true);
-			_researchName = eventResearch->getName();
+			std::vector<RuleResearch*> researchBefore;
+			save.getAvailableResearchProjects(researchBefore, &mod, _base);
+			ResearchDiscoveryResult discovery = save.completeResearchDiscovery(
+				eventResearch, &mod, _base, true, true, false);
+			std::vector<std::string> newlyDiscoveredResearchIds;
+			for (const auto* discovered : discovery.newlyDiscovered)
+			{
+				newlyDiscoveredResearchIds.push_back(discovered->getName());
+			}
+			if (GeoscapeState* geoscape = engine.getGeoscapeState())
+			{
+				_results->setContainedAlienStudiesUnblocked(
+					geoscape->hasNewlyUnblockedContainedAlienStudies(
+						newlyDiscoveredResearchIds));
+			}
+			const auto articleIds = Ufopaedia::getResearchArticleIds(
+				&save, &mod, discovery);
+			_results->setResearchArticleIds(articleIds);
+			_results->setNewResearchNotifications(
+				save.getNewlyAvailableResearchIds(researchBefore, &mod, _base));
+			_researchName = articleIds.empty() ? std::string() : articleIds.front();
 			_results->setSpecialMessage("STR_NEW_DATA_ACQUIRED");
-
-			if (!eventResearch->getLookup().empty())
-			{
-				const RuleResearch* lookupResearch = mod.getResearch(eventResearch->getLookup(), true);
-				save.addFinishedResearch(lookupResearch, &mod, _base, true);
-				_researchName = lookupResearch->getName();
-			}
-			if (auto bonus = save.selectGetOneFree(eventResearch))
-			{
-				save.addFinishedResearch(bonus, &mod, _base, true);
-				if (!bonus->getLookup().empty())
-				{
-					save.addFinishedResearch(mod.getResearch(bonus->getLookup(), true), &mod, _base, true);
-				}
-			}
-			// check and interrupt alien missions if necessary (based on unlocked research)
-			for (auto am : save.getAlienMissions())
-			{
-				auto interruptResearchName = am->getRules().getInterruptResearch();
-				if (!interruptResearchName.empty())
-				{
-					if (interruptResearchName == eventResearch->getName())
-					{
-						am->setInterrupted(true);
-					}
-				}
-			}
 		}
+	}
+
+	// Custom counters are updated at strategic resolution, before any optional
+	// tactical deployment. Increases are applied first, matching research side
+	// effect ordering when both fields target the same counter.
+	for (const auto& counter : _rule->getIncreaseCounter())
+	{
+		save.increaseCustomCounter(counter, _rule->getCounterValue());
+	}
+	for (const auto& counter : _rule->getDecreaseCounter())
+	{
+		save.decreaseCustomCounter(counter, _rule->getCounterValue());
 	}
 
 	if (!reputationScore.empty())
@@ -453,123 +614,16 @@ bool CovertOperation::think(Game& engine, const Globe& globe)
 	{
 		for (int i = 0; i < kv.second; ++i)
 		{
-			int nationality = engine.getSavedGame()->selectSoldierNationalityByLocation(&mod, kv.first, nullptr); //#FINNIKTODO more logic for defining nationality
-			Soldier* soldier = mod.genSoldier(&save, kv.first, nationality);
+			Soldier* soldier = mod.genSoldier(&save, kv.first);
 			_base->getSoldiers()->push_back(soldier);
 			soldier->setCovertOperation(this);
 			soldier->setJustSaved(true);
 		}
 	}
 
-	if (!missionName.empty())
+	if (missionRules)
 	{
-		// let's define variables for alien mission first
-		int month = save.getMonthsPassed();
-		const RuleAlienMission* missionRules = mod.getAlienMission(missionName);
-		if (missionRules == 0)
-		{
-			throw Exception("Error processing alien mission generation for covert operation named: " + this->getOperationName() + ", mission type: " + missionName + " is not defined");
-		}
-		std::string targetRegion;
-		std::string missionRace;
-		int targetZone = missionRules->getSpawnZone();
-
-		bool targetBase = RNG::percent(missionRules->getTargetBaseOdds());
-		bool placed = false;
-		bool hasBase = true;
-		bool hasZone = true;
-		int tries = 0;
-
-		while (!placed || tries < 50)
-		{
-			if (missionRules->hasRegionWeights())
-			{
-				if (tries > 35) month = 0; //lets check all regions
-				targetRegion = missionRules->generateRegion(month);
-			}
-			else //case to pick at random as alien mission rules has no region defined
-			{
-				targetRegion = mod.getRegionsList().at(RNG::generate(0, mod.getRegionsList().size() - 1));
-			}
-
-			RuleRegion* region = mod.getRegion(targetRegion, true);
-			if (!region)
-			{
-				throw Exception("Error processing alien mission named: " + missionName + ", region named: " + targetRegion + " is not defined");
-			}
-			if ((int)(region->getMissionZones().size()) > targetZone)
-			{
-				hasZone = true;
-			}
-
-			if (targetBase) // we should choose region that has any xcom base
-			{
-				hasBase = false;
-				std::string baseRegion;
-				if (tries < 2)
-				{
-					baseRegion = save.locateRegion(this->getBase()->getLongitude(), this->getBase()->getLatitude())->getRules()->getType();
-					if (baseRegion == targetRegion)
-					{
-						hasBase = true;
-					}
-				}
-				else
-				{
-					for (std::vector<Base*>::iterator i = save.getBases()->begin(); i != save.getBases()->end(); ++i)
-					{
-						baseRegion = save.locateRegion((*i)->getLongitude(), (*i)->getLatitude())->getRules()->getType();
-						if (baseRegion == targetRegion)
-						{
-							hasBase = true;
-						}
-					}
-				}
-			}
-			tries++;
-			if (hasBase && hasZone) // all checks passed!
-			{
-				placed = true;
-			}
-		}
-
-		if(!placed)
-		{
-			Log(LOG_ERROR) << "An error occurred during the processing of the result of a covert operation:  " << this->getOperationName() << " ! Failed to choose right region for mission: " << missionName <<
-				". Some alien mission rules could be ignored!";
-		}
-
-		missionRace = missionRules->generateRace(month);
-		if (missionRace.empty())
-		{
-			if (mod.isFTAGame())
-			{
-				missionRace = "STR_MIB";
-				Log(LOG_ERROR) << "An error occurred during the processing of the result of a covert operation:  " << this->getOperationName() << " ! In the rules of the alien mission " << missionName <<
-					" no alien race has been set! As we run FTAGame race set to " << missionRace;
-			}
-			else
-			{
-				Log(LOG_ERROR) << "An error occurred during the processing of the result of a covert operation:  " << this->getOperationName() << " ! In the rules of the alien mission " << missionName <<
-					" no alien race has been set, so it will be defined at random!";
-				auto raceList = mod.getAlienRacesList();
-				int pick = RNG::generate(0, raceList.size() - 1);
-				missionRace = raceList.at(pick);
-			}
-		}
-		if (mod.getAlienRace(missionRace) == 0)
-		{
-			throw Exception("Error processing alien mission named: " + missionName + ", race: " + missionRace + " is not defined");
-		}
-
-		//now we are ready to set up new alien mission
-		AlienMission* mission = new AlienMission(*missionRules);
-		mission->setRace(missionRace);
-		mission->setId(save.getId("ALIEN_MISSIONS"));
-		mission->setRegion(targetRegion, mod);
-		mission->setMissionSiteZoneArea(targetZone);
-		mission->start(engine, globe, 0);
-		save.getAlienMissions().push_back(mission);
+		engine.getGeoscapeState()->spawnAlienMission(missionRules, globe, _base);
 	}
 
 	if (!_rule->getSpecialRule().empty())//processing of yet hardcoded fta story arc
@@ -627,15 +681,14 @@ bool CovertOperation::think(Game& engine, const Globe& globe)
 			}
 		}
 	}
-	else //we do not push any battlescape for our operation or anything like that, so we can return to our base!
+	if (!_inBattlescape) // no tactical resolution was started, so return the operation inventory to its base
 	{
-		for (auto& item : *_items->getContents())
-		{
-			_base->getStorageItems()->addItem(item.first, item.second);
-		}
+		returnItemsToBase();
 	}
 
-	return true;
+	// A tactical operation is reported after returning to Geoscape. This keeps
+	// the notification reproducible after saving and reloading the battle.
+	return !_inBattlescape;
 }
 
 /**
@@ -652,7 +705,7 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 	int danger = this->getRules()->getDanger(); //only dangerous operations train battle stats
 
 	//first, we calculate how much experience we can award for the operation (expRolls)
-	int effCost = (int)ceil(this->getRules()->getCosts() / 15);
+	int effCost = (int)ceil(this->getRules()->getCosts() / 15.0);
 	int expRolls = (effCost * engine.getMod()->getCovertOpsExpFactor() / 100) + 1;
 	expRolls += RNG::generate(-2, 2); //add more random
 	if (save.getDifficulty() == DIFF_SUPERHUMAN)
@@ -664,7 +717,7 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 	std::vector<Soldier*> soldiers = getSoldiers();
 	bool engagement = false;
 	int avgStealth = 0;
-	if (danger > 0)
+	if (danger > 0 && !soldiers.empty())
 	{
 		for (auto s : soldiers)
 		{
@@ -684,13 +737,14 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 	{
 		bool dead = false;
 		int wound = 0;
+		int soldierExpRolls = expRolls;
 		++operationSoldierN;
 		UnitStats* exp = new UnitStats();
 
 		if (danger > 0)
 		{
 			int damage = 0;
-			int damageRolls = danger * (ceil(save.getDifficultyCoefficient() / 2) + 1);
+			int damageRolls = danger * (ceil(save.getDifficultyCoefficient() / 2.0) + 1);
 			if (criticalFail)
 			{
 				damageRolls *= RNG::generate(1, 3);
@@ -719,12 +773,12 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 
 			if (!dead && criticalFail)
 			{ //OMG, Finger of Death for soldier on critical failed operation!!!
-				dead = RNG::generate(0, 99) < deathOdds + ceil(danger / 3);
+				dead = RNG::generate(0, 99) < deathOdds + ceil(danger / 3.0);
 			}
 			if (dead)
 			{
 				//Check for divine protection
-				int protection = soldier->getBestRoleRank().second - 2;
+				int protection = soldier->getRoleRank(ROLE_AGENT) - 2;
 				//lets add save if we have psi. Btw, there is a place for additional perks
 				if (_hasPsi)
 					protection += 3;
@@ -746,7 +800,7 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 
 		UnitStats origStat = *soldier->getCurrentStats();
 		//soldiers can improve stats based on virtual experience they take
-		if (!dead && expRolls > 0)
+		if (!dead && soldierExpRolls > 0 && soldier->canGainExperience())
 		{
 			const UnitStats caps = soldier->getRules()->getStatCaps();
 			// at first, we process combat stats
@@ -754,16 +808,16 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 			{
 				//TU and Energy
 				if (origStat.tu < caps.tu)
-					exp->tu += RNG::generate(-3, expRolls);
+					exp->tu += RNG::generate(-3, soldierExpRolls);
 				if (origStat.stamina < caps.stamina)
-					exp->stamina = RNG::generate(-3, expRolls);
+					exp->stamina = RNG::generate(-3, soldierExpRolls);
 
 				//other stats would be rolled to be improved
 				int statID = 0;
 				int expGain = 0;
-				for (size_t j = 0; j < (size_t)expRolls; j++)
+				for (size_t j = 0; j < (size_t)soldierExpRolls; j++)
 				{
-					statID = RNG::generate(1, 6);  //choose non-psionic combat stat
+					statID = RNG::generate(0, 6);  //choose non-psionic combat stat
 					expGain = RNG::generate(1, 4); //choose how many experience it would be
 					if (expGain == 4)
 						expGain = 1;
@@ -809,7 +863,7 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 						break;
 					}
 				}
-				expRolls /= 2;
+				soldierExpRolls /= 2;
 			}
 			else if (danger > 0 && !engagement)
 			{
@@ -817,30 +871,45 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 				exp->perception += RNG::generate(0, 2);
 			}
 
-			auto cats = _rule->getCategories();
-			if (std::find(cats.begin(), cats.end(), "STR_INVESTIGATION") != cats.end())
+			const auto& cats = _rule->getCategories();
+			int categoryCount = static_cast<int>(cats.size());
+			int categoryBaseRolls = categoryCount > 0 ? soldierExpRolls / categoryCount : 0;
+			int categoryRemainder = categoryCount > 0 ? soldierExpRolls % categoryCount : 0;
+			int extraRollStart = categoryRemainder > 0 ? RNG::generate(0, categoryCount - 1) : 0;
+			for (int categoryIndex = 0; categoryIndex < categoryCount; ++categoryIndex)
 			{
-				exp->investigation += RNG::generate(1, std::max(2, expRolls));
-				exp->perception += RNG::generate(0, std::max(1, expRolls / 2));
-				exp->interrogation += RNG::generate(0, std::max(1, expRolls / 2));
-			}
-			if (std::find(cats.begin(), cats.end(), "STR_INFILTRATION") != cats.end())
-			{
-				exp->stealth += RNG::generate(1, std::max(2, expRolls));
-				exp->perception += RNG::generate(0, std::max(1, expRolls / 2));
-				exp->interrogation += RNG::generate(0, std::max(1, expRolls / 2));
-			}
-			if (std::find(cats.begin(), cats.end(), "STR_NEGOTIATION") != cats.end())
-			{
-				exp->charisma += RNG::generate(1, std::max(3, static_cast<int>(expRolls * 1.5)));
-			}
-			if (std::find(cats.begin(), cats.end(), "STR_DECEPTION") != cats.end())
-			{
-				exp->deception += RNG::generate(1, std::max(3, static_cast<int>(expRolls * 1.5)));
+				int categoryExpRolls = categoryBaseRolls;
+				int relativeIndex = (categoryIndex - extraRollStart + categoryCount) % categoryCount;
+				if (relativeIndex < categoryRemainder)
+					++categoryExpRolls;
+				if (categoryExpRolls <= 0)
+					continue;
+
+				const auto& category = cats[categoryIndex];
+				if (category == "STR_INVESTIGATION")
+				{
+					exp->investigation += RNG::generate(1, std::max(2, categoryExpRolls));
+					exp->perception += RNG::generate(0, std::max(1, categoryExpRolls / 2));
+					exp->interrogation += RNG::generate(0, std::max(1, categoryExpRolls / 2));
+				}
+				else if (category == "STR_INFILTRATION")
+				{
+					exp->stealth += RNG::generate(1, std::max(2, categoryExpRolls));
+					exp->perception += RNG::generate(0, std::max(1, categoryExpRolls / 2));
+					exp->interrogation += RNG::generate(0, std::max(1, categoryExpRolls / 2));
+				}
+				else if (category == "STR_NEGOTIATION")
+				{
+					exp->charisma += RNG::generate(1, std::max(3, static_cast<int>(categoryExpRolls * 1.5)));
+				}
+				else if (category == "STR_DECEPTION")
+				{
+					exp->deception += RNG::generate(1, std::max(3, static_cast<int>(categoryExpRolls * 1.5)));
+				}
 			}
 		}
 
-		if (soldier->isRookieAgent())
+		if (soldier->canGainExperience() && soldier->isRookieAgent())
 		{
 			soldier->addExperience(ROLE_AGENT, RNG::generate(5, 10), getOperationName()); // extra role experience for rookie agents
 			soldier->setRookieAgent(false);
@@ -852,11 +921,14 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 		exp->psiSkill = 0;
 		exp->mana = 0;
 
-		soldier->improvePrimaryStats(exp, ROLE_AGENT);
-		//also improve secondary stats
-		int rate = 0;
-		soldier->getCurrentStatsEditable()->tu += Soldier::improveStat(exp->tu, rate, false);
-		soldier->getCurrentStatsEditable()->stamina += Soldier::improveStat(exp->stamina, rate, false);
+		if (soldier->canGainExperience())
+		{
+			soldier->improvePrimaryStats(exp, ROLE_AGENT);
+			// Also improve secondary stats.
+			int rate = 0;
+			soldier->getCurrentStatsEditable()->tu += Soldier::improveStat(exp->tu, rate, false);
+			soldier->getCurrentStatsEditable()->stamina += Soldier::improveStat(exp->stamina, rate, false);
+		}
 
 		UnitStats improvement = *soldier->getCurrentStats() - origStat;
 		_results->addSoldierImprovement(soldier->getName(), improvement);
@@ -864,6 +936,11 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 		if (!dead && wound != 0)
 		{
 			soldier->setReturnToTrainingWhenOperationOver(NONE);
+		}
+		RolePromotion promotion;
+		if (!dead && soldier->rolePromoteSoldier(ROLE_AGENT, &promotion))
+		{
+			_results->addPromotion(promotion);
 		}
 		delete exp;
 	}
@@ -900,10 +977,30 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 }
 
 /**
+ * Returns all operation equipment to its base exactly once.
+ */
+void CovertOperation::returnItemsToBase()
+{
+	for (auto& item : *_items->getContents())
+	{
+		_base->getStorageItems()->addItem(item.first, item.second);
+	}
+	_items->clear();
+}
+
+/**
  * Makes sure we over operation
  */
 void CovertOperation::finishOperation()
 {
+	if (_over)
+	{
+		return;
+	}
+	if (_cancelled)
+	{
+		returnItemsToBase();
+	}
 	auto soldiers = getSoldiers();
 	for (auto& soldier : soldiers)
 	{
@@ -924,15 +1021,15 @@ void CovertOperation::finishOperation()
 			}
 			if (trainings == PSI_TRAINING || trainings == BOTH_TRAININGS)
 			{
-				if ((_base->getUsedPsiLabs() < _base->getAvailablePsiLabs()) && Options::anytimePsiTraining)
+				if (_base->getUsedPsiLabs() < _base->getAvailablePsiLabs())
 				{
 					soldier->setPsiTraining(true);
 				}
 			}
 		}
+		soldier->setReturnToTrainingWhenOperationOver(NONE);
 	}
 	_over = true;
-	_base->removeCovertOperation(this);
 }
 
 }

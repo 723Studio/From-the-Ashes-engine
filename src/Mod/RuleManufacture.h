@@ -32,11 +32,9 @@ enum ManufacturingFilterType
 	MANU_FILTER_DEFAULT,
 	MANU_FILTER_DEFAULT_SUPPLIES_OK,
 	MANU_FILTER_DEFAULT_NO_SUPPLIES,
-	MANU_FILTER_FACILITY_REQUIRED,
-	MANU_FILTER_HIDDEN
+	MANU_FILTER_FACILITY_REQUIRED
 };
 
-class RuleManufactureShortcut;
 class RuleResearch;
 class RuleItem;
 class RuleCraft;
@@ -56,6 +54,7 @@ private:
 	RuleBaseFacilityFunctions _requiresBaseFunc;
 	std::vector<const RuleResearch*> _requires;
 	int _space, _time, _cost;
+	int64_t _fundsGain;
 	UnitStats _stats;
 	int _points;
 	bool _refund;
@@ -65,13 +64,12 @@ private:
 	const RuleCraft* _producedCraft;
 	std::vector<std::pair<int, std::map<std::string, int> > > _randomProducedItemsNames;
 	std::vector<std::pair<int, std::map<const RuleItem*, int> > > _randomProducedItems;
+	// Inherited OXCE index contract: 0 = item delivery, 1 = personnel delivery,
+	// 2 = craft delivery. FTA currently consumes only 0 and 2; keep index 1
+	// reserved for compatibility and a possible future personnel-transfer flow.
 	std::vector<int> _transferTimes;
 	int _listOrder;
 public:
-	static const int MANU_STATUS_NEW = 0;
-	static const int MANU_STATUS_NORMAL = 1;
-	static const int MANU_STATUS_HIDDEN = 2;
-	static const int MANU_STATUSES = 3;
 	/// Creates a new manufacture.
 	RuleManufacture(const std::string &name, int listOrder);
 
@@ -79,8 +77,6 @@ public:
 	void load(const YAML::YamlNodeReader& reader, Mod* mod);
 	/// Cross link with other rules.
 	void afterLoad(const Mod* mod);
-	/// Change the name and break down the sub-projects into simpler components.
-	void breakDown(const Mod* mod, const RuleManufactureShortcut* recipe);
 
 	/// Gets the manufacture name.
 	const std::string &getName() const;
@@ -96,10 +92,10 @@ public:
 	int getManufactureTime() const;
 	/// Gets the cost of manufacturing one object.
 	int getManufactureCost() const;
+	/// Gets the funds awarded after completing one production unit.
+	int64_t getFundsGain() const { return _fundsGain; }
 	/// Get pointer to this manufacture's stats.
 	UnitStats getStats() const { return _stats; };
-	/// Checks if there's enough funds to manufacture one object.
-	bool haveEnoughMoneyForOneMoreUnit(int64_t funds) const;
 	/// Gets the points earned for manufacturing one production object.
 	int getPoints() const { return _points; }
 	/// Should all resources of a cancelled project be refunded?
@@ -121,8 +117,6 @@ public:
 	const std::string &getSpawnedPersonName() const;
 	/// Gets the spawned soldier template.
 	const YAML::YamlString& getSpawnedSoldierTemplate() const { return _spawnedSoldier; }
-	/// Is it possible to use auto-sell feature for this manufacturing project?
-	bool canAutoSell() const;
 	/// Gets the transfer time info.
 	const std::vector<int>& getTransferTimes() const { return _transferTimes; }
 	/// Gets the list weight for this manufacture item.

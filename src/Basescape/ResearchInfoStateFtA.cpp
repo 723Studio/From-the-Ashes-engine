@@ -212,7 +212,6 @@ void ResearchInfoStateFtA::buildUi()
 
 	if (_newProject)
 	{
-		_game->getSavedGame()->setResearchRuleStatus(getResearchRules()->getName(), RuleResearch::RESEARCH_STATUS_NORMAL);
 	}
 }
 
@@ -396,7 +395,7 @@ void ResearchInfoStateFtA::setAssignedScientists()
 			teamSize--;
 		}
 	}
-	_workSpace = _base->getFreeLaboratories(true, _project) - teamSize;
+	_workSpace = _base->getFreeLaboratories(_project) - teamSize;
 	_txtAvailableSpace->setText(tr("STR_LABORATORY_SPACE_AVAILABLE_UC").arg(_workSpace));
 }
 

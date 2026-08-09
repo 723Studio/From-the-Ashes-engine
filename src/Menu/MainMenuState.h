@@ -42,9 +42,9 @@ public:
 class MainMenuState : public State
 {
 private:
-	TextButton *_btnNewGame, *_btnNewBattle, *_btnLoad, *_btnOptions, *_btnMods, *_btnQuit;
+	TextButton *_btnNewGame, *_btnLoad, *_btnOptions, *_btnQuit, *_btnDevelopment;
 	Window *_window;
-	Text *_txtTitle, *_txtUpdateInfo;
+	Text *_txtTitle, *_txtVersion, *_txtUpdateInfo;
 public:
 	/// Creates the Main Menu state.
 	MainMenuState();
@@ -52,14 +52,12 @@ public:
 	~MainMenuState();
 	/// Handler for clicking the New Game button.
 	void btnNewGameClick(Action *action);
-	/// Handler for clicking the New Battle button.
-	void btnNewBattleClick(Action *action);
 	/// Handler for clicking the Load Saved Game button.
 	void btnLoadClick(Action *action);
 	/// Handler for clicking the Options button.
 	void btnOptionsClick(Action *action);
-	/// Handler for clicking the Mods button.
-	void btnModsClick(Action *action);
+	/// Handler for clicking the Development button.
+	void btnDevelopmentClick(Action *action);
 	/// Handler for clicking the Quit button.
 	void btnQuitClick(Action *action);
 	/// Update the resolution settings, we just resized the window.

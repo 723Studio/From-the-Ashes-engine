@@ -27,7 +27,6 @@ namespace OpenXcom
 	class Action;
 	class Window;
 	class Text;
-	class TextEdit;
 	class TextButton;
 	class ComboBox;
 	class TextList;
@@ -45,29 +44,21 @@ namespace OpenXcom
 	protected:
 		std::string _section;
 		Window *_window;
-		TextEdit *_btnQuickSearch;
 		Text *_txtTitle;
 		TextButton *_btnOk;
 		ComboBox *_cbxFilter;
 		TextList *_lstSelection;
 		ArticleDefinitionList _article_list, _filtered_article_list;
 		size_t _lstScroll;
-		Uint8 _colorNormal, _colorNew, _colorHidden;
 		bool _isCommendationsSection;
 
 		/// Handler for clicking the OK button
 		void btnOkClick(Action *action);
-		/// Handlers for Quick Search.
-		void btnQuickSearchToggle(Action *action);
-		void btnQuickSearchApply(Action *action);
 		/// Handler for clicking the selection list.
 		void lstSelectionClick(Action *action);
-		void lstSelectionClickRight(Action *action);
 		/// Handler for changing the filter
 		void cbxFilterChange(Action* action);
-		/// Handler for clicking the [Mark All As Seen] button.
-		void btnMarkAllAsSeenClick(Action *action);
 		/// load available articles into the selection list
-		void loadSelectionList(bool markAllAsSeen);
+		void loadSelectionList();
 	};
 }

@@ -24,7 +24,6 @@
 #include "../Engine/LocalizedText.h"
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
-#include "../Interface/TextButton.h"
 #include "../Interface/TextList.h"
 #include "../Engine/Options.h"
 #include "../Engine/Action.h"
@@ -43,31 +42,9 @@ OptionsAdvancedState::OptionsAdvancedState(OptionsOrigin origin) : OptionsBaseSt
 	setCategory(_btnAdvanced);
 
 	// Create objects
-	_btnOXC = new TextButton(70, 16, 94, 8);
-	_btnOXCE = new TextButton(70, 16, 168, 8);
-	_btnOTHER = new TextButton(70, 16, 242, 8);
-	_lstOptions = new TextList(200, 120, 94, 26);
+	_lstOptions = new TextList(200, 136, 94, 8);
 
-	_owner = _btnOXC;
-
-	_isTFTD = false;
-	for (const auto& pair : Options::mods)
-	{
-		if (pair.second)
-		{
-			if (pair.first == "xcom2")
-			{
-				_isTFTD = true;
-				break;
-			}
-		}
-	}
-
-	add(_btnOXC, "button", "advancedMenu");
-	add(_btnOXCE, "button", "advancedMenu");
-	add(_btnOTHER, "button", "advancedMenu");
-
-	if (origin != OPT_BATTLESCAPE)
+	if (origin != OPT_BATTLESCAPE && origin != OPT_MAPEDITOR)
 	{
 		_greyedOutColor = _game->getMod()->getInterface("advancedMenu")->getElement("disabledUserOption")->color;
 		add(_lstOptions, "optionLists", "advancedMenu");
@@ -79,19 +56,6 @@ OptionsAdvancedState::OptionsAdvancedState(OptionsOrigin origin) : OptionsBaseSt
 	}
 
 	centerAllSurfaces();
-
-	_btnOXC->setText(tr("STR_ENGINE_OXC"));
-	_btnOXC->setGroup(&_owner);
-	_btnOXC->onMousePress((ActionHandler)&OptionsAdvancedState::btnGroupPress, SDL_BUTTON_LEFT);
-
-	_btnOXCE->setText(tr("STR_ENGINE_OXCE"));
-	_btnOXCE->setGroup(&_owner);
-	_btnOXCE->onMousePress((ActionHandler)&OptionsAdvancedState::btnGroupPress, SDL_BUTTON_LEFT);
-
-	_btnOTHER->setText(tr("STR_ENGINE_FTA")); // rename in your fork
-	_btnOTHER->setGroup(&_owner);
-	_btnOTHER->onMousePress((ActionHandler)&OptionsAdvancedState::btnGroupPress, SDL_BUTTON_LEFT);
-	_btnOTHER->setVisible(true);
 
 	// how much room do we need for YES/NO
 	Text text = Text(100, 9, 0, 0);
@@ -122,23 +86,23 @@ OptionsAdvancedState::OptionsAdvancedState(OptionsOrigin origin) : OptionsBaseSt
 		{
 			if (optionInfo.category() == "STR_GENERAL")
 			{
-				_settingsGeneral[optionInfo.owner()].push_back(optionInfo);
+				_settingsGeneral.push_back(optionInfo);
 			}
 			else if (optionInfo.category() == "STR_GEOSCAPE")
 			{
-				_settingsGeo[optionInfo.owner()].push_back(optionInfo);
+				_settingsGeo.push_back(optionInfo);
 			}
 			else if (optionInfo.category() == "STR_BASESCAPE")
 			{
-				_settingsBase[optionInfo.owner()].push_back(optionInfo);
+				_settingsBase.push_back(optionInfo);
 			}
 			else if (optionInfo.category() == "STR_BATTLESCAPE")
 			{
-				_settingsBattle[optionInfo.owner()].push_back(optionInfo);
+				_settingsBattle.push_back(optionInfo);
 			}
 			else if (optionInfo.category() == "STR_AI")
 			{
-				_settingsAI[optionInfo.owner()].push_back(optionInfo);
+				_settingsAI.push_back(optionInfo);
 			}
 		}
 	}
@@ -167,8 +131,6 @@ void OptionsAdvancedState::init()
  */
 void OptionsAdvancedState::updateList()
 {
-	OptionOwner idx = _owner == _btnOXC ? OPTION_OXC : _owner == _btnOXCE ? OPTION_OXCE : OPTION_FTA;
-
 	_offsetGeneralMin = -1;
 	_offsetGeneralMax = -1;
 	_offsetGeoMin = -1;
@@ -184,58 +146,58 @@ void OptionsAdvancedState::updateList()
 
 	int row = -1;
 
-	if (_settingsGeneral[idx].size() > 0)
+	if (!_settingsGeneral.empty())
 	{
 		_lstOptions->addRow(2, tr("STR_GENERAL").c_str(), "");
 		row++;
 		_offsetGeneralMin = row;
 		_lstOptions->setCellColor(_offsetGeneralMin, 0, _colorGroup);
-		addSettings(_settingsGeneral[idx]);
-		row += _settingsGeneral[idx].size();
+		addSettings(_settingsGeneral);
+		row += _settingsGeneral.size();
 		_offsetGeneralMax = row;
 	}
-	if (_settingsGeo[idx].size() > 0)
+	if (!_settingsGeo.empty())
 	{
 		if (row > -1) { _lstOptions->addRow(2, "", ""); row++; }
 		_lstOptions->addRow(2, tr("STR_GEOSCAPE").c_str(), "");
 		row++;
 		_offsetGeoMin = row;
 		_lstOptions->setCellColor(_offsetGeoMin, 0, _colorGroup);
-		addSettings(_settingsGeo[idx]);
-		row += _settingsGeo[idx].size();
+		addSettings(_settingsGeo);
+		row += _settingsGeo.size();
 		_offsetGeoMax = row;
 	}
-	if (_settingsBase[idx].size() > 0)
+	if (!_settingsBase.empty())
 	{
 		if (row > -1) { _lstOptions->addRow(2, "", ""); row++; }
 		_lstOptions->addRow(2, tr("STR_BASESCAPE").c_str(), "");
 		row++;
 		_offsetBaseMin = row;
 		_lstOptions->setCellColor(_offsetBaseMin, 0, _colorGroup);
-		addSettings(_settingsBase[idx]);
-		row += _settingsBase[idx].size();
+		addSettings(_settingsBase);
+		row += _settingsBase.size();
 		_offsetBaseMax = row;
 	}
-	if (_settingsBattle[idx].size() > 0)
+	if (!_settingsBattle.empty())
 	{
 		if (row > -1) { _lstOptions->addRow(2, "", ""); row++; }
 		_lstOptions->addRow(2, tr("STR_BATTLESCAPE").c_str(), "");
 		row++;
 		_offsetBattleMin = row;
 		_lstOptions->setCellColor(_offsetBattleMin, 0, _colorGroup);
-		addSettings(_settingsBattle[idx]);
-		row += _settingsBattle[idx].size();
+		addSettings(_settingsBattle);
+		row += _settingsBattle.size();
 		_offsetBattleMax = row;
 	}
-	if (_settingsAI[idx].size() > 0)
+	if (!_settingsAI.empty())
 	{
 		if (row > -1) { _lstOptions->addRow(2, "", ""); row++; }
 		_lstOptions->addRow(2, tr("STR_AI").c_str(), "");
 		row++;
 		_offsetAIMin = row;
 		_lstOptions->setCellColor(_offsetAIMin, 0, _colorGroup);
-		addSettings(_settingsAI[idx]);
-		row += _settingsAI[idx].size();
+		addSettings(_settingsAI);
+		row += _settingsAI.size();
 		_offsetAIMax = row;
 	}
 }
@@ -279,27 +241,25 @@ void OptionsAdvancedState::addSettings(const std::vector<OptionInfo> &settings)
 OptionInfo *OptionsAdvancedState::getSetting(size_t sel)
 {
 	int selInt = sel;
-	OptionOwner idx = _owner == _btnOXC ? OPTION_OXC : _owner == _btnOXCE ? OPTION_OXCE : OPTION_FTA;
-
 	if (selInt > _offsetGeneralMin && selInt <= _offsetGeneralMax)
 	{
-		return &_settingsGeneral[idx][selInt - 1 - _offsetGeneralMin];
+		return &_settingsGeneral[selInt - 1 - _offsetGeneralMin];
 	}
 	else if (selInt > _offsetGeoMin && selInt <= _offsetGeoMax)
 	{
-		return &_settingsGeo[idx][selInt - 1 - _offsetGeoMin];
+		return &_settingsGeo[selInt - 1 - _offsetGeoMin];
 	}
 	else if (selInt > _offsetBaseMin && selInt <= _offsetBaseMax)
 	{
-		return &_settingsBase[idx][selInt - 1 - _offsetBaseMin];
+		return &_settingsBase[selInt - 1 - _offsetBaseMin];
 	}
 	else if (selInt > _offsetBattleMin && selInt <= _offsetBattleMax)
 	{
-		return &_settingsBattle[idx][selInt - 1 - _offsetBattleMin];
+		return &_settingsBattle[selInt - 1 - _offsetBattleMin];
 	}
 	else if (selInt > _offsetAIMin && selInt <= _offsetAIMax)
 	{
-		return &_settingsAI[idx][selInt - 1 - _offsetAIMin];
+		return &_settingsAI[selInt - 1 - _offsetAIMin];
 	}
 	else
 	{
@@ -350,23 +310,14 @@ void OptionsAdvancedState::lstOptionsClick(Action *action)
 		{
 			increment *= 10;
 		}
-		else if (i == &Options::oxceResearchScrollSpeedWithCtrl || i == &Options::oxceManufactureScrollSpeedWithCtrl || i == &Options::oxceReactionFireThreshold)
+		else if (i == &Options::oxceReactionFireThreshold)
 		{
 			increment *= 5;
-		}
-		else if (i == &Options::oxceInterceptTableSize)
-		{
-			increment *= 4;
 		}
 		*i += increment;
 
 		int min = 0, max = 0;
-		if (i == &Options::battleExplosionHeight)
-		{
-			min = 0;
-			max = 3;
-		}
-		else if (i == &Options::changeValueByMouseWheel)
+		if (i == &Options::changeValueByMouseWheel)
 		{
 			min = 0;
 			max = 100;
@@ -395,29 +346,19 @@ void OptionsAdvancedState::lstOptionsClick(Action *action)
 			min = 0;
 			max = 10;
 		}
-		else if (i == &Options::autosaveSlots || i == &Options::oxceGeoAutosaveSlots || i == &Options::oxceResearchScrollSpeed || i == &Options::oxceManufactureScrollSpeed)
+		else if (i == &Options::autosaveSlots || i == &Options::oxceGeoAutosaveSlots)
 		{
 			min = 1;
 			max = 10;
 		}
-		else if (i == &Options::oxceInterceptGuiMaintenanceTime || i == &Options::oxceShowETAMode || i == &Options::oxceShowAccuracyOnCrosshair || i == &Options::oxceCrashedOrLanded)
+		else if (i == &Options::oxceInterceptGuiMaintenanceTime || i == &Options::oxceShowETAMode)
 		{
 			min = 0;
 			max = 2;
 		}
-		else if (i == &Options::oxceInterceptTableSize)
-		{
-			min = 8;
-			max = 80;
-		}
 		else if (i == &Options::oxceWoundedDefendBaseIf || i == &Options::oxceReactionFireThreshold) {
 			min = 0;
 			max = 100;
-		}
-		else if (i == &Options::oxceResearchScrollSpeedWithCtrl || i == &Options::oxceManufactureScrollSpeedWithCtrl)
-		{
-			min = 5;
-			max = 50;
 		}
 		else if (i == &Options::oxceAutoNightVisionThreshold) {
 			min = 0;
@@ -425,13 +366,8 @@ void OptionsAdvancedState::lstOptionsClick(Action *action)
 		}
 		else if (i == &Options::oxceNightVisionColor)
 		{
-			// UFO: 1-15, TFTD: 2-16 except 8 and 10
-			if (_isTFTD && ((*i) == 8 || (*i) == 10))
-			{
-				*i += increment;
-			}
-			min = _isTFTD ? 2 : 1;
-			max = _isTFTD ? 16 : 15;
+			min = 1;
+			max = 15;
 		}
 
 		if (*i < min)
@@ -465,11 +401,6 @@ void OptionsAdvancedState::lstOptionsMouseOver(Action *)
 void OptionsAdvancedState::lstOptionsMouseOut(Action *)
 {
 	_txtTooltip->setText("");
-}
-
-void OptionsAdvancedState::btnGroupPress(Action*)
-{
-	updateList();
 }
 
 }

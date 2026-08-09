@@ -75,15 +75,6 @@ namespace Options
 
 	/// Creates the options info.
 	void create();
-	void createOptionsOXC();
-	void createAdvancedOptionsOXC();
-	void createControlsOXC();
-	void createOptionsOXCE();
-	void createAdvancedOptionsOXCE();
-	void createControlsOXCE();
-	void createOptionsFTA();
-	void createAdvancedOptionsFTA();
-	void createControlsFTA();
 	/// Restores default options.
 	void resetDefault(bool includeMods);
 	/// Initializes the options settings.
@@ -91,7 +82,7 @@ namespace Options
 	/// Loads options from YAML.
 	bool load(const std::string &filename = "options");
 	/// Saves options to YAML.
-	bool save(bool reset = false, const std::string &filename = "options");
+	bool save(const std::string &filename = "options");
 	/// Gets the game's data folder.
 	std::string getDataFolder();
 	/// Sets the game's data folder.
@@ -135,27 +126,24 @@ namespace Options
 	/// And do it only at startup
 	void expendLoadLastSave();
 
-	inline bool isOfficialFtaPackagePath(std::string path)
+	inline bool isTrustedContentSource(const ModInfo *modInfo)
 	{
-		for (auto& ch : path)
+		if (!modInfo || !modInfo->isOxcContainer())
 		{
-			if (ch == '\\') ch = '/';
+			return false;
 		}
-		return path.find("/standard/") != std::string::npos
-			&& path.size() >= 4
-			&& path.substr(path.size() - 4) == ".oxc";
+		for (const auto& resourceDir : modInfo->getExternalResourceDirs())
+		{
+			if (resourceDir != "UFO") return false;
+		}
+		return true;
 	}
 
 	inline bool isModifiedContentLoaded()
 	{
 		for (const auto* modInfo : getActiveMods())
 		{
-			if (!modInfo) continue;
-			if (modInfo->getId() == "From the Ashes") continue;
-			if (isOfficialFtaPackagePath(modInfo->getPath())) continue;
-			// External resource folders such as UFO are legal/runtime dependencies,
-			// not active user mods, and must not disable achievements by themselves.
-			return true;
+			if (!isTrustedContentSource(modInfo)) return true;
 		}
 		return false;
 	}

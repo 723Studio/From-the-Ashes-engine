@@ -24,7 +24,6 @@
 #include "../Mod/MapData.h"
 #include "../Mod/RuleDamageType.h"
 #include "../Mod/RuleItem.h"
-#include "../Savegame/BattleUnit.h"
 
 namespace OpenXcom
 {

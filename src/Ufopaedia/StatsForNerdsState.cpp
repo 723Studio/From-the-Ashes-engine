@@ -474,7 +474,7 @@ void StatsForNerdsState::btnPreviewClick(Action *)
 		{
 			// we use NEGATIVE soldier IDs to make sure there is not even a theoretical chance of modifying real geoscape soldiers during the preview
 			int newId = -(i + 1);
-			Soldier* soldier = new Soldier(soldierRule, defaultArmor, 0 /*nationality*/, newId);
+			Soldier* soldier = new Soldier(soldierRule, defaultArmor, newId);
 			base->getSoldiers()->push_back(soldier);
 			soldier->setName("Position" + std::to_string(newId));
 		}
@@ -2215,7 +2215,6 @@ void StatsForNerdsState::initItemList()
 	addVectorOfResearch(ss, itemRule->getRequirements(), "requires");
 	addVectorOfResearch(ss, itemRule->getBuyRequirements(), "requiresBuy");
 	addVectorOfStrings(ss, mod->getBaseFunctionNames(itemRule->getRequiresBuyBaseFunc()), "requiresBuyBaseFunc");
-	addSingleString(ss, itemRule->getRequiresBuyCountry(), "requiresBuyCountry");
 	addVectorOfStrings(ss, itemRule->getCategories(), "categories");
 	addVectorOfRulesId(ss, itemRule->getSupportedInventorySections(), "supportedInventorySections");
 
@@ -2297,8 +2296,6 @@ void StatsForNerdsState::initItemList()
 		addBoolean(ss, itemRule->isRecoverable(), "recover", true);
 		addBoolean(ss, itemRule->isCorpseRecoverable(), "recoverCorpse", true);
 		addInteger(ss, itemRule->getRecoveryPoints(), "recoveryPoints");
-		addBoolean(ss, itemRule->isAlien(), "liveAlien");
-		addInteger(ss, itemRule->getPrisonType(), "prisonType");
 		addSingleString(ss, itemRule->getSellActionMessage(), "sellActionMessage");
 		addInteger(ss, itemRule->getVehicleFixedAmmoSlot(), "vehicleFixedAmmoSlot");
 
@@ -2775,7 +2772,7 @@ void StatsForNerdsState::initArmorList()
 	}
 
 	addBoolean(ss, armorRule->getFearImmune(), "fearImmune", fearImmuneDefault);
-	addBoolean(ss, armorRule->getBleedImmune(), "bleedImmune", bleedImmuneDefault); // not considering alienBleeding option!
+	addBoolean(ss, armorRule->getBleedImmune(), "bleedImmune", bleedImmuneDefault);
 	addBoolean(ss, armorRule->getPainImmune(), "painImmune", painImmuneDefault);
 	addBoolean(ss, armorRule->getZombiImmune(), "zombiImmune", zombiImmuneDefault);
 	addBoolean(ss, armorRule->getIgnoresMeleeThreat(), "ignoresMeleeThreat", ignoresMeleeThreatDefault);
@@ -2834,7 +2831,6 @@ void StatsForNerdsState::initArmorList()
 	}
 
 	addVectorOfRules(ss, armorRule->getUnitsRaw(), "units");
-	addVectorOfIntegers(ss, armorRule->getRanksRaw(), "ranks");
 	addRule(ss, armorRule->getRequiredAward(), "requiresAward");
 	addRuleNamed(ss, armorRule->getRequiredBonus(), "requiresBonus");
 
@@ -2911,9 +2907,6 @@ void StatsForNerdsState::initArmorList()
 
 		addSection("{Calculations}", "", _white);
 		addVectorOfIntegers(ss, armorRule->getLoftempsSet(), "loftempsSet");
-		addInteger(ss, armorRule->getPersonalLightFriend(), "personalLight", 15);
-		addInteger(ss, armorRule->getPersonalLightHostile(), "personalLightHostile", 0);
-		addInteger(ss, armorRule->getPersonalLightNeutral(), "personalLightNeutral", 0);
 		addInteger(ss, armorRule->getStandHeight(), "standHeight", -1);
 		addInteger(ss, armorRule->getKneelHeight(), "kneelHeight", -1);
 		addInteger(ss, armorRule->getFloatHeight(), "floatHeight", -1);
@@ -3186,13 +3179,15 @@ void StatsForNerdsState::initFacilityList()
 
 	addInteger(ss, facilityRule->getStorage(), "storage");
 	addInteger(ss, facilityRule->getPersonnel(), "personnel");
-	addInteger(ss, facilityRule->getAliens(), "aliens");
-	addInteger(ss, facilityRule->getPrisonType(), "prisonType");
+	addInteger(ss, facilityRule->getPrisonSpace(), "prisonSpace");
+	addInteger(ss, facilityRule->getAlienContainmentSpace(), "alienContainmentSpace");
+	addInteger(ss, facilityRule->getMonsterContainmentSpace(), "monsterContainmentSpace");
 	addInteger(ss, facilityRule->getCrafts(), "crafts");
 	addInteger(ss, facilityRule->getLaboratories(), "labs");
 	addInteger(ss, facilityRule->getWorkshops(), "workshops");
 	addInteger(ss, facilityRule->getPsiLaboratories(), "psiLabs");
 	addInteger(ss, facilityRule->getTrainingFacilities(), "trainingRooms");
+	addInteger(ss, facilityRule->getIntelSpace(), "intelSpace");
 
 	addIntegerNauticalMiles(ss, facilityRule->getSightRange(), "sightRange");
 	addIntegerPercent(ss, facilityRule->getSightChance(), "sightChance");
@@ -3323,7 +3318,6 @@ void StatsForNerdsState::initCraftList()
 
 	addVectorOfStrings(ss, craftRule->getRequirements(), "requires");
 	addVectorOfStrings(ss, mod->getBaseFunctionNames(craftRule->getRequiresBuyBaseFunc()), "requiresBuyBaseFunc");
-	addSingleString(ss, craftRule->getRequiresBuyCountry(), "requiresBuyCountry");
 
 	addInteger(ss, craftRule->getBuyCost(), "costBuy", 0, true);
 	addInteger(ss, craftRule->getMonthlyBuyLimit(), "monthlyBuyLimit");
@@ -3847,7 +3841,6 @@ void StatsForNerdsState::initCraftWeaponList()
 
 	std::ostringstream ss;
 
-	addInteger(ss, craftWeaponRule->getTractorBeamPower(), "tractorBeamPower");
 	addInteger(ss, craftWeaponRule->getDamage(), "damage");
 	addBoolean(ss, craftWeaponRule->unifiedDamageFormula(), "unifiedDamageFormula");
 	addIntegerPercent(ss, craftWeaponRule->getShieldDamageModifier(), "shieldDamageModifier", 100);

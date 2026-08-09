@@ -24,7 +24,6 @@
 namespace OpenXcom
 {
 
-class TextButton;
 class TextList;
 
 /**
@@ -34,16 +33,13 @@ class TextList;
 class OptionsAdvancedState : public OptionsBaseState
 {
 private:
-	TextButton *_btnOXC, *_btnOXCE, *_btnOTHER;
-	TextButton *_owner;
 	TextList *_lstOptions;
-	bool _isTFTD;
 	Uint8 _colorGroup, _greyedOutColor;
-	std::vector<OptionInfo> _settingsGeneral[OPTION_OWNER_MAX];
-	std::vector<OptionInfo> _settingsGeo[OPTION_OWNER_MAX];
-	std::vector<OptionInfo> _settingsBase[OPTION_OWNER_MAX];
-	std::vector<OptionInfo> _settingsBattle[OPTION_OWNER_MAX];
-	std::vector<OptionInfo> _settingsAI[OPTION_OWNER_MAX];
+	std::vector<OptionInfo> _settingsGeneral;
+	std::vector<OptionInfo> _settingsGeo;
+	std::vector<OptionInfo> _settingsBase;
+	std::vector<OptionInfo> _settingsBattle;
+	std::vector<OptionInfo> _settingsAI;
 	int _offsetGeneralMin = -1;
 	int _offsetGeneralMax = -1;
 	int _offsetGeoMin = -1;
@@ -72,9 +68,6 @@ public:
 	void lstOptionsMouseOver(Action *action);
 	/// Handler for moving the mouse outside the settings.
 	void lstOptionsMouseOut(Action *action);
-	/// Handler for clicking buttons.
-	void btnGroupPress(Action* action);
-
 };
 
 }

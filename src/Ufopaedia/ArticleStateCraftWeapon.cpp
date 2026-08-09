@@ -41,16 +41,8 @@ namespace OpenXcom
 		int offset = 0;
 		if (weapon->getHidePediaInfo())
 		{
-			if (weapon->getTractorBeamPower() > 0)
-			{
-				category = CWC_TRACTOR_BEAM;
-				offset = 32; // 2 * 16
-			}
-			else
-			{
-				category = CWC_EQUIPMENT;
-				offset = 80; // 5 * 16
-			}
+			category = CWC_EQUIPMENT;
+			offset = 80; // 5 * 16
 		}
 
 		// add screen elements
@@ -125,15 +117,6 @@ namespace OpenXcom
 			_lstInfo->addRow(2, tr("STR_ROUNDS").c_str(), Unicode::formatNumber(weapon->getAmmoMax()).c_str());
 			_lstInfo->setCellColor(4, 1, _listColor2);
 		}
-		else if (category == CWC_TRACTOR_BEAM)
-		{
-			_lstInfo->addRow(2, tr("STR_TRACTOR_BEAM_POWER").c_str(), Unicode::formatNumber(weapon->getTractorBeamPower()).c_str());
-			_lstInfo->setCellColor(0, 1, _listColor2);
-
-			_lstInfo->addRow(2, tr("STR_RANGE").c_str(), tr("STR_KILOMETERS").arg(weapon->getRange()).c_str());
-			_lstInfo->setCellColor(1, 1, _listColor2);
-		}
-
 		centerAllSurfaces();
 	}
 

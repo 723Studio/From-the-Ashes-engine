@@ -20,7 +20,6 @@
 #include <algorithm>
 #include "../Interface/Window.h"
 #include "../Interface/TextButton.h"
-#include "../Interface/ToggleTextButton.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextList.h"
 #include "../Interface/ArrowButton.h"
@@ -30,14 +29,8 @@
 #include "../Engine/Options.h"
 #include "../Engine/Unicode.h"
 #include "../Mod/Mod.h"
-#include "../Mod/RuleCraft.h"
-#include "../Mod/RuleItem.h"
-#include "../Mod/RuleBaseFacility.h"
-#include "../Engine/Surface.h"
-#include "../Engine/SurfaceSet.h"
 #include "../Mod/RuleManufacture.h"
 #include "../Savegame/Base.h"
-#include "../Savegame/BaseFacility.h"
 #include "../Savegame/Production.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/ItemContainer.h"
@@ -46,7 +39,6 @@
 #include "../Menu/ErrorMessageState.h"
 #include "../Mod/RuleInterface.h"
 #include "../Basescape/ManufactureAllocateEngineersState.h"
-#include "../FTA/MasterMind.h"
 
 #include <climits>
 
@@ -80,6 +72,13 @@ ManufactureInfoStateFtA::ManufactureInfoStateFtA(Base *base, Production *product
 	_unitsToProduce = _production->getAmountTotal();
 	_producedItems = _production->getAmountProduced();
 	_infiniteProduction = _production->getInfiniteAmount();
+	for (auto* soldier : *_base->getSoldiers())
+	{
+		if (soldier->getProductionProject() == _production)
+		{
+			_engineers.insert(soldier);
+		}
+	}
 	buildUi();
 }
 
@@ -97,7 +96,8 @@ void ManufactureInfoStateFtA::buildUi()
 	_txtAvailableEngineer = new Text(160, 9, 16, 49);
 	_txtAvailableSpace = new Text(160, 9, 16, 59);
 	_txtAllocatedEngineers = new Text(150, 9, 16, 69);
-	_txtUnitToProduce = new Text(112, 48, 168, 64);
+	_txtUnitCost = new Text(143, 9, 168, 69);
+	_txtUnitToProduce = new Text(112, 34, 168, 78);
 	_txtUnitUp = new Text(90, 9, 192, 118);
 	_txtUnitDown = new Text(90, 9, 192, 138);
 	_btnUnitUp = new ArrowButton(ARROW_BIG_UP, 13, 14, 284, 114);
@@ -120,6 +120,7 @@ void ManufactureInfoStateFtA::buildUi()
 	add(_txtAvailableEngineer, "text", "manufactureInfo");
 	add(_txtAvailableSpace, "text", "manufactureInfo");
 	add(_txtAllocatedEngineers, "text", "manufactureInfo");
+	add(_txtUnitCost, "text", "manufactureInfo");
 	add(_txtUnitToProduce, "text", "manufactureInfo");
 	add(_txtTodo, "text", "manufactureInfo");
 	add(_txtUnitUp, "text", "manufactureInfo");
@@ -163,7 +164,7 @@ void ManufactureInfoStateFtA::buildUi()
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&ManufactureInfoStateFtA::btnOkClick);
 	_btnOk->onKeyboardPress((ActionHandler)&ManufactureInfoStateFtA::btnOkClick, Options::keyOk);
-	_btnOk->onKeyboardPress((ActionHandler)&ManufactureInfoStateFtA::btnOkClick, Options::keyCancel);
+	_btnOk->onKeyboardPress((ActionHandler)&ManufactureInfoStateFtA::btnCancelClick, Options::keyCancel);
 
 	if (!_newProject)
 	{
@@ -182,7 +183,7 @@ void ManufactureInfoStateFtA::buildUi()
 	}
 	_btnStop->onMouseClick((ActionHandler)&ManufactureInfoStateFtA::btnStopClick);
 
-	setAssignedEngineers();
+	refreshAssignedEngineers();
 
 	_btnAllocateEngineers->setText(tr("STR_ALLOCATE_ENGINEERS"));
 	_btnAllocateEngineers->onMouseClick((ActionHandler)&ManufactureInfoStateFtA::btnAllocateClick, 0);
@@ -198,6 +199,17 @@ void ManufactureInfoStateFtA::buildUi()
 
 	_timerMoreUnit->onTimer((StateHandler)&ManufactureInfoStateFtA::onMoreUnit);
 	_timerLessUnit->onTimer((StateHandler)&ManufactureInfoStateFtA::onLessUnit);
+
+	if (getManufactureRules()->getProducedCraft())
+	{
+		_unitsToProduce = 1;
+		_infiniteProduction = false;
+		_btnUnitUp->setVisible(false);
+		_btnUnitDown->setVisible(false);
+		_txtUnitUp->setVisible(false);
+		_txtUnitDown->setVisible(false);
+		_surfaceUnits->setVisible(false);
+	}
 }
 
 /**
@@ -212,7 +224,7 @@ ManufactureInfoStateFtA::~ManufactureInfoStateFtA()
 void ManufactureInfoStateFtA::init()
 {
 	State::init();
-	setAssignedEngineers();
+	refreshAssignedEngineers();
 	fillEngineersList(0);
 }
 
@@ -252,14 +264,14 @@ void ManufactureInfoStateFtA::btnStopClick(Action *)
 		{
 			_production->refundItem(_base, _game->getSavedGame(), _game->getMod());
 		}
-
 		_base->removeProduction(_production);
 	}
+	exitState();
+}
 
-	for (auto s : _engineers)
-	{
-		s->setProductionProject(0);
-	}
+void ManufactureInfoStateFtA::btnCancelClick(Action *)
+{
+	// Engineer selection and quantity changes are staged until OK.
 	exitState();
 }
 
@@ -269,37 +281,73 @@ void ManufactureInfoStateFtA::btnStopClick(Action *)
  */
 void ManufactureInfoStateFtA::btnOkClick(Action *)
 {
+	_base->prepareSoldierStatsWithBonuses();
 	int efficiency = 0;
+	for (auto* engineer : _engineers)
+	{
+		efficiency += engineer->getStatsWithAllBonuses()->efficiency;
+	}
+	if (!_engineers.empty())
+	{
+		efficiency /= static_cast<int>(_engineers.size());
+	}
 
+	Production* target = _production;
 	if (_newProject)
 	{
-		_production = new Production(_item, 1);
-		_base->addProduction(_production);
-		_production->startItem(_base, _game->getSavedGame(), _game->getMod());
-	}
+		target = new Production(_item, 1);
+		target->setEfficiency(efficiency);
+		target->setAmountTotal(getManufactureRules()->getProducedCraft() ? 1 : _unitsToProduce);
+		target->setInfiniteAmount(getManufactureRules()->getProducedCraft() ? false : _infiniteProduction);
+		_base->addProduction(target);
 
-	for (auto s : _engineers)
-	{
-		efficiency += s->getCurrentStats()->efficiency;
-		s->clearBaseDuty();
-		s->setProductionProject(_production);
-	}
-
-	if (_engineers.size() > 0)
-	{
-		double finalEff = efficiency;
-		finalEff /= _engineers.size();
-		_production->setEfficiency(static_cast<int>(finalEff));
+		const productionProgress_e status = target->startItem(_base, _game->getSavedGame(), _game->getMod());
+		if (status != PROGRESS_NOT_COMPLETE)
+		{
+			std::string message;
+			switch (status)
+			{
+			case PROGRESS_NOT_ENOUGH_MONEY:
+				message = tr("STR_NOT_ENOUGH_MONEY_TO_PRODUCE_ITEM_AT_BASE").arg(tr(getManufactureRules()->getName())).arg(_base->getName());
+				break;
+			case PROGRESS_NOT_ENOUGH_LIVING_SPACE:
+				message = tr("STR_NOT_ENOUGH_LIVING_SPACE_AT_BASE").arg(tr(getManufactureRules()->getName())).arg(_base->getName());
+				break;
+			case PROGRESS_NOT_ENOUGH_BASE_FUNCTIONS:
+				message = tr("STR_REQUIRED_BASE_FUNCTIONS_UNAVAILABLE_AT_BASE").arg(tr(getManufactureRules()->getName())).arg(_base->getName());
+				break;
+			default:
+				message = tr("STR_NOT_ENOUGH_SPECIAL_MATERIALS_TO_PRODUCE_ITEM_AT_BASE").arg(tr(getManufactureRules()->getName())).arg(_base->getName());
+				break;
+			}
+			_base->removeProduction(target);
+			_game->pushState(new ErrorMessageState(message, _palette, _game->getMod()->getInterface("basescape")->getElement("errorMessage")->color, "BACK17.SCR", _game->getMod()->getInterface("basescape")->getElement("errorPalette")->color));
+			return;
+		}
 	}
 	else
 	{
-		_production->setEfficiency(100);
+		target->setEfficiency(efficiency);
+		target->setAmountTotal(getManufactureRules()->getProducedCraft() ? 1 : _unitsToProduce);
+		target->setInfiniteAmount(getManufactureRules()->getProducedCraft() ? false : _infiniteProduction);
 	}
 
-	_production->setSellItems(false);
-	_production->setAmountTotal(_unitsToProduce);
-	_production->setInfiniteAmount(_infiniteProduction);
-	_production->setAssignedEngineers(0); //this is FtA, baby! we use soldiers, assigned to the project instead.
+	for (auto* soldier : *_base->getSoldiers())
+	{
+		if (soldier->getProductionProject() == target && _engineers.find(soldier) == _engineers.end())
+		{
+			soldier->setProductionProject(nullptr);
+		}
+	}
+	for (auto* engineer : _engineers)
+	{
+		if (engineer->getProductionProject() != target)
+		{
+			engineer->clearBaseDuty();
+			engineer->setProductionProject(target);
+		}
+	}
+	_production = target;
 	exitState();
 }
 
@@ -346,37 +394,35 @@ int ManufactureInfoStateFtA::calcAvgStat(bool check)
 /**
  * Updates display of assigned/available engineer/workshop space.
  */
-void ManufactureInfoStateFtA::setAssignedEngineers()
+void ManufactureInfoStateFtA::refreshAssignedEngineers()
 {
+	_base->prepareSoldierStatsWithBonuses();
 	size_t freeEngineers = 0;
 	auto recovery = _base->getSumRecoveryPerDay();
-	bool isBusy = false, isFree = false;
-	for (auto s : _base->getPersonnel(ROLE_ENGINEER))
+	for (auto* soldier : _base->getPersonnel(ROLE_ENGINEER))
 	{
-		s->getCurrentDuty(_game->getLanguage(), recovery, isBusy, isFree);
-		if (s->getProductionProject() && s->getProductionProject()->getRules() == this->getManufactureRules())
+		bool isBusy = false;
+		bool isFree = false;
+		soldier->getCurrentDuty(_game->getLanguage(), recovery, isBusy, isFree);
+		if (!isBusy && isFree && _engineers.find(soldier) == _engineers.end())
 		{
-			_engineers.insert(s);
-		}
-		else if (!isBusy && isFree)
-		{
-			if (_engineers.find(s) != _engineers.end())
-			{ }
-			else
-				freeEngineers++;
+			++freeEngineers;
 		}
 	}
 	_txtAvailableEngineer->setText(tr("STR_ENGINEERS_AVAILABLE_UC").arg(freeEngineers));
 
-	size_t teamSize = _engineers.size();
-	for (auto e : _engineers)
+	int additionalEngineerSpace = 0;
+	for (auto* engineer : _engineers)
 	{
-		if (e->getProductionProject() && e->getProductionProject()->getRules() != this->getManufactureRules())
+		Production* current = engineer->getProductionProject();
+		if (!current || current == _production)
 		{
-			teamSize--;
+			++additionalEngineerSpace;
 		}
 	}
-	_workSpace = _base->getFreeWorkshops(true, _production) - this->getManufactureRules()->getRequiredSpace() - teamSize;
+	_workSpace = _base->getFreeWorkshops(_production)
+		- getManufactureRules()->getRequiredSpace()
+		- additionalEngineerSpace;
 	_txtAvailableSpace->setText(tr("STR_WORKSHOP_SPACE_AVAILABLE_UC").arg(_workSpace));
 
 	std::ostringstream s4;
@@ -391,16 +437,23 @@ void ManufactureInfoStateFtA::setAssignedEngineers()
 	}
 	_txtTodo->setText(s4.str());
 
+	const int averageDiligence = calcAvgStat(false);
+	const int averageEfficiency = calcAvgStat(true);
 	_txtAllocatedEngineers->setText(tr("STR_ENGINEERS_ALLOCATED_UC").arg(_engineers.size()));
-	_txtAvgDiligence->setText(tr("STR_AVERAGE_DILIGENCE_UC").arg(calcAvgStat(false)));
-	_txtAvgEfficiency->setText(tr("STR_AVERAGE_EFFICIENCY_UC").arg(calcAvgStat(true)));
+	_txtAvgDiligence->setText(tr("STR_AVERAGE_DILIGENCE_UC").arg(averageDiligence));
+	_txtAvgEfficiency->setText(tr("STR_AVERAGE_EFFICIENCY_UC").arg(averageEfficiency));
+	_txtAvgDiligence->setVisible(!_engineers.empty());
+	_txtAvgEfficiency->setVisible(!_engineers.empty());
 
-	std::ostringstream s5;
-
-	if (_engineers.empty())
+	const RuleManufacture* rules = getManufactureRules();
+	if (rules->getFundsGain() > 0)
 	{
-		_txtAvgDiligence->setVisible(false);
-		_txtAvgEfficiency->setVisible(false);
+		_txtUnitCost->setText(tr("STR_FUNDS_GAIN").arg(Unicode::formatFunding(rules->getFundsGain())));
+	}
+	else
+	{
+		const int64_t effectiveCost = Production::calculateUnitCost(rules->getManufactureCost(), averageEfficiency);
+		_txtUnitCost->setText(tr("STR_COST_PER_UNIT_").arg(Unicode::formatFunding(effectiveCost)));
 	}
 }
 
@@ -411,29 +464,19 @@ void ManufactureInfoStateFtA::setAssignedEngineers()
  */
 void ManufactureInfoStateFtA::moreUnit(int change)
 {
-	if (change <= 0)
+	if (change <= 0 || getManufactureRules()->getProducedCraft())
 	{
 		return;
 	}
 
-	if (this->getManufactureRules()->getProducedCraft() && _base->getAvailableHangars() - _base->getUsedHangars() <= 0)
+	int units = _unitsToProduce;
+	if (units == 1 && change > 1)
 	{
-		_timerMoreUnit->stop();
-		_game->pushState(new ErrorMessageState(tr("STR_NO_FREE_HANGARS_FOR_CRAFT_PRODUCTION"), _palette, _game->getMod()->getInterface("basescape")->getElement("errorMessage")->color, "BACK17.SCR", _game->getMod()->getInterface("basescape")->getElement("errorPalette")->color));
+		--change; // e.g. jump from 1 to 10, not to 11
 	}
-	else
-	{
-		int units = _unitsToProduce;
-		if (units == 1 && change > 1)
-		{
-			--change; // e.g. jump from 1 to 10, not to 11
-		}
-		change = std::min(INT_MAX - units, change);
-		if (this->getManufactureRules()->getProducedCraft())
-			change = std::min(_base->getAvailableHangars() - _base->getUsedHangars(), change);
-		_unitsToProduce = units + change;
-		setAssignedEngineers();
-	}
+	change = std::min(INT_MAX - units, change);
+	_unitsToProduce = units + change;
+	refreshAssignedEngineers();
 }
 
 /**
@@ -465,22 +508,15 @@ void ManufactureInfoStateFtA::moreUnitRelease(Action *action)
  */
 void ManufactureInfoStateFtA::moreUnitClick(Action *action)
 {
-	if (_infiniteProduction)
+	if (_infiniteProduction || getManufactureRules()->getProducedCraft())
 	{
 		return; // We can't increase over infinite :)
 	}
 
 	if (action->getDetails()->button.button == SDL_BUTTON_RIGHT)
 	{
-		if (this->getManufactureRules()->getProducedCraft())
-		{
-			moreUnit(INT_MAX);
-		}
-		else
-		{
-			_infiniteProduction = true;
-			setAssignedEngineers();
-		}
+		_infiniteProduction = true;
+		refreshAssignedEngineers();
 	}
 	else if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
 	{
@@ -494,7 +530,7 @@ void ManufactureInfoStateFtA::moreUnitClick(Action *action)
  */
 void ManufactureInfoStateFtA::lessUnit(int change)
 {
-	if (change <= 0)
+	if (change <= 0 || getManufactureRules()->getProducedCraft())
 	{
 		return;
 	}
@@ -502,7 +538,7 @@ void ManufactureInfoStateFtA::lessUnit(int change)
 	int units = _unitsToProduce;
 	change = std::min(units - (_producedItems + 1), change);
 	_unitsToProduce = units - change;
-	setAssignedEngineers();
+	refreshAssignedEngineers();
 }
 
 /**
@@ -533,6 +569,10 @@ void ManufactureInfoStateFtA::lessUnitRelease(Action *action)
  */
 void ManufactureInfoStateFtA::lessUnitClick(Action *action)
 {
+	if (getManufactureRules()->getProducedCraft())
+	{
+		return;
+	}
 	if (action->getDetails()->button.button == SDL_BUTTON_RIGHT
 	||  action->getDetails()->button.button == SDL_BUTTON_LEFT)
 	{
@@ -541,13 +581,13 @@ void ManufactureInfoStateFtA::lessUnitClick(Action *action)
 		if (_unitsToProduce <= _producedItems)
 		{ // So the produced item number is increased over the planned
 			_unitsToProduce += 1;
-			setAssignedEngineers();
+			refreshAssignedEngineers();
 			return;
 		}
 		if (action->getDetails()->button.button == SDL_BUTTON_RIGHT)
 		{
 			_unitsToProduce = _producedItems + 1;
-			setAssignedEngineers();
+			refreshAssignedEngineers();
 			return;
 		}
 		if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
@@ -555,24 +595,31 @@ void ManufactureInfoStateFtA::lessUnitClick(Action *action)
 			if (wasInfinite)
 			{
 				// when infinite amount is decreased by 1, set the amount to maximum possible considering current funds and store supplies
+				_base->prepareSoldierStatsWithBonuses();
 				int productionPossible = INT_MAX;
-				if (getManufactureRules()->getManufactureCost() > 0)
+				const int64_t unitCost = Production::calculateUnitCost(
+					getManufactureRules()->getManufactureCost(), calcAvgStat(true));
+				if (unitCost > 0)
 				{
-					int byFunds = _game->getSavedGame()->getFunds() / getManufactureRules()->getManufactureCost();
-					productionPossible = std::min(productionPossible, byFunds);
+					int64_t byFunds = _game->getSavedGame()->getFunds() / unitCost;
+					productionPossible = static_cast<int>(std::min<int64_t>(productionPossible, byFunds));
 				}
 				for (auto &item : getManufactureRules()->getRequiredItems())
 				{
 					productionPossible = std::min(productionPossible, _base->getStorageItems()->getItem(item.first) / item.second);
 				}
+				for (auto &craft : getManufactureRules()->getRequiredCrafts())
+				{
+					productionPossible = std::min(productionPossible, _base->getCraftCountForProduction(craft.first) / craft.second);
+				}
 				productionPossible = std::max(0, productionPossible);
 
-				int newTotal = _producedItems + productionPossible;
-				if (!_item)
-				{
-					newTotal += 1; // +1 for the item being produced currently
-				}
-				_unitsToProduce = newTotal + 1; // +1 because of lessUnit(1) call below
+				const int currentItem = !_newProject && _production->hasCurrentItemStarted() ? 1 : 0;
+				const int64_t newTotal = static_cast<int64_t>(_producedItems) + currentItem + productionPossible;
+				_unitsToProduce = static_cast<int>(std::min<int64_t>(INT_MAX,
+					std::max<int64_t>(_producedItems + 1, newTotal)));
+				refreshAssignedEngineers();
+				return;
 			}
 			lessUnit(1);
 		}

@@ -113,7 +113,6 @@ private:
 	std::vector<const RuleItem*> _corpseBattle;
 	std::vector<const RuleItem*> _builtInWeapons;
 	std::vector<const RuleSoldier*> _units;
-	std::vector<int> _ranks;
 	const RuleResearch* _requires = nullptr;
 	const RuleCommendations* _requiresAward = nullptr;
 	const RuleSoldierBonus* _requiresBonus = nullptr;
@@ -162,10 +161,6 @@ private:
 	std::vector<int> _annoyedSoundMale, _annoyedSoundFemale;
 
 	int _size, _weight, _visibilityAtDark, _visibilityAtDay;
-
-	int _personalLightFriend = 15;
-	int _personalLightHostile = 0;
-	int _personalLightNeutral = 0;
 
 	int _camouflageAtDay, _camouflageAtDark, _antiCamouflageAtDay, _antiCamouflageAtDark;
 	int _visibilityThroughSmoke, _visibilityThroughFire;
@@ -413,12 +408,6 @@ public:
 	int getPsiVision() const;
 	/// Gets info about psi camouflage.
 	int getPsiCamouflage() const;
-	/// Gets personal soldier light radius;
-	int getPersonalLightFriend() const;
-	/// Gets personal alien light radius;
-	int getPersonalLightHostile() const;
-	/// Gets personal civilian light radius;
-	int getPersonalLightNeutral() const;
 	/// Gets if unit should be always visible.
 	bool isAlwaysVisible() const { return _isAlwaysVisible; }
 
@@ -466,8 +455,6 @@ public:
 
 	/// Gets the armor's units.
 	const std::vector<const RuleSoldier*> &getUnitsRaw() const;
-	/// Gets the armor's supported soldier ranks.
-	const std::vector<int>& getRanksRaw() const { return _ranks; }
 	/// Check if a soldier can use this armor.
 	bool getCanBeUsedBy(const Soldier* soldier) const;
 
@@ -485,7 +472,7 @@ public:
 	bool allowsMoving() const;
 	/// Does this armor count for pilot bonuses?
 	bool isPilotArmor() const { return _isPilotArmor; }
-	/// Does this armor allow two main weapons during autoequip?
+	/// Does this armor allow two main weapons during automatic equipment placement?
 	bool getAllowTwoMainWeapons() const { return _allowTwoMainWeapons; }
 	/// Does this armor instantly recover any wounds after the battle?
 	bool getInstantWoundRecovery() const;

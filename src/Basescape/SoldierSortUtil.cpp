@@ -23,9 +23,7 @@ int OpenXcom::manaStat(const Game* game, const Soldier* s)
 int OpenXcom::psiStrengthStat(const Game *game, const Soldier *s)
 {
 	// don't reveal psi strength before it would otherwise be known
-	if (s->getCurrentStats()->psiSkill > 0
-		|| (Options::psiStrengthEval
-		&& game->getSavedGame()->isResearched(game->getMod()->getPsiRequirements())))
+	if (s->getCurrentStats()->psiSkill > 0)
 	{
 		return s->getStatsWithAllBonuses()->psiStrength;
 	}
@@ -33,7 +31,7 @@ int OpenXcom::psiStrengthStat(const Game *game, const Soldier *s)
 }
 int OpenXcom::psiSkillStat(const Game *game, const Soldier *s)
 {
-	// when Options::anytimePsiTraining is turned on, psiSkill can actually have a negative value
+	// psiSkill can have a negative value during initial training
 	if (s->getCurrentStats()->psiSkill > 0)
 	{
 		return s->getStatsWithAllBonuses()->psiSkill;
@@ -101,9 +99,7 @@ int OpenXcom::manaStatBase(const Game* game, const Soldier* s)
 int OpenXcom::psiStrengthStatBase(const Game *game, const Soldier *s)
 {
 	// don't reveal psi strength before it would otherwise be known
-	if (s->getCurrentStats()->psiSkill > 0
-		|| (Options::psiStrengthEval
-		&& game->getSavedGame()->isResearched(game->getMod()->getPsiRequirements())))
+	if (s->getCurrentStats()->psiSkill > 0)
 	{
 		return s->getCurrentStats()->psiStrength;
 	}
@@ -111,7 +107,7 @@ int OpenXcom::psiStrengthStatBase(const Game *game, const Soldier *s)
 }
 int OpenXcom::psiSkillStatBase(const Game *game, const Soldier *s)
 {
-	// when Options::anytimePsiTraining is turned on, psiSkill can actually have a negative value
+	// psiSkill can have a negative value during initial training
 	if (s->getCurrentStats()->psiSkill > 0)
 	{
 		return s->getCurrentStats()->psiSkill;
@@ -179,9 +175,7 @@ int OpenXcom::manaStatPlus(const Game* game, const Soldier* s)
 int OpenXcom::psiStrengthStatPlus(const Game *game, const Soldier *s)
 {
 	// don't reveal psi strength before it would otherwise be known
-	if (s->getCurrentStats()->psiSkill > 0
-		|| (Options::psiStrengthEval
-		&& game->getSavedGame()->isResearched(game->getMod()->getPsiRequirements())))
+	if (s->getCurrentStats()->psiSkill > 0)
 	{
 		return s->getStatsWithSoldierBonusesOnly()->psiStrength;
 	}
@@ -189,7 +183,7 @@ int OpenXcom::psiStrengthStatPlus(const Game *game, const Soldier *s)
 }
 int OpenXcom::psiSkillStatPlus(const Game *game, const Soldier *s)
 {
-	// when Options::anytimePsiTraining is turned on, psiSkill can actually have a negative value
+	// psiSkill can have a negative value during initial training
 	if (s->getCurrentStats()->psiSkill > 0)
 	{
 		return s->getStatsWithSoldierBonusesOnly()->psiSkill;
@@ -255,7 +249,12 @@ int OpenXcom::typeStat(const Game *game, const Soldier *s)
 {
 	return s->getRules()->getListOrder();
 }
-GET_SOLDIER_STAT_FN(rank, Rank)
+int OpenXcom::rankStat(const Game *game, const Soldier *s)
+{
+	// Rank sorting now follows the highest role rank; legacy SoldierRank no
+	// longer exists, but several generic personnel screens still use this key.
+	return roleRankStat(game, s);
+}
 int OpenXcom::roleStat(const Game *game, const Soldier *s)
 {
 	return static_cast<int>(s->getBestRoleRank().first);

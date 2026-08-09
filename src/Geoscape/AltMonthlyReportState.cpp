@@ -29,8 +29,8 @@
 #include "../Menu/SaveGameState.h"
 #include "../Menu/StatisticsState.h"
 #include "../Menu/CutsceneState.h"
-#include "PsiTrainingState.h"
 #include "Globe.h"
+#include "GeoscapeState.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/GameTime.h"
@@ -41,7 +41,6 @@
 #include "../Mod/RuleDiplomacyFaction.h"
 #include "../Mod/RuleInterface.h"
 #include "../Mod/RuleVideo.h"
-#include "../FTA/MasterMind.h"
 #include "../Battlescape/CommendationState.h"
 
 namespace OpenXcom
@@ -52,8 +51,7 @@ namespace OpenXcom
 * @param psi Show psi training afterwards?
 * @param globe Pointer to the globe.
 */
-AltMonthlyReportState::AltMonthlyReportState(Globe* globe) : _gameOver(0), _ratingTotal(0), _fundingDiff(0), _lastMonthsRating(0),
-	_loyalty(0), _happyList(0), _sadList(0), _pactList(0), _cancelPactList(0)
+AltMonthlyReportState::AltMonthlyReportState(Globe* globe) : _gameOver(0), _ratingTotal(0), _lastMonthsRating(0), _loyalty(0)
 {
 	_globe = globe;
 	auto save = _game->getSavedGame();
@@ -144,13 +142,14 @@ AltMonthlyReportState::AltMonthlyReportState(Globe* globe) : _gameOver(0), _rati
 	_txtMonth->setText(tr("STR_MONTH").arg(tr(m)).arg(year));
 
 	// Calculate rating
-	int difficulty_threshold = _game->getMod()->getDefeatScore() + 100 * save->getDifficultyCoefficient();
+	int scoreDifficultyThreshold = _game->getMod()->getDefeatScore() + 100 * save->getDifficultyCoefficient();
+	int loyaltyDifficultyThreshold = _game->getMod()->getDefeatLoyalty() + 100 * save->getDifficultyCoefficient();
 	std::string rating = tr("STR_RATING_TERRIBLE");
-	if (_ratingTotal > difficulty_threshold - 300)
+	if (_ratingTotal > scoreDifficultyThreshold - 300)
 	{
 		rating = tr("STR_RATING_POOR");
 	}
-	if (_ratingTotal > difficulty_threshold)
+	if (_ratingTotal > scoreDifficultyThreshold)
 	{
 		rating = tr("STR_RATING_OK");
 	}
@@ -181,8 +180,10 @@ AltMonthlyReportState::AltMonthlyReportState(Globe* globe) : _gameOver(0), _rati
 	_txtRating->setText(tr("STR_MONTHLY_RATING").arg(_ratingTotal).arg(rating));
 
 	std::ostringstream ss;
-	ss << tr("STR_LOYALTY") << "> " << Unicode::TOK_COLOR_FLIP << _game->getSavedGame()->getLoyalty();
+	ss << tr("STR_LOYALTY") << "> " << Unicode::TOK_COLOR_FLIP << save->getLoyalty()
+		<< " (" << save->getLoyaltyPerformanceBonus() - 100 << "%)";
 	_txtLoyalty->setText(ss.str());
+	_txtLoyalty->setVisible(save->isResearched("STR_LOYALTY"));
 
 	std::ostringstream ss2;
 	ss2 << tr("STR_MAINTENANCE") << "> " << Unicode::TOK_COLOR_FLIP << Unicode::formatFunding(_game->getSavedGame()->getBaseMaintenance());
@@ -197,19 +198,15 @@ AltMonthlyReportState::AltMonthlyReportState(Globe* globe) : _gameOver(0), _rati
 
 	_txtDesc->setWordWrap(true);
 
-	// calculate satisfaction
+	// calculate the monthly assessment
 	std::ostringstream ss5;
 	std::string loyaltyString = tr("STR_COUNCIL_IS_DISSATISFIED");
 	bool resetWarning = true;
 	if (!_game->getMod()->getLoyaltyRatings()->empty())  //FtA - checks around loyalty
 	{
-		if (_lastMonthsLoyalty <= difficulty_threshold && _loyalty <= difficulty_threshold)
+		if (_lastMonthsLoyalty <= loyaltyDifficultyThreshold && _loyalty <= loyaltyDifficultyThreshold)
 		{
 			loyaltyString = tr("STR_YOU_HAVE_NOT_SUCCEEDED");
-			_pactList.erase(_pactList.begin(), _pactList.end());
-			_cancelPactList.erase(_cancelPactList.begin(), _cancelPactList.end());
-			_happyList.erase(_happyList.begin(), _happyList.end());
-			_sadList.erase(_sadList.begin(), _sadList.end());
 			_gameOver = 1;
 		}
 		else //calculate rating message
@@ -228,7 +225,7 @@ AltMonthlyReportState::AltMonthlyReportState(Globe* globe) : _gameOver(0), _rati
 	}
 	else //vanilla - checks around rating
 	{
-		if (_ratingTotal > difficulty_threshold)
+		if (_ratingTotal > scoreDifficultyThreshold)
 		{
 			loyaltyString = tr("STR_COUNCIL_IS_GENERALLY_SATISFIED");
 		}
@@ -236,13 +233,9 @@ AltMonthlyReportState::AltMonthlyReportState(Globe* globe) : _gameOver(0), _rati
 		{
 			loyaltyString = tr("STR_COUNCIL_IS_VERY_PLEASED");
 		}
-		if (_lastMonthsRating <= difficulty_threshold && _ratingTotal <= difficulty_threshold)
+		if (_lastMonthsRating <= scoreDifficultyThreshold && _ratingTotal <= scoreDifficultyThreshold)
 		{
 			loyaltyString = tr("STR_YOU_HAVE_NOT_SUCCEEDED");
-			_pactList.erase(_pactList.begin(), _pactList.end());
-			_cancelPactList.erase(_cancelPactList.begin(), _cancelPactList.end());
-			_happyList.erase(_happyList.begin(), _happyList.end());
-			_sadList.erase(_sadList.begin(), _sadList.end());
 			_gameOver = 1;
 		}
 	}
@@ -258,10 +251,6 @@ AltMonthlyReportState::AltMonthlyReportState(Globe* globe) : _gameOver(0), _rati
 			{
 				ss5.str("");
 				ss5 << tr("STR_YOU_HAVE_NOT_SUCCEEDED");
-				_pactList.erase(_pactList.begin(), _pactList.end());
-				_cancelPactList.erase(_cancelPactList.begin(), _cancelPactList.end());
-				_happyList.erase(_happyList.begin(), _happyList.end());
-				_sadList.erase(_sadList.begin(), _sadList.end());
 				_gameOver = 2;
 			}
 			else
@@ -320,15 +309,6 @@ void AltMonthlyReportState::btnOkClick(Action*)
 			_game->pushState(new CommendationState(_soldiersMedalled));
 		}
 
-		bool psi = false;
-		for (std::vector<Base*>::const_iterator b = _game->getSavedGame()->getBases()->begin(); b != _game->getSavedGame()->getBases()->end(); ++b)
-		{
-			psi = psi || (*b)->getAvailablePsiLabs();
-		}
-		if (psi && !Options::anytimePsiTraining)
-		{
-			_game->pushState(new PsiTrainingState);
-		}
 		// Autosave
 		if (_game->getSavedGame()->isIronman())
 		{
@@ -434,7 +414,7 @@ std::string AltMonthlyReportState::calculateUpdates()
 
 	// update factions
 	std::vector<OpenXcom::DiplomacyFaction*> factions = _game->getSavedGame()->getDiplomacyFactions();
-	if (!factions.empty() && !_gameOver)
+	if (!factions.empty())
 	{
 		ss << "\n\n";
 		for (std::vector<DiplomacyFaction*>::iterator k = factions.begin(); k != factions.end(); ++k)
@@ -443,7 +423,7 @@ std::string AltMonthlyReportState::calculateUpdates()
 			{
 				continue;
 			}
-			bool changed = _game->getMasterMind()->updateReputationLvl(*k, false);
+			bool changed = (*k)->updateReputationLvl(*_game->getMod(), false);
 			bool prevChanged = (*k)->isThisMonthRepLvlChanged();
 
 			if ((*k)->isThisMonthDiscovered())
@@ -474,7 +454,6 @@ std::string AltMonthlyReportState::calculateUpdates()
 	}
 
 	//handle loyalty updating
-	if (!_gameOver)
 	{
 		int64_t funds = save->getFunds();
 		if (funds < 0)
@@ -482,7 +461,8 @@ std::string AltMonthlyReportState::calculateUpdates()
 			int64_t noFundsV = _game->getMod()->getLoyaltyNoFundsValue();
 			if (funds < noFundsV)
 			{
-				int	discontent = _game->getMod()->getLoyaltyNoFundsPenalty() * _game->getSavedGame()->getDifficultyCoefficient();
+				int discontent = _game->getMod()->getLoyaltyNoFundsPenalty()
+					* _game->getMod()->getLoyaltyNoFundsPenaltyDifficultyMultiplier(save->getDifficulty()) / 100;
 				auto stuffMessage = tr("STR_STUFF_NO_MONEY1");
 
 				if (funds < noFundsV * 2)
@@ -506,11 +486,12 @@ std::string AltMonthlyReportState::calculateUpdates()
 					stuffMessage = tr("STR_STUFF_NO_MONEY20");
 				}
 				ss << stuffMessage;
-				_game->getMasterMind()->updateLoyalty(-discontent, XCOM_GEOSCAPE);
+				_game->getGeoscapeState()->updateLoyalty(-discontent, XCOM_GEOSCAPE);
 			}
 		}
-		//update loyalty data after it was loaded
-		_game->getSavedGame()->setLastMonthsLoyalty(_loyalty);
+		// Use the same post-penalty value for the report, graph, defeat check and next month's comparison.
+		_loyalty = save->getLoyalty();
+		save->finalizeMonthlyLoyalty();
 	}
 
 	return ss.str();

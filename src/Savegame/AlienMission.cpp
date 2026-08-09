@@ -27,7 +27,6 @@
 #include "../Geoscape/Globe.h"
 #include "../Mod/RuleAlienMission.h"
 #include "../Mod/RuleRegion.h"
-#include "../Mod/RuleCountry.h"
 #include "../Mod/Mod.h"
 #include "../Mod/RuleUfo.h"
 #include "../Mod/UfoTrajectory.h"
@@ -38,7 +37,6 @@
 #include "Ufo.h"
 #include "Craft.h"
 #include "Region.h"
-#include "Country.h"
 #include "Waypoint.h"
 #include <assert.h>
 #include <algorithm>
@@ -155,11 +153,6 @@ bool AlienMission::isOver() const
 	{
 		return true;
 	}
-	if (_rule.getObjective() == OBJECTIVE_INFILTRATION && _rule.isEndlessInfiltration())
-	{
-		//Infiltrations continue for ever.
-		return false;
-	}
 	if (_nextWave == _rule.getWaveCount() && !_liveUfos)
 	{
 		return true;
@@ -227,120 +220,6 @@ void AlienMission::think(Game &engine, const Globe &globe)
 		_nextUfoCounter = 0;
 		++_nextWave;
 	}
-	if (_rule.getObjective() == OBJECTIVE_INFILTRATION && _nextWave == _rule.getWaveCount())
-	{
-		std::vector<Country*> countriesCopy = *game.getCountries();
-		if (mod.getInfiltrateRandomCountryInTheRegion())
-		{
-			RNG::shuffle(countriesCopy);
-		}
-		for (auto* c : countriesCopy)
-		{
-			RuleRegion *region = mod.getRegion(_region, true);
-			if (c->canBeInfiltrated() && region->insideRegion(c->getRules()->getLabelLongitude(), c->getRules()->getLabelLatitude()))
-			{
-				std::pair<double, double> pos;
-				int tries = 0;
-				bool dynamicBaseType = _rule.getSiteType().empty();
-				AlienDeployment *alienBaseType = nullptr;
-				bool wantsToSpawnFakeUnderwater = false;
-				bool found = false;
-				if (!mod.getBuildInfiltrationBaseCloseToTheCountry())
-				{
-					std::vector<MissionArea> areas = region->getMissionZones().at(_rule.getSpawnZone()).areas;
-					while (!found)
-					{
-						MissionArea &area = areas.at(RNG::generate(0, areas.size() - 1));
-						pos.first = RNG::generate(std::min(area.lonMin, area.lonMax), std::max(area.lonMin, area.lonMax));
-						pos.second = RNG::generate(std::min(area.latMin, area.latMax), std::max(area.latMin, area.latMax));
-
-						if (tries == 0 || dynamicBaseType)
-						{
-							alienBaseType = chooseAlienBaseType(mod, area);
-							wantsToSpawnFakeUnderwater = RNG::percent(alienBaseType->getFakeUnderwaterSpawnChance());
-						}
-						++tries;
-
-						if (tries == 100)
-						{
-							found = true; // forced spawn on invalid location
-						}
-						else if (globe.insideLand(pos.first, pos.second) && region->insideRegion(pos.first, pos.second))
-						{
-							bool isFakeUnderwater = globe.insideFakeUnderwaterTexture(pos.first, pos.second);
-							if (wantsToSpawnFakeUnderwater)
-							{
-								if (isFakeUnderwater) found = true; // found spawn point on fakeUnderwater texture
-							}
-							else
-							{
-								if (!isFakeUnderwater) found = true; // found spawn point on land
-							}
-						}
-					}
-				}
-				else
-				{
-					dynamicBaseType = false; // just to make absolutely clear this feature is not supported in this case
-					MissionArea dummyArea;
-					alienBaseType = chooseAlienBaseType(mod, dummyArea);
-					wantsToSpawnFakeUnderwater = RNG::percent(alienBaseType->getFakeUnderwaterSpawnChance());
-
-					const RuleCountry* cRule = c->getRules();
-					int pick = 0;
-					double lonMini, lonMaxi, latMini, latMaxi;
-					while (!found)
-					{
-						pick = RNG::generate(0, cRule->getLonMin().size() - 1);
-						lonMini = cRule->getLonMin()[pick];
-						lonMaxi = cRule->getLonMax()[pick];
-						if (lonMini > lonMaxi)
-						{
-							// UK, France, Spain, or anything crossed by the prime meridian
-							if (RNG::percent(50)) { lonMini = Deg2Rad(0.0); } else { lonMaxi = Deg2Rad(359.99); }
-						}
-						latMini = cRule->getLatMin()[pick];
-						latMaxi = cRule->getLatMax()[pick];
-						pos.first = RNG::generate(std::min(lonMini, lonMaxi), std::max(lonMini, lonMaxi));
-						pos.second = RNG::generate(std::min(latMini, latMaxi), std::max(latMini, latMaxi));
-						++tries;
-
-						if (tries == 100)
-						{
-							found = true; // forced spawn on invalid location
-						}
-						else if (globe.insideLand(pos.first, pos.second) && cRule->insideCountry(pos.first, pos.second))
-						{
-							bool isFakeUnderwater = globe.insideFakeUnderwaterTexture(pos.first, pos.second);
-							if (wantsToSpawnFakeUnderwater)
-							{
-								if (isFakeUnderwater) found = true; // found spawn point on fakeUnderwater texture
-							}
-							else
-							{
-								if (!isFakeUnderwater) found = true; // found spawn point on land
-							}
-						}
-					}
-				}
-				if (tries < 100 || mod.getAllowAlienBasesOnWrongTextures())
-				{
-					// only create a pact if the base is going to be spawned too
-					c->setNewPact();
-
-					spawnAlienBase(c, engine, pos, alienBaseType);
-
-					// if the base can't be spawned for this country, try the next country
-					break;
-				}
-			}
-		}
-		if (_rule.isEndlessInfiltration())
-		{
-			// Infiltrations loop for ever.
-			_nextWave = 0;
-		}
-	}
 	if (_rule.getObjective() == OBJECTIVE_BASE && _nextWave == _rule.getWaveCount() && !wave.objectiveOnTheLandingSite)
 	{
 		RuleRegion *region = mod.getRegion(_region, true);
@@ -387,7 +266,7 @@ void AlienMission::think(Game &engine, const Globe &globe)
 		}
 		if (tries < 100 || mod.getAllowAlienBasesOnWrongTextures())
 		{
-			spawnAlienBase(0, engine, pos, alienBaseType);
+			spawnAlienBase(engine, pos, alienBaseType);
 		}
 	}
 
@@ -816,7 +695,7 @@ void AlienMission::start(Game &engine, const Globe &globe, size_t initialCount)
 				AlienBase* newAlienOperationBase = nullptr;
 				if (tries < 100 || mod.getAllowAlienBasesOnWrongTextures())
 				{
-					newAlienOperationBase = spawnAlienBase(0, engine, pos, operationBaseType);
+					newAlienOperationBase = spawnAlienBase(engine, pos, operationBaseType);
 				}
 				if (newAlienOperationBase)
 				{
@@ -990,7 +869,7 @@ void AlienMission::ufoReachedWaypoint(Ufo &ufo, Game &engine, const Globe &globe
 					MissionArea dummyArea;
 					AlienDeployment* alienBaseType = chooseAlienBaseType(mod, dummyArea);
 
-					spawnAlienBase(0, engine, pos, alienBaseType);
+					spawnAlienBase(engine, pos, alienBaseType);
 				}
 			}
 			else
@@ -1120,15 +999,13 @@ const AlienBase *AlienMission::getAlienBase() const
 }
 
 /**
- * Add alien points to the country and region at the coordinates given.
+ * Add alien points to the region at the coordinates given.
  * @param lon Longitudinal coordinates to check.
  * @param lat Latitudinal coordinates to check.
  * @param game The saved game information.
  */
 void AlienMission::addScore(double lon, double lat, SavedGame &game) const
 {
-	if (_rule.getObjective() == OBJECTIVE_INFILTRATION)
-		return; // pact score is a special case
 	for (auto* region : *game.getRegions())
 	{
 		if (region->getRules()->insideRegion(lon, lat))
@@ -1137,32 +1014,19 @@ void AlienMission::addScore(double lon, double lat, SavedGame &game) const
 			break;
 		}
 	}
-	for (auto* country : *game.getCountries())
-	{
-		if (country->getRules()->insideCountry(lon, lat))
-		{
-			country->addActivityAlien(_rule.getPoints());
-			break;
-		}
-	}
 }
 
 /**
  * Spawn an alien base.
- * @param pactCountry A country that has signed a pact with the aliens and allowed them to build this base.
  * @param engine The game engine, required to get access to game data and game rules.
  * @param pos The base coordinates.
  * @param deployment The base type.
  * @return Pointer to the spawned alien base.
  */
-AlienBase *AlienMission::spawnAlienBase(Country *pactCountry, Game &engine, std::pair<double, double> pos, AlienDeployment *deployment)
+AlienBase *AlienMission::spawnAlienBase(Game &engine, std::pair<double, double> pos, AlienDeployment *deployment)
 {
 	SavedGame &game = *engine.getSavedGame();
 	AlienBase *ab = new AlienBase(deployment, game.getMonthsPassed());
-	if (pactCountry)
-	{
-		ab->setPactCountry(pactCountry->getRules()->getType());
-	}
 	ab->setAlienRace(_race);
 	ab->setId(game.getId(deployment->getMarkerName()));
 	ab->setLongitude(pos.first);

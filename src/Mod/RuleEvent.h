@@ -59,7 +59,7 @@ private:
 	std::vector<std::string> _regionList;
 	bool _alignBottom;
 	bool _city;
-	int _points, _funds, _loyalty;
+	int _funds, _loyalty;
 	std::string _spawnedCraftType;
 	int _spawnedPersons, _counterValue;
 	std::string _spawnedPersonType, _spawnedPersonName;
@@ -106,8 +106,6 @@ public:
 	const std::vector<std::string> &getRegionList() const { return _regionList; }
 	/// Is this event city specific?
 	bool isCitySpecific() const { return _city; }
-	/// Gets the amount of score points awarded when this event pops up.
-	int getPoints() const { return _points; }
 	/// Gets the amount of funds awarded when this event pops up.
 	int getFunds() const { return _funds; }
 	/// Gets the value of loyalty that would be added to the player's loyalty score when this event pops up.

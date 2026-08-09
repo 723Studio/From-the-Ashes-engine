@@ -47,11 +47,8 @@ private:
 	std::string _name, _desc, _author, _url, _id, _master;
 	std::string _versionDisplay;
 	ModInfoVersion _version;
-	bool _isMaster;
+	bool _isMaster, _isOxcContainer;
 	int _reservedSpace;
-	bool _engineOk;
-	std::string _requiredExtendedEngine;
-	std::string _requiredExtendedVersion;
 
 	ModInfoVersion _requiredMasterModVersion;
 
@@ -59,7 +56,7 @@ private:
 	std::vector<std::string> _externalResourceDirs;
 public:
 	/// Creates default metadata for a mod at the specified path.
-	ModInfo(const std::string &path);
+	ModInfo(const std::string &path, bool isOxcContainer = false);
 	/// Loads the metadata from YAML.
 	void load(const YAML::YamlNodeReader& reader);
 	/// Gets the path where this mod resides on disk.
@@ -85,6 +82,8 @@ public:
 
 	/// Gets whether this mod is a master (i.e. a vanilla game/total conversion)
 	bool isMaster() const;
+	/// Gets whether this mod was mapped from an OXC container.
+	bool isOxcContainer() const;
 	/// Is parent mod is in required version?
 	bool isParentMasterOk(const ModInfo* parentMod) const;
 
@@ -92,13 +91,6 @@ public:
 	bool canActivate(const std::string &curMaster) const;
 	/// Gets size of mod, bigger mod reserve more values in common collections/surfacesets.
 	int getReservedSpace() const;
-
-	/// Is mod compatible with current OXCE engine aka "fork", check too whether the current OXCE version is equal to (or higher than) the required OXCE version.
-	bool isEngineOk() const;
-	/// Gets the OXCE engine (like "FtA" or "Extended") required by this mod.
-	const std::string &getRequiredExtendedEngine() const;
-	/// Gets the OXCE version required by this mod.
-	const std::string &getRequiredExtendedVersion() const;
 
 	/// Gets ruleset file where are defined based resources like required original game data.
 	const std::string &getResourceConfigFile() const;

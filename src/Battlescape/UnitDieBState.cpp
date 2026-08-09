@@ -223,11 +223,6 @@ void UnitDieBState::think()
 				}
 			}
 		}
-		// if all units from either faction are killed - auto-end the mission.
-		if (_parent->getSave()->getSide() == FACTION_PLAYER)
-		{
-			_parent->autoEndBattle();
-		}
 	}
 	else if (_extraFrame == 1)
 	{
@@ -277,9 +272,6 @@ void UnitDieBState::convertUnitToCorpse()
 {
 	Position lastPosition = _unit->getPosition();
 	int size = _unit->getArmor()->getSize();
-	bool dropItems = (_unit->hasInventory() &&
-		(!Options::weaponSelfDestruction ||
-		(_unit->getOriginalFaction() != FACTION_HOSTILE || _unit->getStatus() == STATUS_UNCONSCIOUS)));
 
 	if (!_noSound)
 	{
@@ -292,7 +284,7 @@ void UnitDieBState::convertUnitToCorpse()
 	}
 
 	// move inventory from unit to the ground
-	if (dropItems && _unit->getTile())
+	if (_unit->hasInventory() && _unit->getTile())
 	{
 		_parent->getTileEngine()->itemDropInventory(_unit->getTile(), _unit);
 	}

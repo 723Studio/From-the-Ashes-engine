@@ -24,10 +24,8 @@ namespace OpenXcom
 {
 
 class TextButton;
-class ToggleTextButton;
 class Window;
 class Text;
-class TextEdit;
 class TextList;
 class Base;
 class RuleResearch;
@@ -43,19 +41,12 @@ private:
 	bool _sortByCost;
 	TextButton *_btnOK;
 	ComboBox *_cbxSort;
-	ToggleTextButton *_btnShowOnlyNew;
-	TextEdit *_btnQuickSearch;
 	Window *_window;
 	Text *_txtTitle, *_txtName, *_txtCategory;
 	TextList *_lstResearch;
 	size_t _lstScroll;
-	Uint8 _colorNormal, _colorNew, _colorHidden;
 	bool _isSortingEnabled;
-	void onClick(Action* action);
 	void onSelectProject(Action *action);
-	void onToggleProjectStatus(Action *action);
-	void onOpenTechTreeViewer(Action *action);
-	void onOpenProjectDetailsInfo(Action *action);
 	std::string getProjectCategory(RuleResearch *project);
 	std::vector<RuleResearch *> _projects;
 public:
@@ -63,17 +54,10 @@ public:
 	NewResearchListState(Base *base, bool sortByCost);
 	/// Handler for clicking the OK button.
 	void btnOKClick(Action *action);
-	/// Handlers for Quick Search.
-	void btnQuickSearchToggle(Action *action);
-	void btnQuickSearchApply(Action *action);
 	/// Handler for changing the sorting.
 	void cbxSortChange(Action *action);
-	/// Handler for clicking the [Show Only New] button.
-	void btnShowOnlyNewClick(Action *action);
-	/// Handler for clicking the [Mark All As Seen] button.
-	void btnMarkAllAsSeenClick(Action *action);
 	/// Fills the ResearchProject list with possible ResearchProjects.
-	void fillProjectList(bool markAllAsSeen);
+	void fillProjectList();
 	/// Initializes the state.
 	void init() override;
 };

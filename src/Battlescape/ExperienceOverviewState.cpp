@@ -44,8 +44,8 @@ namespace OpenXcom
 ExperienceOverviewState::ExperienceOverviewState(BattlescapeState* parent) : _parent(parent)
 {
 	_screen = false;
-	_showPsi = true; //_game->getSavedGame()->isResearched(_game->getMod()->getPsiRequirements());
-	_showMana = true; //_game->getSavedGame()->isManaUnlocked(_game->getMod())
+	_showPsi = _game->getSavedGame()->isResearched(_game->getMod()->getPsiRequirements());
+	_showMana = _game->getSavedGame()->isManaUnlocked(_game->getMod());
 
 	// Create objects
 	_window = new Window(this, 320, 200, 0, 0);

@@ -434,6 +434,72 @@ bool Tile::switchToAltMCD(TilePart part)
 	return true;
 }
 
+/**
+ * Switches every tile part whose original MapData points to targetAltMCD.
+ * All matching source data and destination slots are snapshotted before the tile is mutated,
+ * so a type-changing switch cannot alter a later switch's input.
+ * @param targetAltMCD altMCD value used to select original tile parts.
+ * @return Number of original tile parts that matched.
+ */
+int Tile::switchMatchingPartsToAltMCD(int targetAltMCD)
+{
+	struct PendingAltMCDSwitch
+	{
+		TilePart sourcePart;
+		TilePart destinationPart;
+		MapData* replacement;
+		int replacementMCD;
+		int mapDataSetID;
+	};
+
+	std::vector<PendingAltMCDSwitch> pendingSwitches;
+	for (int part = O_FLOOR; part < O_MAX; ++part)
+	{
+		const TilePart sourcePart = static_cast<TilePart>(part);
+		MapData* source = _objects[sourcePart];
+		if (!source || source->getAltMCD() != targetAltMCD)
+		{
+			continue;
+		}
+
+		const int replacementMCD = source->getAltMCD();
+		MapData* replacement = source->getDataset()->getObject(replacementMCD);
+		const TilePart destinationPart = replacement ? replacement->getObjectType() : sourcePart;
+		pendingSwitches.push_back({
+			sourcePart,
+			destinationPart,
+			replacement,
+			replacementMCD,
+			_mapData->SetID[sourcePart]
+		});
+	}
+
+	for (const PendingAltMCDSwitch& pending : pendingSwitches)
+	{
+		if (pending.destinationPart != pending.sourcePart)
+		{
+			setMapData(0, -1, -1, pending.sourcePart);
+		}
+	}
+
+	for (const PendingAltMCDSwitch& pending : pendingSwitches)
+	{
+		setMapData(
+			pending.replacement,
+			pending.replacementMCD,
+			pending.mapDataSetID,
+			pending.destinationPart);
+
+		if (pending.replacement && pending.replacement->isUFODoor())
+		{
+			_objectsCache[pending.destinationPart].currentFrame = 0;
+			updateSprite(pending.destinationPart);
+		}
+	}
+
+	return static_cast<int>(pendingSwitches.size());
+}
+
 int Tile::closeUfoDoor()
 {
 	int retval = 0;

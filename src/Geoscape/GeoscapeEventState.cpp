@@ -19,7 +19,6 @@
 #include "GeoscapeEventState.h"
 #include "GeoscapeState.h"
 #include <map>
-#include "../Basescape/SellState.h"
 #include "../Engine/Game.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/RNG.h"
@@ -41,13 +40,11 @@
 #include "../Mod/RuleVideo.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/ItemContainer.h"
-#include "../Savegame/Region.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/Soldier.h"
 #include "../Savegame/Transfer.h"
 #include "../Savegame/DiplomacyFaction.h"
 #include "../Ufopaedia/Ufopaedia.h"
-#include "../FTA/MasterMind.h"
 
 namespace OpenXcom
 {
@@ -221,7 +218,7 @@ GeoscapeEventState::GeoscapeEventState(const RuleEvent& eventRule) : _eventRule(
 	{
 		_btnItemsArriving->setText(tr("STR_SUMMARY"));
 	}
-	else if (_lstTransfers->getTexts() == 0 || !Options::oxceGeoscapeEventsInstantDelivery || !_customAnswers.empty())
+	else if (_lstTransfers->getTexts() == 0 || !_customAnswers.empty())
 	{
 		_btnOk->setX((_btnOk->getX() + _btnItemsArriving->getX()) / 2);
 		_btnItemsArriving->setVisible(false);
@@ -271,7 +268,7 @@ void GeoscapeEventState::eventLogic()
 		_txtMessage->setText(messagePlus);
 	}
 
-	// even if the event isn't city-specific, we'll still pick one city randomly to represent the region (and maybe even a country)
+	// even if the event isn't city-specific, we'll still pick one city randomly to represent the region
 	if (regionRule)
 	{
 		if (!rule.isCitySpecific())
@@ -285,35 +282,12 @@ void GeoscapeEventState::eventLogic()
 		}
 	}
 
-	// 1. give/take score points
-	int points = rule.getPoints();
-	if (points != 0)
-	{
-		if (regionRule)
-		{
-			for (auto *region : *_game->getSavedGame()->getRegions())
-			{
-				if (region->getRules() == regionRule)
-				{
-					region->addActivityXcom(points);
-					break;
-				}
-			}
-		}
-		else
-		{
-			save->addResearchScore(points);
-		}
-		_game->getMasterMind()->updateLoyalty(points, XCOM_GEOSCAPE);
-	}
-
-
-	// 2. give/take funds and loyalty
+	// 1. give/take funds and loyalty
 	save->setFunds(save->getFunds() + rule.getFunds());
 
-	save->setLoyalty(save->getLoyalty() + rule.getLoyalty());
+	_game->getGeoscapeState()->updateLoyalty(rule.getLoyalty(), ABSOLUTE_COEF);
 
-	// 3. saving removed covered operations list if exist
+	// 2. saving removed covered operations list if exist
 	std::vector<std::string>  removedCovertOperationsList = rule.getRemovedCovertOperationsList();
 	if (!removedCovertOperationsList.empty())
 	{
@@ -323,50 +297,34 @@ void GeoscapeEventState::eventLogic()
 		}
 	}
 
-	// 4. spawn/transfer persons (soldiers, engineers, scientists, ...)
+	// 3. spawn/transfer persons (soldiers, engineers, scientists, ...)
 	const std::string& spawnedPersonType = rule.getSpawnedPersonType();
 	if (rule.getSpawnedPersons() > 0 && !spawnedPersonType.empty())
 	{
-		if (spawnedPersonType == "STR_SCIENTIST")
+		const RuleSoldier* ruleSoldier = mod->getSoldier(spawnedPersonType);
+		if (ruleSoldier)
 		{
-			Transfer* t = new Transfer(24);
-			t->setScientists(rule.getSpawnedPersons());
-			hq->getTransfers()->push_back(t);
-		}
-		else if (spawnedPersonType == "STR_ENGINEER")
-		{
-			Transfer* t = new Transfer(24);
-			t->setEngineers(rule.getSpawnedPersons());
-			hq->getTransfers()->push_back(t);
-		}
-		else
-		{
-			const RuleSoldier* ruleSoldier = mod->getSoldier(spawnedPersonType);
-			if (ruleSoldier)
+			for (int i = 0; i < rule.getSpawnedPersons(); ++i)
 			{
-				for (int i = 0; i < rule.getSpawnedPersons(); ++i)
+				Transfer* t = new Transfer(24);
+				Soldier* s = mod->genSoldier(save, ruleSoldier);
+				YAML::YamlRootNodeReader reader(rule.getSpawnedSoldierTemplate(), "(spawned soldier template)");
+				s->load(reader, mod, save, mod->getScriptGlobal(), true); // load from soldier template
+				if (!rule.getSpawnedPersonName().empty())
 				{
-					Transfer* t = new Transfer(24);
-					int nationality = _game->getSavedGame()->selectSoldierNationalityByLocation(_game->getMod(), ruleSoldier, city);
-					Soldier* s = mod->genSoldier(save, ruleSoldier, nationality);
-					YAML::YamlRootNodeReader reader(rule.getSpawnedSoldierTemplate(), "(spawned soldier template)");
-					s->load(reader, mod, save, mod->getScriptGlobal(), true); // load from soldier template
-					if (!rule.getSpawnedPersonName().empty())
-					{
-						s->setName(tr(rule.getSpawnedPersonName()));
-					}
-					else
-					{
-						s->genName();
-					}
-					t->setSoldier(s);
-					hq->getTransfers()->push_back(t);
+					s->setName(tr(rule.getSpawnedPersonName()));
 				}
+				else
+				{
+					s->genName();
+				}
+				t->setSoldier(s);
+				hq->getTransfers()->push_back(t);
 			}
 		}
 	}
 
-	// 5. spawn/transfer multiple soldiers into the HQ
+	// 4. spawn/transfer multiple soldiers into the HQ
 	{
 		std::map<const RuleSoldier*, int> soldiersToTransfer;
 
@@ -398,8 +356,7 @@ void GeoscapeEventState::eventLogic()
 			for (int i = 0; i < ts.second; ++i)
 			{
 				Transfer* t = new Transfer(24);
-				int nationality = _game->getSavedGame()->selectSoldierNationalityByLocation(_game->getMod(), ts.first, city);
-				Soldier* s = mod->genSoldier(save, ts.first, nationality);
+				Soldier* s = mod->genSoldier(save, ts.first);
 				YAML::YamlRootNodeReader reader(rule.getSpawnedSoldierTemplate(), "(spawned soldier template)");
 				s->load(reader, mod, save, mod->getScriptGlobal(), true); // load from soldier template
 				{
@@ -412,7 +369,7 @@ void GeoscapeEventState::eventLogic()
 		}
 	}
 
-	// 6. spawn/transfer item into the HQ
+	// 5. spawn/transfer item into the HQ
 	std::map<std::string, int> itemsToTransfer;
 
 	for (auto& pair : rule.getEveryMultiItemList())
@@ -508,7 +465,7 @@ void GeoscapeEventState::eventLogic()
 			ss << -removed;
 			_lstTransfers->addRow(2, tr(ti.first).c_str(), ss.str().c_str());
 		}
-		else if (Options::oxceGeoscapeEventsInstantDelivery)
+		else
 		{
 			hq->getStorageItems()->addItem(mod->getItem(ti.first, true), ti.second);
 
@@ -516,50 +473,32 @@ void GeoscapeEventState::eventLogic()
 			ss << ti.second;
 			_lstTransfers->addRow(2, tr(ti.first).c_str(), ss.str().c_str());
 		}
-		else
-		{
-			Transfer* t = new Transfer(1);
-			t->setItems(mod->getItem(ti.first, true), ti.second);
-			hq->getTransfers()->push_back(t);
-		}
 	}
 
-	// 6b. spawn craft into the HQ
+	// 5b. spawn craft into the HQ
 	const RuleCraft* craftRule = mod->getCraft(rule.getSpawnedCraftType(), true);
 	if (craftRule)
 	{
 		Craft* craft = new Craft(craftRule, hq, save->getId(craftRule->getType()));
 		craft->initFixedWeapons(mod);
-		if (Options::oxceGeoscapeEventsInstantDelivery)
-		{
-			// same as manufacture
-			craft->checkup();
-			hq->getCrafts()->push_back(craft);
-		}
-		else
-		{
-			// same as buy
-			craft->setStatus("STR_REFUELLING");
-			Transfer* t = new Transfer(1);
-			t->setCraft(craft);
-			hq->getTransfers()->push_back(t);
-		}
+		// same as manufacture
+		craft->checkup();
+		hq->getCrafts()->push_back(craft);
 	}
 
-	// 7. give bonus research
+	// 6. give bonus research
 	std::vector<const RuleResearch*> possibilities;
-
-	for (auto* rRule : rule.getResearchList())
+	std::vector<const RuleResearch*> researches;
+	for (const auto* researchRule : rule.getResearchList())
 	{
-		std::vector<const RuleResearch*> researches;
-		for (const auto &rRule : rule.getResearchList())
-		{
-			researches.push_back(rRule);
-		}
-		_game->getMasterMind()->helpResearchDiscovery(researches, possibilities, hq, _researchName, _bonusResearchName);
+		researches.push_back(researchRule);
+	}
+	if (!researches.empty())
+	{
+		_game->getSavedGame()->helpResearchDiscovery(researches, possibilities, _game->getMod(), hq, _researchName, _bonusResearchName);
 	}
 
-	// 8. handle counters
+	// 7. handle counters
 	for (auto& inc : rule.getIncreaseCounter())
 	{
 		_game->getSavedGame()->increaseCustomCounter(inc, rule.getCounterValue());
@@ -569,7 +508,7 @@ void GeoscapeEventState::eventLogic()
 		_game->getSavedGame()->decreaseCustomCounter(dec, rule.getCounterValue());
 	}
 
-	// 9. Add reputation
+	// 8. Add reputation
 	auto reputationScore = _eventRule.getReputationScore();
 	if (!reputationScore.empty())
 	{
@@ -649,16 +588,6 @@ void GeoscapeEventState::btnOkClick(Action*)
 			const RuleVideo* videoRule = _game->getMod()->getVideo(_eventRule.getCutscene(), true);
 			if (videoRule->getWinGame()) _game->getSavedGame()->setEnding(END_WIN);
 			if (videoRule->getLoseGame()) _game->getSavedGame()->setEnding(END_LOSE);
-		}
-	}
-
-	if (_game->getSavedGame()->getEnding() == END_NONE && !_game->getMod()->isFTAGame())
-	{
-		Base* base = _game->getSavedGame()->getBases()->front();
-		if (_game->getSavedGame()->getMonthsPassed() > -1 && Options::storageLimitsEnforced && base != 0 && base->storesOverfull())
-		{
-			_game->pushState(new SellState(base, 0));
-			_game->pushState(new ErrorMessageState(tr("STR_STORAGE_EXCEEDED").arg(base->getName()), _palette, _game->getMod()->getInterface("debriefing")->getElement("errorMessage")->color, "BACK01.SCR", _game->getMod()->getInterface("debriefing")->getElement("errorPalette")->color));
 		}
 	}
 

@@ -59,6 +59,7 @@ enum CraftPlacementErrors : int
 	CPE_SoldierGroupNotSame = 9,
 	CPE_ArmorGroupNotAllowed = 10,
 	CPE_SoldierPendingTransformation = 11,
+	CPE_NotEnoughRelayPower = 12,
 };
 
 typedef std::pair<Position, int> SoldierDeploymentData;
@@ -93,11 +94,9 @@ private:
 	int _fuel, _excessFuel, _damage, _shield, _interceptionOrder, _takeoff;
 	std::vector<CraftWeapon*> _weapons;
 	ItemContainer *_items;
-	ItemContainer *_tempSoldierItems;
-	ItemContainer *_tempExtraItems;
 	std::vector<Vehicle*> _vehicles;
 	std::string _status;
-	bool _lowFuel, _mission, _inBattlescape, _inDogfight;
+	bool _lowFuel, _mission, _inBattlescape, _inDogfight, _pendingBattleReport;
 	double _speedMaxRadian;
 	RuleCraftStats _stats;
 	bool _isAutoPatrolling;
@@ -105,7 +104,6 @@ private:
 	std::vector<int> _pilots;
 	std::map<int, SoldierDeploymentData> _customSoldierDeployment;
 	std::vector<VehicleDeploymentData> _customVehicleDeployment;
-	int _scientists, _engineers;
 	int _skinIndex;
 	ScriptValues<Craft> _scriptValues;
 
@@ -171,14 +169,8 @@ public:
 	std::vector<CraftWeapon*> *getWeapons();
 	/// Gets the craft's items.
 	ItemContainer *getItems();
-	/// Gets the craft's items equipped by the soldiers.
-	ItemContainer* getSoldierItems();
-	/// Gets the craft's items not equipped by the soldiers.
-	ItemContainer* getExtraItems();
 	/// Gets the craft's vehicles.
 	std::vector<Vehicle*> *getVehicles();
-	/// Calculates (and stores) the sum of all equipment of all soldiers on the craft.
-	void calculateTotalSoldierEquipment();
 
 	/// Gets the total storage size of all items in the craft. Including vehicles+ammo and craft weapons+ammo.
 	double getTotalItemStorageSize() const;
@@ -231,15 +223,6 @@ public:
 	int getFuelLimit() const;
 	/// Gets the craft's minimum fuel limit to go to a base.
 	int getFuelLimit(Base *base) const;
-	/// Gets the craft's scientists on board
-	int getScientists() const { return _scientists; };
-	/// Sets the craft's scientists on board
-	void setScientists(int scientists) { _scientists = scientists; };
-	/// Gets the craft's engineers on board
-	int getEngineers() const { return _engineers; };
-	/// Sets the craft's engineers on board
-	void setEngineers(int engineers) { _engineers = engineers; };
-
 	/// Gets the craft's maximum unit capacity (soldiers and vehicles, small and large).
 	int getMaxUnitsClamped() const;
 	int getMaxUnitsRaw() const { return _stats.soldiers; }
@@ -264,11 +247,11 @@ public:
 	/// Checks if a target is detected by the craft's radar.
 	UfoDetection detect(const Ufo *target, const SavedGame *save, int &tracking, bool alreadyTracked) const;
 	/// Handles craft logic.
-	bool think(std::string &pushState);
+	bool think();
 	/// Is the craft about to take off?
 	bool isTakingOff() const;
 	/// Does a craft full checkup.
-	bool checkup();
+	void checkup();
 	/// Consumes the craft's fuel.
 	void consumeFuel(int escortSpeed);
 	/// Calculates the time to repair
@@ -294,7 +277,6 @@ public:
 	/// Gets the amount of space used inside a craft.
 	int getSpaceUsed() const;
 	/// Checks if the commander is onboard.
-	bool isCommanderOnboard() const;
 	/// Checks if there are only permitted soldier types onboard.
 	bool areOnlyPermittedSoldierTypesOnboard(const RuleStartingCondition* sc) const;
 	/// Checks if there are enough required items onboard.
@@ -315,10 +297,8 @@ public:
 	void removeAllPilots();
 	/// Gets the list of craft pilots.
 	const std::vector<Soldier*> getPilotList(bool autoAdd, const Mod* mod);
-	/// Calculates the accuracy bonus based on pilot skills.
-	int getPilotAccuracyBonus(const std::vector<Soldier*> &pilots, const Mod *mod) const;
-	/// Calculates the dodge bonus based on pilot skills.
-	int getPilotDodgeBonus(const std::vector<Soldier*> &pilots, const Mod *mod) const;
+	/// Gets the IDs of pilots assigned for the current flight.
+	const std::vector<int>& getPilotIds() const { return _pilots; }
 	/// Calculates the tracking bonus based on pilot skills.
 	int getPilotTrackingBonus(const std::vector<Soldier *> &pilots, const Mod *mod) const;
 	/// Calculates the coordination bonus based on pilot skills.
@@ -329,6 +309,10 @@ public:
 	void setInDogfight(const bool inDogfight);
 	/// Gets if the craft is in dogfight.
 	bool isInDogfight() const;
+	/// Marks whether a dogfight report must be shown when the craft returns.
+	void setPendingBattleReport(bool pending) { _pendingBattleReport = pending; }
+	/// Gets whether a dogfight report is waiting for the craft to return.
+	bool hasPendingBattleReport() const { return _pendingBattleReport; }
 	/// Sets interception order (first craft to leave the base gets 1, second 2, etc.).
 	void setInterceptionOrder(const int order);
 	/// Gets interception number.

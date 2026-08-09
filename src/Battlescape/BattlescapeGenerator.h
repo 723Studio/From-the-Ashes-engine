@@ -78,12 +78,12 @@ private:
 	const AlienDeployment *_alienCustomDeploy, *_alienCustomMission;
 	int _alienItemLevel;
 	int _ufoDamagePercentage;
-	bool _allowAutoLoadout, _baseInventory, _generateFuel, _craftDeployed, _ufoDeployed;
+	bool _baseInventory, _generateFuel, _craftDeployed, _ufoDeployed;
 	int _craftZ;
 	SDL_Rect _craftPos;
 	std::vector<SDL_Rect> _ufoPos;
 	std::vector<int> _ufoZ;
-	int _markAsReinforcementsBlock;
+	int _markAsSpawnBlock;
 	int _blocksToDo;
 	std::vector< std::vector<MapBlock*> > _blocks;
 	std::vector< std::vector<bool> > _landingzone;
@@ -115,7 +115,7 @@ private:
 	/// Loads an XCom MAP file.
 	int loadMAP(MapBlock *mapblock, int xoff, int yoff, int zoff, RuleTerrain *terrain, int objectIDOffset, bool discovered = false, bool craft = false, int ufoIndex = -1);
 	/// Loads an XCom RMP file.
-	void loadRMP(MapBlock *mapblock, int xoff, int yoff, int zoff, int segment);
+	void loadRMP(MapBlock *mapblock, int xoff, int yoff, int zoff, int segment, bool cullDummyNodes = true);
 	/// Checks a terrain requested by a command and loads it if necessary
 	int loadExtraTerrain(RuleTerrain *terrain);
 	/// Hide the "weapon pile".
@@ -125,6 +125,8 @@ private:
 	/// Possibly explodes ufo power sources.
 	void explodePowerSources();
 	void explodeOtherJunk();
+	/// Clears terrain objects from footprints reserved by pre-battle map spawns.
+	void preparePreBattleSpawnUnitFootprints(const RuleEnviroEffects* enviro);
 	/// Deploys the XCOM units on the mission.
 	void deployXCOM(const RuleStartingCondition* startingCondition, const RuleEnviroEffects* enviro);
 	/// Runs necessary checks before physically setting the position.
@@ -132,7 +134,7 @@ private:
 	/// Deploys the aliens, according to the alien deployment rules.
 	void deployAliens(const AlienDeployment *deployment);
 	/// Spawns civilians on a terror mission.
-	void deployCivilians(bool markAsVIP, int nodeRank, int max, bool roundUp = false, const std::string &civilianType = "");
+	void deployCivilians(int nodeRank, int max, bool roundUp = false, const std::string &civilianType = "");
 	/// Finds a spot near a friend to spawn at.
 	bool placeUnitNearFriend(BattleUnit *unit);
 	/// Load all Xcom weapons.
@@ -210,9 +212,9 @@ public:
 	void runInventory(Craft *craft);
 	/// Sets up the objectives for the map.
 	void setupObjectives(const AlienDeployment *ruleDeploy);
-	// Auto-equip a set of units
-	static void autoEquip(std::vector<BattleUnit*> units, Mod *mod, std::vector<BattleItem*> *craftInv,
-		RuleInventory *groundRuleInv, int worldShade, bool allowAutoLoadout, bool overrideEquipmentLayout);
+	/// Sets up a single map block for editing.
+	void loadMapForEditing();
+	void loadEmptyMap();
 };
 
 }

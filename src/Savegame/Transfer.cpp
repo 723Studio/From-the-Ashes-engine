@@ -17,23 +17,79 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "Transfer.h"
+#include <cctype>
+#include <limits>
 #include "Base.h"
 #include "Soldier.h"
 #include "Craft.h"
 #include "ItemContainer.h"
 #include "BasePrisoner.h"
+#include "BaseContainedAlien.h"
+#include "BaseContainedMonster.h"
+#include "SavedGame.h"
 #include "../Engine/Language.h"
+#include "../Engine/Exception.h"
 #include "../Mod/Mod.h"
 #include "../Engine/Logger.h"
 
 namespace OpenXcom
 {
 
+namespace
+{
+
+bool parsePositiveCaptiveId(const std::string& value, int& id)
+{
+	if (value.empty())
+	{
+		return false;
+	}
+	long long parsed = 0;
+	for (const char character : value)
+	{
+		if (!std::isdigit(static_cast<unsigned char>(character)))
+		{
+			return false;
+		}
+		parsed = parsed * 10 + (character - '0');
+		if (parsed > std::numeric_limits<int>::max())
+		{
+			throw Exception("Captive id '" + value + "' exceeds the supported integer range");
+		}
+	}
+	id = static_cast<int>(parsed);
+	if (id <= 0)
+	{
+		throw Exception("Captive id '" + value + "' must be a positive integer");
+	}
+	return true;
+}
+
+void loadCaptiveIdentity(const YAML::YamlNodeReader& reader, SavedGame* save,
+	int& id, std::string& designation)
+{
+	std::string savedId;
+	reader["id"].tryReadVal(savedId);
+	reader["designation"].tryReadVal(designation);
+	if (parsePositiveCaptiveId(savedId, id) || savedId.empty())
+	{
+		return;
+	}
+	if (designation.empty())
+	{
+		designation = savedId;
+	}
+	id = save->getId("STR_CAPTIVE");
+}
+
+}
+
 /**
  * Initializes a transfer.
  * @param hours Hours in-transit.
  */
-Transfer::Transfer(int hours) : _hours(hours), _soldier(0), _craft(0), _prisoner(0), _itemQty(0), _scientists(0), _engineers(0), _delivered(false)
+Transfer::Transfer(int hours) : _hours(hours), _soldier(0), _craft(0), _prisoner(0),
+	_containedAlien(0), _containedMonster(0), _itemQty(0), _delivered(false)
 {
 }
 
@@ -47,6 +103,8 @@ Transfer::~Transfer()
 		delete _soldier;
 		delete _craft;
 		delete _prisoner;
+		delete _containedAlien;
+		delete _containedMonster;
 	}
 }
 
@@ -67,7 +125,7 @@ bool Transfer::load(const YAML::YamlNodeReader& reader, Base *base, const Mod *m
 		std::string type = soldier["type"].readVal(mod->getSoldiersList().front());
 		if (mod->getSoldier(type))
 		{
-			_soldier = new Soldier(mod->getSoldier(type), nullptr, 0 /*nationality*/);
+			_soldier = new Soldier(mod->getSoldier(type), nullptr, 0 /*id*/);
 			_soldier->load(soldier, mod, save, mod->getScriptGlobal());
 		}
 		else
@@ -105,15 +163,22 @@ bool Transfer::load(const YAML::YamlNodeReader& reader, Base *base, const Mod *m
 		}
 	}
 	reader.tryRead("itemQty", _itemQty);
-	reader.tryRead("scientists", _scientists);
-	reader.tryRead("engineers", _engineers);
+	int legacyStaff = 0;
+	if (reader.tryRead("scientists", legacyStaff) || reader.tryRead("engineers", legacyStaff))
+	{
+		Log(LOG_WARNING) << "Ignoring legacy scientist/engineer transfer from unsupported OXCE staff-counter save data.";
+		delete this;
+		return false;
+	}
 	if (const auto& prisoner = reader["prisoner"])
 	{
-		std::string id = prisoner["id"].readVal<std::string>();
+		int id = 0;
+		std::string designation;
+		loadCaptiveIdentity(prisoner, save, id, designation);
 		std::string type = prisoner["type"].readVal<std::string>();
 		if (mod->getPrisonerRules(type) != nullptr)
 		{
-			_prisoner = new BasePrisoner(mod->getPrisonerRules(type), 0, type, id);
+			_prisoner = new BasePrisoner(mod->getPrisonerRules(type), 0, type, id, designation);
 			_prisoner->load(prisoner, mod);
 		}
 		else
@@ -122,6 +187,28 @@ bool Transfer::load(const YAML::YamlNodeReader& reader, Base *base, const Mod *m
 			delete this;
 			return false;
 		}
+	}
+	if (const auto& alien = reader["containedAlien"])
+	{
+		std::string rule = alien["rule"].readVal<std::string>();
+		const auto* alienRules = mod->getContainedAlien(rule, false);
+		if (!alienRules)
+		{
+			throw Exception("Transfer: saved contained alien rule '" + rule + "' does not exist");
+		}
+		_containedAlien = new BaseContainedAlien(alienRules, nullptr, 0, std::string());
+		_containedAlien->load(alien, mod, save);
+	}
+	if (const auto& monster = reader["containedMonster"])
+	{
+		std::string rule = monster["rule"].readVal<std::string>();
+		const auto* monsterRules = mod->getContainedMonster(rule, false);
+		if (!monsterRules)
+		{
+			throw Exception("Transfer: saved contained monster rule '" + rule + "' does not exist");
+		}
+		_containedMonster = new BaseContainedMonster(monsterRules, nullptr, 0, std::string());
+		_containedMonster->load(monster, mod, save);
 	}
 	reader.tryRead("delivered", _delivered);
 	return true;
@@ -150,17 +237,17 @@ void Transfer::save(YAML::YamlNodeWriter writer, const Base* b, const Mod* mod) 
 		writer.write("itemId", _itemId->getType());
 		writer.write("itemQty", _itemQty);
 	}
-	else if (_scientists != 0)
-	{
-		writer.write("scientists", _scientists);
-	}
-	else if (_engineers != 0)
-	{
-		writer.write("engineers", _engineers);
-	}
 	else if (_prisoner != 0)
 	{
 		_prisoner->save(writer["prisoner"]);
+	}
+	else if (_containedAlien != 0)
+	{
+		_containedAlien->save(writer["containedAlien"]);
+	}
+	else if (_containedMonster != 0)
+	{
+		_containedMonster->save(writer["containedMonster"]);
 	}
 
 	if (_delivered)
@@ -215,24 +302,6 @@ void Transfer::setItems(const RuleItem* rule, int qty)
 }
 
 /**
- * Changes the scientists being transferred.
- * @param scientists Amount of scientists.
- */
-void Transfer::setScientists(int scientists)
-{
-	_scientists = scientists;
-}
-
-/**
- * Changes the engineers being transferred.
- * @param engineers Amount of engineers.
- */
-void Transfer::setEngineers(int engineers)
-{
-	_engineers = engineers;
-}
-
-/**
  * Returns the name of the contents of the transfer.
  * @param lang Language to get strings from.
  * @return Name string.
@@ -247,17 +316,17 @@ std::string Transfer::getName(Language *lang) const
 	{
 		return _craft->getName(lang);
 	}
-	else if (_scientists != 0)
-	{
-		return lang->getString("STR_SCIENTISTS");
-	}
-	else if (_engineers != 0)
-	{
-		return lang->getString("STR_ENGINEERS");
-	}
 	else if (_prisoner != 0)
 	{
-		return _prisoner->getId();
+		return _prisoner->getNameAndDesignation(lang);
+	}
+	else if (_containedAlien != 0)
+	{
+		return _containedAlien->getNameAndDesignation(lang);
+	}
+	else if (_containedMonster != 0)
+	{
+		return _containedMonster->getNameAndDesignation(lang);
 	}
 	return lang->getString(_itemId->getType());
 }
@@ -282,14 +351,6 @@ int Transfer::getQuantity() const
 	{
 		return _itemQty;
 	}
-	else if (_scientists != 0)
-	{
-		return _scientists;
-	}
-	else if (_engineers != 0)
-	{
-		return _engineers;
-	}
 	return 1;
 }
 
@@ -307,19 +368,62 @@ TransferType Transfer::getType() const
 	{
 		return TRANSFER_CRAFT;
 	}
-	else if (_scientists != 0)
-	{
-		return TRANSFER_SCIENTIST;
-	}
-	else if (_engineers != 0)
-	{
-		return TRANSFER_ENGINEER;
-	}
 	else if (_prisoner != 0)
 	{
 		return TRANSFER_PRISONER;
 	}
+	else if (_containedAlien != 0)
+	{
+		return TRANSFER_CONTAINED_ALIEN;
+	}
+	else if (_containedMonster != 0)
+	{
+		return TRANSFER_CONTAINED_MONSTER;
+	}
 	return TRANSFER_ITEM;
+}
+
+/**
+ * Hands the transfer payload to its destination.
+ * @param base Pointer to destination base.
+ */
+void Transfer::deliver(Base *base)
+{
+	if (_delivered)
+	{
+		return;
+	}
+	_hours = 0;
+	if (_soldier != 0)
+	{
+		base->getSoldiers()->push_back(_soldier);
+	}
+	else if (_craft != 0)
+	{
+		base->getCrafts()->push_back(_craft);
+		_craft->setBase(base);
+		_craft->checkup();
+	}
+	else if (_itemQty != 0)
+	{
+		base->getStorageItems()->addItem(_itemId, _itemQty);
+	}
+	else if (_prisoner != 0)
+	{
+		base->addPrisoner(_prisoner);
+	}
+	else if (_containedAlien != 0)
+	{
+		base->addContainedAlien(_containedAlien);
+	}
+	else if (_containedMonster != 0)
+	{
+		base->addContainedMonster(_containedMonster);
+	}
+	// Before this point the transfer owns its payload. Delivery hands ownership
+	// to the base, while the delivered transfer remains as a non-owning arrival
+	// record until ItemsArrivingState removes it.
+	_delivered = true;
 }
 
 /**
@@ -329,36 +433,14 @@ TransferType Transfer::getType() const
  */
 void Transfer::advance(Base *base)
 {
+	if (_delivered)
+	{
+		return;
+	}
 	_hours--;
 	if (_hours <= 0)
 	{
-		if (_soldier != 0)
-		{
-			base->getSoldiers()->push_back(_soldier);
-		}
-		else if (_craft != 0)
-		{
-			base->getCrafts()->push_back(_craft);
-			_craft->setBase(base);
-			_craft->checkup();
-		}
-		else if (_itemQty != 0)
-		{
-			base->getStorageItems()->addItem(_itemId, _itemQty);
-		}
-		else if (_scientists != 0)
-		{
-			base->setScientists(base->getScientists() + _scientists);
-		}
-		else if (_engineers != 0)
-		{
-			base->setEngineers(base->getEngineers() + _engineers);
-		}
-		else if (_prisoner != 0)
-		{
-			base->addPrisoner(_prisoner);
-		}
-		_delivered = true;
+		deliver(base);
 	}
 }
 

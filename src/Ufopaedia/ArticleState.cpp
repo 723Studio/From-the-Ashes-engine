@@ -25,7 +25,6 @@
 #include "../Interface/TextButton.h"
 #include "../Mod/ArticleDefinition.h"
 #include "../Mod/Mod.h"
-#include "../Savegame/SavedGame.h"
 
 namespace OpenXcom
 {
@@ -42,10 +41,6 @@ namespace OpenXcom
 		else
 		{
 			current_index++;
-		}
-		if (isCurrentArticleHidden())
-		{
-			nextArticle();
 		}
 	}
 
@@ -85,10 +80,6 @@ namespace OpenXcom
 		else
 		{
 			current_index--;
-		}
-		if (isCurrentArticleHidden())
-		{
-			prevArticle();
 		}
 	}
 
@@ -131,12 +122,6 @@ namespace OpenXcom
 
 		_state = std::move(state);
 
-		// remember this article as seen/normal
-		int ruleStatus = _game->getSavedGame()->getUfopediaRuleStatus(_id);
-		if (ruleStatus != ArticleDefinition::PEDIA_STATUS_HIDDEN)
-		{
-			_game->getSavedGame()->setUfopediaRuleStatus(_id, ArticleDefinition::PEDIA_STATUS_NORMAL);
-		}
 	}
 
 	/**

@@ -57,7 +57,7 @@ Ufo::Ufo(const RuleUfo *rules, int uniqueId, int hunterKillerPercentage, int hun
 	_inBattlescape(false), _mission(0), _trajectory(0),
 	_trajectoryPoint(0), _detected(false), _hyperDetected(false), _processedIntercept(false),
 	_shootingAt(0), _hitFrame(0), _fireCountdown(0), _escapeCountdown(0), _stats(), _shield(-1), _shieldRechargeHandle(0),
-	_tractorBeamSlowdown(0), _isHunterKiller(false), _isEscort(false), _huntMode(0), _huntBehavior(0),
+	_isHunterKiller(false), _isEscort(false), _huntMode(0), _huntBehavior(0),
 	_isHunting(false), _isEscorting(false), _softlockShotCounter(0), _origWaypoint(0)
 {
 	_stats = rules->getStats();
@@ -1130,24 +1130,6 @@ int Ufo::getShieldRechargeHandle() const
 int Ufo::getShieldPercentage() const
 {
 	return _stats.shieldCapacity != 0 ? _shield * 100 / _stats.shieldCapacity : 0;
-}
-
-/**
- * Sets how much this UFO is being slowed down by craft tractor beams
- * @param the _tractorBeamSlowdown to set
- */
-void Ufo::setTractorBeamSlowdown(int tractorBeamSlowdown)
-{
-	_tractorBeamSlowdown = std::max(0, std::min(_stats.speedMax, tractorBeamSlowdown));
-}
-
-/**
- * Gets how much this UFO is being slowed down by craft tractor beams
- * @return the tractor beam slowdown
- */
-int Ufo::getTractorBeamSlowdown() const
-{
-	return _tractorBeamSlowdown;
 }
 
 /**

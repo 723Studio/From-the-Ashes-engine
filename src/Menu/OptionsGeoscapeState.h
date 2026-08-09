@@ -24,7 +24,6 @@ namespace OpenXcom
 
 class Text;
 class TextButton;
-class ToggleTextButton;
 class Slider;
 class ComboBox;
 
@@ -39,10 +38,6 @@ private:
 	ComboBox *_cbxDragScroll;
 	Text *_txtScrollSpeed, *_txtDogfightSpeed, *_txtClockSpeed;
 	Slider *_slrScrollSpeed, *_slrDogfightSpeed, *_slrClockSpeed;
-	Text *_txtGlobeDetails;
-	ToggleTextButton *_btnGlobeCountries, *_btnGlobeRadars, *_btnGlobePaths;
-	Text *_txtOptions;
-	ToggleTextButton *_btnShowFunds;
 public:
 	/// Creates the Geoscape Options state.
 	OptionsGeoscapeState(OptionsOrigin origin);
@@ -56,14 +51,6 @@ public:
 	void slrDogfightSpeedChange(Action *action);
 	/// Handler for changing the clock speed slider.
 	void slrClockSpeedChange(Action *action);
-	/// Handler for clicking the Country Borders button.
-	void btnGlobeCountriesClick(Action *action);
-	/// Handler for clicking the Radar Ranges button.
-	void btnGlobeRadarsClick(Action *action);
-	/// Handler for clicking the Flight Paths button.
-	void btnGlobePathsClick(Action *action);
-	/// Handler for clicking the Show Funds button.
-	void btnShowFundsClick(Action *action);
 };
 
 }

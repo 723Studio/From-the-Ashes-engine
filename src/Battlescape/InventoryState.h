@@ -17,7 +17,6 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <map>
 #include "../Engine/State.h"
 #include "../Interface/TextButton.h"
 #include "../Savegame/EquipmentLayoutItem.h"
@@ -37,7 +36,6 @@ class BattlescapeState;
 class BattleUnit;
 class BattlescapeButton;
 class Base;
-class Soldier;
 
 /**
  * Screen which displays soldier's inventory.
@@ -49,7 +47,6 @@ private:
 	Text *_txtItem, *_txtAmmo, *_txtWeight, *_txtTus, *_txtStatLine1, *_txtStatLine2, *_txtStatLine3, *_txtStatLine4, *_txtPosition;
 	Text *_txtNameStatic;
 	TextEdit *_txtName;
-	TextEdit *_btnQuickSearch;
 	BattlescapeButton *_btnOk, *_btnPrev, *_btnNext, *_btnUnload, *_btnGround, *_btnRank, *_btnArmor;
 	BattlescapeButton *_btnCreateTemplate, *_btnApplyTemplate;
 	BattlescapeButton *_btnLinks;
@@ -60,14 +57,12 @@ private:
 	const bool _tu, _noCraft;
 	BattlescapeState *_parent;
 	Base *_base;
-	std::map<Soldier*, Craft*> _backup;
-	bool _resetCustomDeploymentBackup;
 	std::string _currentTooltip;
 	std::string _currentDamageTooltip;
 	int _mouseHoverItemFrame = 0;
 	BattleItem *_mouseHoverItem = nullptr;
 	BattleItem *_currentDamageTooltipItem = nullptr;
-	bool _reloadUnit, _ftaUI;
+	bool _reloadUnit;
 	int _globalLayoutIndex;
 	int _prev_key = 0, _key_repeats = 0;
 	/// Helper method for Create Template button
@@ -90,10 +85,6 @@ public:
 	void updateStats();
 	/// Saves the soldiers' equipment-layout.
 	void saveEquipmentLayout();
-	/// Handler for clicking the Armor button.
-	void btnArmorClick(Action *action);
-	void btnArmorClickRight(Action *action);
-	void btnDiaryLightClick(Action *action);
 	void btnArmorClickMiddle(Action *action);
 	/// Methods for handling the global equipment layout save/load hotkeys.
 	void saveGlobalLayout(int index, bool includingArmor);
@@ -109,9 +100,6 @@ public:
 	void btnUfopaediaClick(Action *action);
 	/// Handler for clicking the OK button.
 	void btnOkClick(Action *action);
-	/// Handlers for Quick Search.
-	void btnQuickSearchToggle(Action *action);
-	void btnQuickSearchApply(Action *action);
 	/// Handler for clicking the Previous button.
 	void btnPrevClick(Action *action);
 	/// Handler for clicking the Next button.
@@ -128,15 +116,10 @@ public:
 	void btnLinksClick(Action *action);
 	/// Handler for clicking on the Create Template button.
 	void btnCreateTemplateClick(Action *action);
-	void btnCreatePersonalTemplateClick(Action *action);
 	/// Handler for clicking the Apply Template button.
 	void btnApplyTemplateClick(Action *action);
-	void btnApplyPersonalTemplateClick(Action *action);
-	void btnShowPersonalTemplateClick(Action *action);
 	/// Handler for hitting the Clear Inventory hotkey.
 	void onClearInventory(Action *action);
-	/// Handler for hitting the Auto-equip hotkey.
-	void onAutoequip(Action *action);
 	/// Handler for clicking on the inventory.
 	void invClick(Action *action);
 	/// Handler for showing item info.

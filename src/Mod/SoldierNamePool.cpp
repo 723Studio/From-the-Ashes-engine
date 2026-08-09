@@ -80,7 +80,6 @@ void SoldierNamePool::load(const std::string &filename)
 		_globalWeight = 100;
 	}
 
-	reader.tryRead("country", _country);
 	reader.tryRead("region", _region);
 
 	// Note: each name pool *instance* is only ever loaded once,

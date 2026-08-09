@@ -17,7 +17,6 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "IntelAllocateAgentsState.h"
-
 #include "IntelligenceProjectDetailsState.h"
 #include "../Engine/Action.h"
 #include "../Engine/Game.h"
@@ -35,7 +34,6 @@
 #include "../Savegame/Base.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/Soldier.h"
-#include "../Savegame/BasePrisoner.h"
 #include "SoldierInfoStateFtA.h"
 #include "../Mod/RuleIntelProject.h"
 #include "../Savegame/IntelProject.h"
@@ -50,7 +48,8 @@ namespace OpenXcom
  * @param operation Pointer to starting (not committed) covert operation.
  */
 IntelAllocateAgentsState::IntelAllocateAgentsState(Base *base, IntelProject* project)
-	: _base(base), _project(project), _otherCraftColor(0), _origAgentOrder(*_base->getSoldiers()), _dynGetter(NULL)
+	: _base(base), _project(project), _otherCraftColor(0), _origAgentOrder(*_base->getSoldiers()),
+	  _dynGetter(NULL), _freeSpace(_base->getFreeIntelSpace())
 {
 	// Create objects
 	_window = new Window(this, 320, 200, 0, 0);
@@ -112,7 +111,15 @@ IntelAllocateAgentsState::IntelAllocateAgentsState(Base *base, IntelProject* pro
 
 	PUSH_IN(OpenXcom::UnitStats::getStatString(&UnitStats::data), dataStat);
 	PUSH_IN(OpenXcom::UnitStats::getStatString(&UnitStats::computers), computersStat);
+	if (_game->getSavedGame()->isResearched(_game->getMod()->getXenolinguisticsUnlockResearch()))
+	{
+		PUSH_IN(OpenXcom::UnitStats::getStatString(&UnitStats::xenolinguistics), xenolinguisticsStat);
+	}
 	PUSH_IN(OpenXcom::UnitStats::getStatString(&UnitStats::hacking), hackingStat);
+	if (_game->getSavedGame()->isResearched(_game->getMod()->getAlienTechUnlockResearch()))
+	{
+		PUSH_IN(OpenXcom::UnitStats::getStatString(&UnitStats::alienTech), alienTechStat);
+	}
 	PUSH_IN(OpenXcom::UnitStats::getStatString(&UnitStats::investigation), investigationStat);
 	PUSH_IN(OpenXcom::UnitStats::getStatString(&UnitStats::bravery), braveryStat);
 	if (showPsiStats)
@@ -134,6 +141,14 @@ IntelAllocateAgentsState::IntelAllocateAgentsState(Base *base, IntelProject* pro
 	_lstAgents->setBackground(_window);
 	_lstAgents->setMargin(8);
 	_lstAgents->onMouseClick((ActionHandler)&IntelAllocateAgentsState::lstAgentsClick, 0);
+
+	for (auto* soldier : *_base->getSoldiers())
+	{
+		if (soldier->getIntelProject() == _project)
+		{
+			_assignedAgents.insert(soldier);
+		}
+	}
 }
 
 /**
@@ -219,6 +234,34 @@ void IntelAllocateAgentsState::cbxSortByChange(Action *)
  */
 void IntelAllocateAgentsState::btnOkClick(Action *)
 {
+	if (_project->isCurrentMilestoneBlocked(_game->getSavedGame()) ||
+		!_project->getBlockedMilestone().empty())
+	{
+		_game->pushState(new ErrorMessageState(tr("STR_INTEL_PROJECT_BLOCKED"), _palette,
+			_game->getMod()->getInterface("soldierInfo")->getElement("errorMessage")->color,
+			"BACK01.SCR",
+			_game->getMod()->getInterface("soldierInfo")->getElement("errorPalette")->color));
+		return;
+	}
+
+	int plannedUsed = 0;
+	for (auto* soldier : *_base->getSoldiers())
+	{
+		if (_assignedAgents.find(soldier) != _assignedAgents.end() ||
+			(soldier->getIntelProject() && soldier->getIntelProject() != _project))
+		{
+			++plannedUsed;
+		}
+	}
+	if (plannedUsed > _base->getAvailableIntelSpace())
+	{
+		_game->pushState(new ErrorMessageState(tr("STR_NOT_ENOUGH_INTEL_SPACE"), _palette,
+			_game->getMod()->getInterface("soldierInfo")->getElement("errorMessage")->color,
+			"BACK01.SCR",
+			_game->getMod()->getInterface("soldierInfo")->getElement("errorPalette")->color));
+		return;
+	}
+
 	for (auto s : *_base->getSoldiers())
 	{
 		if (s->getIntelProject() == _project)
@@ -250,7 +293,6 @@ void IntelAllocateAgentsState::initList(size_t scrl)
 
 	_filteredListOfAgents.clear();
 	_agentsNumbers.clear();
-	_assignedAgents.clear();
 	int i = 0;
 
 	for (auto& soldier : *_base->getSoldiers())
@@ -296,11 +338,6 @@ void IntelAllocateAgentsState::initList(size_t scrl)
 		if (iter != std::end(_assignedAgents))
 		{
 			matched = true;
-		}
-		else if ((*s)->getIntelProject() == _project)
-		{
-			matched = true;
-			_assignedAgents.emplace(*s);
 		}
 
 		if (matched)
@@ -356,9 +393,14 @@ void IntelAllocateAgentsState::lstAgentsClick(Action *action)
 		}
 		if (matched)
 		{
+			const bool returnsToOtherProject = s->getIntelProject() && s->getIntelProject() != _project;
 			_assignedAgents.erase(s);
 			_lstAgents->setCellText(row, 1, tr("STR_NONE_UC"));
 			color = _lstAgents->getColor();
+			if (!returnsToOtherProject)
+			{
+				++_freeSpace;
+			}
 		}
 		else if (isBusy)
 		{
@@ -366,9 +408,22 @@ void IntelAllocateAgentsState::lstAgentsClick(Action *action)
 		}
 		else if (s->hasFullHealth())
 		{
+			const bool reusesIntelSpace = s->getIntelProject() && s->getIntelProject() != _project;
+			if (!reusesIntelSpace && _freeSpace <= 0)
+			{
+				_game->pushState(new ErrorMessageState(tr("STR_NOT_ENOUGH_INTEL_SPACE"), _palette,
+					_game->getMod()->getInterface("soldierInfo")->getElement("errorMessage")->color,
+					"BACK01.SCR",
+					_game->getMod()->getInterface("soldierInfo")->getElement("errorPalette")->color));
+				return;
+			}
 			_lstAgents->setCellText(row, 1, tr("STR_ASSIGNED_UC"));
 			color = _lstAgents->getSecondaryColor();
 			_assignedAgents.insert(s);
+			if (!reusesIntelSpace)
+			{
+				--_freeSpace;
+			}
 		}
 
 		_lstAgents->setRowColor(row, color);

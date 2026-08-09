@@ -17,6 +17,7 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <map>
 #include "../Engine/Yaml.h"
 
 namespace OpenXcom
@@ -25,6 +26,17 @@ namespace OpenXcom
 class RuleResearch;
 class Mod;
 class Soldier;
+struct UnitStats;
+
+/**
+ * Calculates one hour of standard scientist cost+stats progress.
+ *
+ * Experience rolls use the same project stats. Callers may require positive
+ * progress before those rolls are committed.
+ */
+int getScientistProjectProgress(const UnitStats& projectStats,
+	const std::map<Soldier*, int>& assignedScientists, Mod* mod, int rating,
+	bool requirePositiveProgressForExperience = false);
 
 /**
    Represent a ResearchProject
@@ -33,7 +45,6 @@ class Soldier;
 class ResearchProject
 {
 	const RuleResearch * _project;
-	int _assigned;
 	int _spent;
 	int _cost;
 public:
@@ -43,10 +54,6 @@ public:
 	int getStepProgress(std::map<Soldier*, int> &assignedScientists, Mod *mod, int rating);
 	/// gets state of project.
 	bool isFinished();
-	/// set the number of scientist assigned to this ResearchProject
-	void setAssigned (int nb);
-	/// get the number of scientist assigned to this ResearchProject
-	int getAssigned() const;
 	/// get time already spent on this ResearchProject
 	int getSpent() const;
 	/// set time already spent on this ResearchProject

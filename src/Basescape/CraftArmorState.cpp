@@ -470,13 +470,12 @@ void CraftArmorState::lstSoldiersClick(Action *action)
 	}
 
 	Soldier *s = _base->getSoldiers()->at(_lstSoldiers->getSelectedRow());
-	Craft* c = _base->getCrafts()->at(_craft);
 	if (!(s->getCraft() && s->getCraft()->getStatus() == "STR_OUT") || s->getCovertOperation() != 0)
 	{
 		if (_game->isLeftClick(action, true))
 		{
 			_savedScrollPosition = _lstSoldiers->getScroll();
-			_game->pushState(new SoldierArmorState(_base, _lstSoldiers->getSelectedRow(), SA_GEOSCAPE));
+			_game->pushState(new SoldierArmorState(_base, _lstSoldiers->getSelectedRow()));
 		}
 		else if (_game->isRightClick(action, true))
 		{

@@ -20,7 +20,6 @@
 #include "../Interface/TextButton.h"
 #include "../Interface/Text.h"
 #include "../Interface/Slider.h"
-#include "../Interface/ToggleTextButton.h"
 #include "../Interface/ComboBox.h"
 #include "../Engine/Action.h"
 #include "../Engine/Options.h"
@@ -50,14 +49,6 @@ OptionsGeoscapeState::OptionsGeoscapeState(OptionsOrigin origin) : OptionsBaseSt
 	_txtClockSpeed = new Text(114, 9, 94, 40);
 	_slrClockSpeed = new Slider(104, 16, 94, 50);
 
-	_txtGlobeDetails = new Text(114, 9, 94, 82);
-	_btnGlobeCountries = new ToggleTextButton(104, 16, 94, 92);
-	_btnGlobeRadars = new ToggleTextButton(104, 16, 94, 110);
-	_btnGlobePaths = new ToggleTextButton(104, 16, 94, 128);
-
-	_txtOptions = new Text(114, 9, 206, 82);
-	_btnShowFunds = new ToggleTextButton(104, 16, 206, 92);
-
 	add(_txtScrollSpeed, "text", "geoscapeMenu");
 	add(_slrScrollSpeed, "button", "geoscapeMenu");
 
@@ -66,14 +57,6 @@ OptionsGeoscapeState::OptionsGeoscapeState(OptionsOrigin origin) : OptionsBaseSt
 
 	add(_txtClockSpeed, "text", "geoscapeMenu");
 	add(_slrClockSpeed, "button", "geoscapeMenu");
-
-	add(_txtGlobeDetails, "text", "geoscapeMenu");
-	add(_btnGlobeCountries, "button", "geoscapeMenu");
-	add(_btnGlobeRadars, "button", "geoscapeMenu");
-	add(_btnGlobePaths, "button", "geoscapeMenu");
-
-	add(_txtOptions, "text", "geoscapeMenu");
-	add(_btnShowFunds, "button", "geoscapeMenu");
 
 	add(_txtDragScroll, "text", "geoscapeMenu");
 	add(_cbxDragScroll, "button", "geoscapeMenu");
@@ -123,37 +106,6 @@ OptionsGeoscapeState::OptionsGeoscapeState(OptionsOrigin origin) : OptionsBaseSt
 	_slrClockSpeed->onMouseIn((ActionHandler)&OptionsGeoscapeState::txtTooltipIn);
 	_slrClockSpeed->onMouseOut((ActionHandler)&OptionsGeoscapeState::txtTooltipOut);
 
-	_txtGlobeDetails->setText(tr("STR_GLOBE_DETAILS"));
-
-	_btnGlobeCountries->setText(tr("STR_GLOBE_COUNTRIES"));
-	_btnGlobeCountries->setPressed(Options::globeDetail);
-	_btnGlobeCountries->onMouseClick((ActionHandler)&OptionsGeoscapeState::btnGlobeCountriesClick);
-	_btnGlobeCountries->setTooltip("STR_GLOBE_COUNTRIES_DESC");
-	_btnGlobeCountries->onMouseIn((ActionHandler)&OptionsGeoscapeState::txtTooltipIn);
-	_btnGlobeCountries->onMouseOut((ActionHandler)&OptionsGeoscapeState::txtTooltipOut);
-
-	_btnGlobeRadars->setText(tr("STR_GLOBE_RADARS"));
-	_btnGlobeRadars->setPressed(Options::globeRadarLines);
-	_btnGlobeRadars->onMouseClick((ActionHandler)&OptionsGeoscapeState::btnGlobeRadarsClick);
-	_btnGlobeRadars->setTooltip("STR_GLOBE_RADARS_DESC");
-	_btnGlobeRadars->onMouseIn((ActionHandler)&OptionsGeoscapeState::txtTooltipIn);
-	_btnGlobeRadars->onMouseOut((ActionHandler)&OptionsGeoscapeState::txtTooltipOut);
-
-	_btnGlobePaths->setText(tr("STR_GLOBE_FLIGHT_PATHS"));
-	_btnGlobePaths->setPressed(Options::globeFlightPaths);
-	_btnGlobePaths->onMouseClick((ActionHandler)&OptionsGeoscapeState::btnGlobePathsClick);
-	_btnGlobePaths->setTooltip("STR_GLOBE_FLIGHT_PATHS_DESC");
-	_btnGlobePaths->onMouseIn((ActionHandler)&OptionsGeoscapeState::txtTooltipIn);
-	_btnGlobePaths->onMouseOut((ActionHandler)&OptionsGeoscapeState::txtTooltipOut);
-
-	_txtOptions->setText(tr("STR_USER_INTERFACE_OPTIONS"));
-
-	_btnShowFunds->setText(tr("STR_SHOW_FUNDS"));
-	_btnShowFunds->setPressed(Options::showFundsOnGeoscape);
-	_btnShowFunds->onMouseClick((ActionHandler)&OptionsGeoscapeState::btnShowFundsClick);
-	_btnShowFunds->setTooltip("STR_SHOW_FUNDS_DESC");
-	_btnShowFunds->onMouseIn((ActionHandler)&OptionsGeoscapeState::txtTooltipIn);
-	_btnShowFunds->onMouseOut((ActionHandler)&OptionsGeoscapeState::txtTooltipOut);
 }
 
 /**
@@ -198,42 +150,6 @@ void OptionsGeoscapeState::slrDogfightSpeedChange(Action *)
 void OptionsGeoscapeState::slrClockSpeedChange(Action *)
 {
 	Options::geoClockSpeed = _slrClockSpeed->getValue();
-}
-
-/**
- * Changes the Globe Country Borders option.
- * @param action Pointer to an action.
- */
-void OptionsGeoscapeState::btnGlobeCountriesClick(Action *)
-{
-	Options::globeDetail = _btnGlobeCountries->getPressed();
-}
-
-/**
- * Changes the Globe Radar Ranges option.
- * @param action Pointer to an action.
- */
-void OptionsGeoscapeState::btnGlobeRadarsClick(Action *)
-{
-	Options::globeRadarLines = _btnGlobeRadars->getPressed();
-}
-
-/**
- * Changes the Globe Flight Paths option.
- * @param action Pointer to an action.
- */
-void OptionsGeoscapeState::btnGlobePathsClick(Action *)
-{
-	Options::globeFlightPaths = _btnGlobePaths->getPressed();
-}
-
-/**
- * Changes the Show Funds option.
- * @param action Pointer to an action.
- */
-void OptionsGeoscapeState::btnShowFundsClick(Action *)
-{
-	Options::showFundsOnGeoscape = _btnShowFunds->getPressed();
 }
 
 }

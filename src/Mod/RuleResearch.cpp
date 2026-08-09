@@ -73,6 +73,7 @@ void RuleResearch::load(const YAML::YamlNodeReader& node, Mod* mod, const ModScr
 	mod->loadBaseFunction(_name, _requiresBaseFunc, reader["requiresBaseFunc"]);
 	reader.tryRead("sequentialGetOneFree", _sequentialGetOneFree);
 	mod->loadNamesToNames(_name, _getOneFreeProtectedName, reader["getOneFreeProtected"]);
+	mod->loadNamesToNames(_name, _getOneFreeGuaranteedName, reader["getOneFreeGuaranteed"]);
 	mod->loadNameNull(_name, _neededItemName, reader["neededItem"]);
 	reader.tryRead("needItem", _needItem);
 	reader.tryRead("destroyItem", _destroyItem);
@@ -115,9 +116,9 @@ void RuleResearch::afterLoad(const Mod* mod)
 		}
 	}
 
-	if (mod->isFTAGame() && _stats.empty() && !_hidden && _cost > 0)
+	if (_stats.empty() && !_hidden && _cost > 0)
 	{
-		throw Exception("Stats are not defined for research project with cost > 0, it is required for FTA game");
+		throw Exception("Stats are not defined for research project with cost > 0, it is required for FTA");
 	}
 
 	_dependencies = mod->getResearch(_dependenciesName);
@@ -142,6 +143,21 @@ void RuleResearch::afterLoad(const Mod* mod)
 		}
 	}
 
+	_getOneFreeGuaranteed.reserve(_getOneFreeGuaranteedName.size());
+	for (auto& n : _getOneFreeGuaranteedName)
+	{
+		auto* left = mod->getResearch(n.first, false);
+		if (left)
+		{
+			auto right = mod->getResearch(n.second);
+			_getOneFreeGuaranteed.push_back(std::make_pair(left, right));
+		}
+		else
+		{
+			throw Exception("Unknown research '" + n.first + "'");
+		}
+	}
+
 	//remove not needed data
 	Collections::removeAll(_dependenciesName);
 	Collections::removeAll(_unlocksName);
@@ -150,6 +166,7 @@ void RuleResearch::afterLoad(const Mod* mod)
 	Collections::removeAll(_getOneFreeName);
 	Collections::removeAll(_requiresName);
 	Collections::removeAll(_getOneFreeProtectedName);
+	Collections::removeAll(_getOneFreeGuaranteedName);
 }
 
 /**
@@ -257,6 +274,15 @@ const std::vector<const RuleResearch*> &RuleResearch::getGetOneFree() const
 const std::vector<std::pair<const RuleResearch*, std::vector<const RuleResearch*> > > &RuleResearch::getGetOneFreeProtected() const
 {
 	return _getOneFreeProtected;
+}
+
+/**
+ * Gets the ordered list(s) of ResearchProjects guaranteed for free by this research.
+ * @return The conditional ordered list(s) of ResearchProjects.
+ */
+const std::vector<std::pair<const RuleResearch*, std::vector<const RuleResearch*> > > &RuleResearch::getGetOneFreeGuaranteed() const
+{
+	return _getOneFreeGuaranteed;
 }
 
 /**

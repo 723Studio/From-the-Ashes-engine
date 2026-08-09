@@ -110,13 +110,13 @@ void Screen::makeVideoFlags()
 
 /**
  * Initializes a new display screen for the game to render contents to.
- * The screen is set up based on the current options.
  */
 Screen::Screen() : _baseWidth(ORIGINAL_WIDTH), _baseHeight(ORIGINAL_HEIGHT), _scaleX(1.0), _scaleY(1.0), _flags(0), _numColors(0), _firstColor(0), _pushPalette(false), _flickerFix(false)
 {
 	_flickerFix = Options::oxceEnablePaletteFlickerFix;
 
-	resetDisplay();
+	// Active mods are mounted in StartState, so validate the selected shader afterwards.
+	resetDisplay(true, true);
 	memset(deferredPalette, 0, 256*sizeof(SDL_Color));
 }
 
@@ -381,11 +381,18 @@ void Screen::resetDisplay(bool resetVideo, bool noShaders)
 			_screen = SDL_SetVideoMode(640, 400, _bpp, _flags);
 			if (_screen == 0)
 			{
+				const std::string error = SDL_GetError();
 				if (_flags & SDL_OPENGL)
 				{
+					Log(LOG_WARNING) << "OpenGL display initialization failed: " << error;
+					Log(LOG_INFO) << "Retrying with software rendering...";
 					Options::useOpenGL = false;
+					Options::newOpenGL = false;
+					resetDisplay(true, noShaders);
+					Options::save();
+					return;
 				}
-				throw Exception(SDL_GetError());
+				throw Exception(error);
 			}
 		}
 		Log(LOG_INFO) << "Display set to " << getWidth() << "x" << getHeight() << "x" << (int)_screen->format->BitsPerPixel << ".";
@@ -482,11 +489,19 @@ void Screen::resetDisplay(bool resetVideo, bool noShaders)
 		OpenGL::checkErrors = Options::checkOpenGLErrors;
 		glOutput.init(_baseWidth, _baseHeight);
 		glOutput.linear = Options::useOpenGLSmoothing; // setting from shader file will override this, though
-		if (!noShaders && FileMap::fileExists(Options::useOpenGLShader))
+		if (!noShaders && !Options::useOpenGLShader.empty())
 		{
-			if (!glOutput.set_shader(Options::useOpenGLShader.c_str()))
+			const std::string shader = Options::useOpenGLShader;
+			if (!FileMap::fileExists(shader) || !glOutput.set_shader(shader.c_str()))
 			{
-				Options::useOpenGLShader = "";
+				Log(LOG_WARNING) << "OpenGL shader initialization failed for '" << shader << "'.";
+				glOutput.term();
+				Log(LOG_INFO) << "Retrying with software rendering...";
+				Options::useOpenGL = false;
+				Options::newOpenGL = false;
+				resetDisplay(true, noShaders);
+				Options::save();
+				return;
 			}
 		}
 		glOutput.setVSync(Options::vSyncForOpenGL);

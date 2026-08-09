@@ -15,6 +15,10 @@
 #define GL_SILENCE_DEPRECATION
 #endif
 
+#if defined(__linux__) && !defined(NO_SDL_GLEXT)
+#define NO_SDL_GLEXT
+#endif
+
 #include <SDL_opengl.h>
 #include <string>
 

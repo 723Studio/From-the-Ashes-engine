@@ -46,7 +46,6 @@
 #include "../Ufopaedia/Ufopaedia.h"
 #include <unordered_map>
 #include "../Engine/Screen.h"
-#include "../Engine/CrossPlatform.h"
 #include "TileEngine.h"
 
 namespace OpenXcom
@@ -639,17 +638,6 @@ void Inventory::setSelectedItem(BattleItem *item)
 }
 
 /**
-* Changes the item currently grabbed by the player.
-* @param item Pointer to selected item, or NULL if none.
-*/
-void Inventory::setSearchString(const std::string &searchString)
-{
-	_searchString = searchString;
-	Unicode::upperCase(_searchString);
-	arrangeGround(1);
-}
-
-/**
  * Returns the item currently under mouse cursor.
  * @return Pointer to selected item, or 0 if none.
  */
@@ -1180,77 +1168,15 @@ void Inventory::mouseClick(Action *action, State *state)
 			}
 		}
 	}
-	else if (_game->isRightClick(action))
+	else if (_game->isRightClick(action) && _selItem != 0)
 	{
-		if (_selItem == 0)
+		const RuleInventory* slot = _selItem->getSlot();
+		if (slot->getType() == INV_GROUND || canBeStacked(_selItem, _selItem, slot, _selItem->getSlotX(), _selItem->getSlotY()))
 		{
-			if (!_base && Options::includePrimeStateInSavedLayout)
-			{
-				if (!_tu)
-				{
-					int x = (int)floor(action->getAbsoluteXMouse()) - getX(),
-						y = (int)floor(action->getAbsoluteYMouse()) - getY();
-					RuleInventory *slot = getSlotInPosition(&x, &y);
-					if (slot != 0)
-					{
-						if (slot->getType() == INV_GROUND)
-						{
-							x += _groundOffset;
-						}
-						BattleItem *item = _selUnit->getItem(slot, x, y);
-						if (item != 0)
-						{
-							const BattleFuseType fuseType = item->getRules()->getFuseTimerType();
-							if (fuseType != BFT_NONE)
-							{
-								if (item->getFuseTimer() == -1)
-								{
-									if (item->getRules()->getCostPrime().Time > 0)
-									{
-										// Prime that grenade!
-										if (fuseType == BFT_SET)
-										{
-											_game->pushState(new PrimeGrenadeState(0, true, item));
-										}
-										else
-										{
-											_warning->showMessage(_game->getLanguage()->getString(item->getRules()->getPrimeActionMessage()));
-											item->setFuseTimer(item->getRules()->getFuseTimerDefault());
-											arrangeGround();
-											playSound(item->getRules()->getPrimeSound()); // prime sound
-										}
-									}
-								}
-								else
-								{
-									if (item->getRules()->getCostUnprime().Time > 0 /* && !item->getRules()->getUnprimeActionName().empty() */ )
-									{
-										_warning->showMessage(_game->getLanguage()->getString(item->getRules()->getUnprimeActionMessage()));
-										item->setFuseTimer(-1);  // Unprime the grenade
-										arrangeGround();
-										playSound(item->getRules()->getUnprimeSound()); // unprime sound
-									}
-								}
-							}
-						}
-					}
-				}
-				else
-				{
-					_game->popState(); // Closes the inventory window on right-click (if not in preBattle equip screen!)
-				}
-			}
+			_stackLevel[slot->getId()][_selItem->getSlotX()][_selItem->getSlotY()] += 1;
 		}
-		else
-		{
-			const RuleInventory* slot = _selItem->getSlot();
-			if (slot->getType() == INV_GROUND || canBeStacked(_selItem, _selItem, slot, _selItem->getSlotX(), _selItem->getSlotY()))
-			{
-				_stackLevel[slot->getId()][_selItem->getSlotX()][_selItem->getSlotY()] += 1;
-			}
-			// Return item to original position
-			setSelectedItem(0);
-		}
+		// Return item to original position
+		setSelectedItem(0);
 	}
 	else if (_game->isMiddleClick(action))
 	{
@@ -1507,71 +1433,6 @@ bool Inventory::unload(bool quickUnload)
 }
 
 /**
-* Checks whether the given item is visible with the current search string.
-* @param item The item to check.
-* @return True if item should be shown. False otherwise.
-*/
-bool Inventory::isInSearchString(BattleItem *item)
-{
-	if (!_searchString.length())
-	{
-		// No active search string.
-		return true;
-	}
-
-	std::string itemLocalName;
-	if (!_game->getSavedGame()->isResearched(item->getRules()->getRequirements()))
-	{
-		// Alien artifact, shouldn't match on the real name.
-		itemLocalName = _game->getLanguage()->getString("STR_ALIEN_ARTIFACT");
-	}
-	else
-	{
-		itemLocalName = _game->getLanguage()->getString(item->getRules()->getName());
-	}
-	Unicode::upperCase(itemLocalName);
-	if (itemLocalName.find(_searchString) != std::string::npos)
-	{
-		// Name match.
-		return true;
-	}
-
-	// If present in the Ufopaedia, check categories for a match as well.
-	ArticleDefinition *articleID = _game->getMod()->getUfopaediaArticle(item->getRules()->getType());
-	if (articleID && Ufopaedia::isArticleAvailable(_game->getSavedGame(), articleID))
-	{
-		for (const auto& itemCategoryName : item->getRules()->getCategories())
-		{
-			std::string catLocalName = _game->getLanguage()->getString(itemCategoryName);
-			Unicode::upperCase(catLocalName);
-			if (catLocalName.find(_searchString) != std::string::npos)
-			{
-				// Category match
-				return true;
-			}
-		}
-
-		for (int slot = 0; slot < RuleItem::AmmoSlotMax; ++slot)
-		{
-			if (item->getAmmoForSlot(slot))
-			{
-				for (const auto& itemAmmoCategoryName : item->getAmmoForSlot(slot)->getRules()->getCategories())
-				{
-					std::string catLocalName = _game->getLanguage()->getString(itemAmmoCategoryName);
-					Unicode::upperCase(catLocalName);
-					if (catLocalName.find(_searchString) != std::string::npos)
-					{
-						// Category match
-						return true;
-					}
-				}
-			}
-		}
-	}
-	return false;
-}
-
-/**
  * Arranges items on the ground for the inventory display.
  * Since items on the ground aren't assigned to anyone,
  * they don't actually have permanent slot positions.
@@ -1658,13 +1519,6 @@ void Inventory::arrangeGround(int alterOffset)
 			for (auto& itemStack : iterItemList->second)
 			{
 				BattleItem* itemTypeSample = itemStack.at(0); // Grab a sample of the stack of item type we're trying to place.
-				if (!isInSearchString(itemTypeSample))
-				{
-					// quick search
-					// Not a match with the active search string, skip this item stack. (Will remain outside the visible inventory)
-					break;
-				}
-
 				// Start searching at the x value where we last placed an item of this size.
 				// But also don't let more than half a screen behind the furtherst item (because we want to keep similar items together).
 				x = std::max(_xMax - slotsX/2, startIndexCacheX[itemTypeSample->getRules()->getInventoryHeight()][itemTypeSample->getRules()->getInventoryWidth()]);

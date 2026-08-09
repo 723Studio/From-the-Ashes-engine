@@ -37,8 +37,9 @@ class RuleCraft;
 class Soldier;
 class Craft;
 class CovertOperation;
-class IntelProject;
 class BasePrisoner;
+class BaseContainedAlien;
+class BaseContainedMonster;
 class ItemContainer;
 class Transfer;
 class Language;
@@ -95,6 +96,14 @@ enum BasePlacementErrors : int
 	BPE_Used_AlienContainment = 17,
 	/// 18: trying to build a facility (from scratch) that can only be built as an upgrade of another facility
 	BPE_UpgradeOnly = 18,
+	/// 19: not enough intelligence workspace
+	BPE_Used_IntelSpace = 19,
+	/// 20: not enough contained-alien research workspace
+	BPE_Used_ContainedAlienResearchSpace = 20,
+	/// 21: not enough human-prisoner capacity
+	BPE_Used_PrisonSpace = 21,
+	/// 22: not enough contained-monster capacity
+	BPE_Used_MonsterContainment = 22,
 };
 
 struct BaseSumDailyRecovery
@@ -122,11 +131,11 @@ private:
 	std::vector<Soldier*> _soldiers;
 	std::vector<Craft*> _crafts;
 	std::vector<CovertOperation*> _covertOperations;
-	std::vector<IntelProject*> _intelProjects;
 	std::vector<BasePrisoner*> _prisoners;
+	std::vector<BaseContainedAlien*> _containedAliens;
+	std::vector<BaseContainedMonster*> _containedMonsters;
 	std::vector<Transfer*> _transfers;
 	ItemContainer *_items;
-	int _scientists, _engineers, _trackingBonus, _operationsBonus, _deploymentHintsBonus;
 	std::vector<ResearchProject *> _research;
 	std::vector<Production *> _productions;
 	bool _inBattlescape;
@@ -148,7 +157,7 @@ public:
 	/// Cleans up the base.
 	~Base();
 	/// Loads the base from YAML.
-	void load(const YAML::YamlNodeReader& reader, SavedGame *save, bool newGame, bool newBattleGame = false);
+	void load(const YAML::YamlNodeReader& reader, SavedGame *save);
 	/// Finishes loading the base (more specifically all craft in the base) from YAML.
 	void finishLoading(const YAML::YamlNodeReader& reader, SavedGame *save);
 	void calculateServices(SavedGame* save);
@@ -166,6 +175,7 @@ public:
 	std::vector<BaseFacility*> *getFacilities();
 	/// Gets the base's soldiers.
 	std::vector<Soldier*> *getSoldiers();
+	const Mod* getMod() const { return _mod; }
 	std::vector<Soldier*> getPersonnel(SoldierRole role) const;
 	/// Pre-calculates soldier stats with various bonuses.
 	void prepareSoldierStatsWithBonuses();
@@ -179,42 +189,63 @@ public:
 	void addCovertOperation(CovertOperation* operation) { _covertOperations.push_back(operation); }
 	/// Removes finished Covert Operation.
 	void removeCovertOperation(CovertOperation* operation);
-	/// Gets the base's Intel projects.
-	const std::vector<IntelProject*> &getIntelProjects() const { return _intelProjects; }
-	/// Adds new ongoing Intel Project.
-	void addIntelProject(IntelProject* project) { _intelProjects.push_back(project); }
-	/// Removes finished Intel Project.
-	void removeIntelProject(IntelProject* project);
 	/// Gets the base's prisoners.
 	const std::vector<BasePrisoner*>& getPrisoners() const { return _prisoners; }
 	/// Adds new BasePrisoner.
-	void addPrisoner(BasePrisoner* prisoner) { _prisoners.push_back(prisoner); }
+	void addPrisoner(BasePrisoner* prisoner);
 	/// Removes finished Intel Project.
 	void removePrisoner(BasePrisoner* project);
+	/// Gets the base's contained alien specimens.
+	const std::vector<BaseContainedAlien*>& getContainedAliens() const { return _containedAliens; }
+	/// Adds a contained alien specimen.
+	void addContainedAlien(BaseContainedAlien* alien);
+	/// Removes a contained alien specimen without deleting it.
+	void removeContainedAlien(BaseContainedAlien* alien);
+	int getAvailableContainedAlienSpace() const;
+	int getUsedContainedAlienSpace() const;
+	int getFreeContainedAlienSpace() const { return getAvailableContainedAlienSpace() - getUsedContainedAlienSpace(); }
+	/// Gets the base's contained monster specimens.
+	const std::vector<BaseContainedMonster*>& getContainedMonsters() const { return _containedMonsters; }
+	/// Adds a contained monster specimen.
+	void addContainedMonster(BaseContainedMonster* monster);
+	/// Removes a contained monster specimen without deleting it.
+	void removeContainedMonster(BaseContainedMonster* monster);
+	int getAvailableContainedMonsterSpace() const;
+	int getUsedContainedMonsterSpace() const;
+	int getFreeContainedMonsterSpace() const
+	{
+		return getAvailableContainedMonsterSpace() - getUsedContainedMonsterSpace();
+	}
+	int getAvailableContainedAlienResearchSpace() const;
+	int getUsedContainedAlienResearchSpace() const;
+	int getFreeContainedAlienResearchSpace() const { return getAvailableContainedAlienResearchSpace() - getUsedContainedAlienResearchSpace(); }
+	void enforceContainedAlienResearchSpace();
 	/// Gets free interrogation space.
 	int getFreeInterrogationSpace() { return getAvailableInterrogationSpace() - getUsedInterrogationSpace(); }
 	/// Gets total interrogation space.
 	int getAvailableInterrogationSpace();
 	/// Gets used interrogation space.
 	int getUsedInterrogationSpace();
+	/// Gets intelligence workspace not occupied by assigned agents.
+	int getFreeIntelSpace() const;
+	/// Gets total operational intelligence workspace.
+	int getAvailableIntelSpace() const;
+	/// Gets intelligence workspace occupied by assigned agents.
+	int getUsedIntelSpace() const;
 	/// Gets the base's transfers.
 	std::vector<Transfer*> *getTransfers() { return &_transfers; }
 	/// Gets the base's transfers.
 	const std::vector<Transfer*> *getTransfers() const { return &_transfers; }
+	/// Immediately delivers captive transfers selected after an unavoidable capacity loss.
+	void forceDeliverIncomingCaptives(bool prisoners, bool containedAliens,
+		bool containedMonsters);
 	/// Gets the base's items.
 	ItemContainer *getStorageItems() { return _items; }
 	/// Gets the base's items.
 	const ItemContainer *getStorageItems() const { return _items; }
-	/// Gets the base's scientists.
-	int getScientists() const;
-	/// Sets the base's scientists.
-	void setScientists(int scientists);
-	/// Gets the base's engineers.
-	int getEngineers() const;
-	/// Sets the base's engineers.
-	void setEngineers(int engineers);
 	/// Checks if a target is detected by the base's radar.
-	UfoDetection detect(const Ufo *target, const SavedGame *save, bool alreadyTracked, bool globalSearch = false) const;
+	UfoDetection detect(const Ufo *target, const SavedGame *save, bool alreadyTracked,
+		bool globalSearch = false) const;
 	/// Gets the base's available soldiers.
 	int getAvailableSoldiers(bool checkCombatReadiness = false, bool includeWounded = false) const;
 	/// Gets the base's total soldiers.
@@ -234,19 +265,17 @@ public:
 	/// Gets the base's available living quarters.
 	int getAvailableQuarters() const;
 	/// Gets the base's used storage space.
-	double getUsedStores(bool excludeNormalItems = false) const;
+	double getUsedStores() const;
 	/// Checks if the base's stores are overfull.
 	bool storesOverfull(double offset = 0.0) const;
-	/// Checks if the base's stores are so full that even craft equipment and incoming transfers can't fit.
-	bool storesOverfullCritical() const;
 	/// Gets the base's available storage space.
 	int getAvailableStores() const;
 	/// Gets the base's used laboratory space.
-	int getUsedLaboratories(bool fta = false, ResearchProject *exclude = nullptr) const;
+	int getUsedLaboratories(ResearchProject *exclude = nullptr) const;
 	/// Gets the base's available laboratory space.
 	int getAvailableLaboratories() const;
 	/// Gets the base's used workshop space.
-	int getUsedWorkshops(bool fta = false, Production *exclude = nullptr) const;
+	int getUsedWorkshops(Production *exclude = nullptr) const;
 	/// Gets the base's available workshop space.
 	int getAvailableWorkshops() const;
 	/// Gets the base's used hangars.
@@ -254,9 +283,9 @@ public:
 	/// Gets the base's available hangars.
 	int getAvailableHangars() const;
 	/// Get the number of available space lab (not used by a ResearchProject)
-	int getFreeLaboratories(bool fta = false, ResearchProject *exclude = nullptr) const;
+	int getFreeLaboratories(ResearchProject *exclude = nullptr) const;
 	/// Get the number of available space lab (not used by a Production)
-	int getFreeWorkshops(bool fta = false, Production *exclude = nullptr) const;
+	int getFreeWorkshops(Production *exclude = nullptr) const;
 
 	int getAllocatedScientists() const;
 	int getAllocatedEngineers() const;
@@ -306,14 +335,11 @@ public:
 	int getAvailableTraining() const;
 	/// Gets the base's total free training space.
 	int getFreeTrainingSpace() const;
-	/// Gets the amount of free Containment space.
-	int getFreeContainment(int prisonType) const;
+	/// Gets the amount of free human-prisoner space.
 	int getFreePrisonSpace() const;
-	/// Gets the total amount of Containment space.
-	int getAvailableContainment(int prisonType) const;
+	/// Gets the total amount of human-prisoner space.
 	int getAvailablePrisonSpace() const;
-	/// Gets the total amount of used Containment space.
-	int getUsedContainment(int prisonType, bool onlyExternal = false) const;
+	/// Gets the total amount of used human-prisoner space.
 	int getUsedPrisonSpace() const;
 	/// Sets the craft's battlescape status.
 	void setInBattlescape(bool inbattle);
@@ -353,7 +379,6 @@ public:
 	std::list<BASEFACILITIESITERATOR> getDisconnectedFacilities(BaseFacility *remove);
 	/// destroy a facility and deal with the side effects.
 	void destroyFacility(BASEFACILITIESITERATOR facility);
-	void cleanupPrisons(int prisonType);
 	/// Cleans up the defenses vector and optionally reclaims the tanks and their ammo.
 	void cleanupDefenses(bool reclaimItems);
 
@@ -377,24 +402,10 @@ public:
 	BaseSumDailyRecovery getSumRecoveryPerDay() const;
 	/// Removes a craft from the base.
 	std::vector<Craft*>::iterator removeCraft(Craft *craft, bool unload);
-	/// Gets base intelligence bonuses.
-	int getOperationBoost() const { return _operationsBonus; }
-	/// Sets operation bonus.
-	void setOperationBonus(int bonus) { _operationsBonus = bonus; }
-	/// Gets tracking bonus.
-	int getTrackingBonus() const { return _trackingBonus; }
-	/// Gets real tracking bonus.
-	int getTrackingBonusReal() const;
-	/// Sets tracking bonus.
-	void setTrackingBonus(int bonus) { _trackingBonus = bonus; }
-	/// Gets deployment hints bonus.
-	int getDeploymentsHints() const { return _deploymentHintsBonus; }
-	/// Sets deployment hints bonus.
-	void setDeploymentsHintsBonus(int bonus) { _deploymentHintsBonus = bonus; }
 	/// Gets the base's radar strength.
 	int getRadarStrength() const;
 	/// Gets the base's global radar strength.
-	int getGlobalRadarStrength() const;
+	int getGlobalRadarStrength(const SavedGame* save) const;
 	/// Gets the base's globe texture.
 	const Texture* getGlobeTexture() const { return _globeTexture; }
 	/// Sets the base's globe texture.

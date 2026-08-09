@@ -94,7 +94,7 @@ void ProjectileFlyBState::init()
 
 	_unit = _action.actor;
 
-	bool reactionShoot = _unit->getFaction() != _parent->getSave()->getSide();
+	bool reactionShoot = _action.reactionAttack || _unit->getFaction() != _parent->getSave()->getSide();
 	if (_action.type != BA_THROW)
 	{
 		_ammo = _action.weapon->getAmmoForAction(_action.type, reactionShoot ? nullptr : &_action.result);
@@ -192,13 +192,16 @@ void ProjectileFlyBState::init()
 				BattleUnit* closeQuartersTarget = _parent->getSave()->selectUnit(tileToCheck);
 				// Variable for LOS check
 				int checkDirection = _parent->getTileEngine()->getDirectionTo(tileToCheck, _unit->getPosition());
-				if (closeQuartersTarget && _unit->getFaction() != closeQuartersTarget->getFaction() // Unit must exist and not be same faction
+				const bool treatedByAIHostility = closeQuartersTarget && _unit->hasTreatedByAIHostility(closeQuartersTarget);
+				if (closeQuartersTarget
+					&& (treatedByAIHostility ||
+						(_unit->getFaction() != closeQuartersTarget->getFaction() // Unit must exist and not be same faction
+						&& !(_unit->getFaction() == FACTION_PLAYER && closeQuartersTarget->getFaction() == FACTION_NEUTRAL) // Civilians don't inhibit player
+						&& !(_unit->getFaction() == FACTION_NEUTRAL && closeQuartersTarget->getFaction() == FACTION_PLAYER))) // Player doesn't inhibit civilians
 					&& closeQuartersTarget->getArmor()->getCreatesMeleeThreat() // Unit must be valid defender, 2x2 default false here
 					&& closeQuartersTarget->getTimeUnits() >= _parent->getMod()->getCloseQuartersTuCostGlobal() // Unit must have enough TUs
 					&& closeQuartersTarget->getEnergy() >= _parent->getMod()->getCloseQuartersEnergyCostGlobal() // Unit must have enough Energy
-					&& _parent->getTileEngine()->validMeleeRange(closeQuartersTarget, _unit, checkDirection) // Unit must be able to see the unit attempting to fire
-					&& !(_unit->getFaction() == FACTION_PLAYER && closeQuartersTarget->getFaction() == FACTION_NEUTRAL) // Civilians don't inhibit player
-					&& !(_unit->getFaction() == FACTION_NEUTRAL && closeQuartersTarget->getFaction() == FACTION_PLAYER)) // Player doesn't inhibit civilians
+					&& _parent->getTileEngine()->validMeleeRange(closeQuartersTarget, _unit, checkDirection)) // Unit must be able to see the unit attempting to fire
 				{
 					if (RNG::percent(_parent->getMod()->getCloseQuartersSneakUpGlobal()))
 					{
@@ -286,7 +289,7 @@ void ProjectileFlyBState::init()
 	}
 
 	bool forceEnableObstacles = false;
-	if (_action.type == BA_LAUNCH || (Options::forceFire && _parent->getSave()->isCtrlPressed(true) && isPlayer) || !_parent->getPanicHandled())
+	if (_action.type == BA_LAUNCH || (_parent->getSave()->isCtrlPressed(true) && isPlayer) || !_parent->getPanicHandled())
 	{
 		// target nothing, targets the middle of the tile
 		_targetVoxel = _action.target.toVoxel() + TileEngine::voxelTileCenter;
@@ -399,10 +402,18 @@ void ProjectileFlyBState::init()
 			// temporarily turn off camera following projectiles to prevent annoying flashing effects (e.g. on minigun-like weapons)
 			_parent->getMap()->setFollowProjectile(false);
 		}
-		if (_range == 0) _action.spendTU();
+		if (_range == 0)
+		{
+			_action.spendTU();
+		}
 		_parent->getMap()->setCursorType(CT_NONE);
 		_parent->getMap()->getCamera()->stopMouseScrolling();
 		_parent->getMap()->disableObstacles();
+		if (_range == 0)
+		{
+			_parent->processUndercoverAction(_action);
+			_parent->processWeaponNoise(_action);
+		}
 	}
 	else if (isPlayer && (_targetVoxel.z >= 0 || forceEnableObstacles))
 	{
@@ -635,7 +646,7 @@ void ProjectileFlyBState::think()
 				_parent->getMap()->getCamera()->setMapOffset(_action.cameraPosition);
 				_parent->getMap()->invalidate();
 			}
-			if (!_parent->getSave()->getUnitsFalling() && _parent->getPanicHandled())
+			if (!_action.reactionAttack && !_parent->getSave()->getUnitsFalling() && _parent->getPanicHandled())
 			{
 				_parent->getTileEngine()->checkReactionFire(_unit, _action);
 			}

@@ -232,10 +232,10 @@ OptionsVideoState::OptionsVideoState(OptionsOrigin origin) : OptionsBaseState(or
 	if (Screen::useOpenGL())
 	{
 #ifndef __NO_OPENGL
-		std::string path = Options::useOpenGLShader;
+		const std::string path = FileMap::canonicalize(Options::useOpenGLShader);
 		for (size_t i = 0; i < _filters.size(); ++i)
 		{
-			if (_filters[i] == path)
+			if (FileMap::canonicalize(_filters[i]) == path)
 			{
 				selFilter = i;
 				break;

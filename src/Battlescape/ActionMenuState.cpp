@@ -490,100 +490,17 @@ void ActionMenuState::handleAction()
 		}
 		else if (_action->type == BA_SAMPLE && weapon->getBattleType() == BT_SAMPLING && _action->actor->getGeoscapeSoldier())
 		{
-			BattleUnit* unit = _action->actor;
-			Soldier* soldier = unit->getGeoscapeSoldier();
-			BattleObject* object = unit->getTile()->getBattleObject();
-			if (object == nullptr)
+			Tile* actorTile = _action->actor->getTile();
+			BattleObject* object = actorTile ? actorTile->getBattleObject() : nullptr;
+			if (object)
 			{
-				TileEngine* tileEngine = _game->getSavedGame()->getSavedBattle()->getTileEngine();
-				if (tileEngine->validMeleeRange(unit->getPosition(), unit->getDirection(), unit, 0, &_action->target, false))
-				{
-					object = _game->getSavedGame()->getSavedBattle()->getTile(_action->target)->getBattleObject();
-				}
-			}
-
-			auto rules = object ? object->getRules() : nullptr;
-			if (rules && !object->wasUsed())
-			{
-				int defence = rules->getSamplingDefence();
-				if (defence > 0)
-				{
-					if (_action->spendTU(&_action->result))
-					{
-						auto stats = unit->getBaseStats();
-						int power = weapon->getSamplingPower();
-						if (rules->getUseType() == BATTLE_OBJECT_BIOLOGY_SAMPLING)
-						{
-							power += stats->biology;
-						}
-						else if (rules->getUseType() == BATTLE_OBJECT_ANOMALY_SAMPLING)
-						{
-							power += stats->physics;
-						}
-						
-						if (soldier && soldier->getRoleRank(ROLE_SCIENTIST) < 1)
-							power /= 2;
-
-						if (RNG::generate(0, power) >= defence) //we succeed in sampling!
-						{
-							std::vector<RuleEvent*> events;
-							bool result = false;
-							for (auto gEvent : rules->getSpawnedEvents())
-							{
-								auto eventRule = _game->getMod()->getEvent(gEvent);
-								if (eventRule)
-								{
-									events.push_back(eventRule);
-								}
-							}
-							if (!events.empty())
-							{
-								RuleEvent* ruleEvent = events[RNG::generate(0, events.size() - 1)];
-								_game->getSavedGame()->spawnEvent(ruleEvent);
-								result = true;
-							}
-
-							RuleItem* itemRule = _game->getMod()->getItem(object->getRules()->getSpawnedItem());
-							if (itemRule)
-							{
-								_game->getSavedGame()->getSavedBattle()->createItemForTile(itemRule, unit->getTile());
-								result = true;
-							}
-
-							if (result)
-							{
-								_action->result = "STR_SAMPLES_GATHERED";
-
-								if (rules->getUseType() == BATTLE_OBJECT_BIOLOGY_SAMPLING)
-								{
-									unit->addBiologyExp();
-								}
-								else if (rules->getUseType() == BATTLE_OBJECT_ANOMALY_SAMPLING)
-								{
-									unit->addPhysicsExp();
-								}
-
-								if (soldier && soldier->isRookieScientist())
-								{
-									soldier->addExperience(ROLE_SCIENTIST, RNG::generate(5, 10), "sampling");
-									soldier->setRookieScientist(false);
-								}
-							}
-						}
-						else
-						{
-							_action->result = "STR_SAMPLES_GATHERING_FAILED";
-						}
-
-						object->setWasUsed(true);
-					}
-				}
+				object->resolveSamplingAttempt(*_action, _game);
 			}
 			else
 			{
 				_action->result = "STR_NOTHING_TO_GATHER";
 			}
-		_game->popState();
+			_game->popState();
 		}
 		else if (_action->type == BA_LAUNCH)
 		{

@@ -21,41 +21,35 @@ OPT SDLKey keyOk, keyCancel, keyScreenshot, keyFps, keyQuickLoad, keyQuickSave;
 
 // Geoscape options
 OPT int geoClockSpeed, dogfightSpeed, geoScrollSpeed, geoDragScrollButton, geoscapeScale;
-OPT bool includePrimeStateInSavedLayout, anytimePsiTraining, weaponSelfDestruction, retainCorpses, craftLaunchAlways, 
-	globeSurfaceCache, globeSeasons, globeDetail, globeRadarLines, globeFlightPaths, globeAllRadarsOnBaseBuild,
-	storageLimitsEnforced, containmentLimitsEnforced, canSellLiveAliens, canTransferCraftsWhileAirborne, customInitialBase, aggressiveRetaliation, geoDragScrollInvert,
-	allowBuildingQueue, showFundsOnGeoscape, psiStrengthEval, allowPsiStrengthImprovement, fieldPromotions, meetingPoint;
+OPT bool craftLaunchAlways,
+	globeSurfaceCache, globeAllRadarsOnBaseBuild,
+	canTransferCraftsWhileAirborne, geoDragScrollInvert,
+	allowBuildingQueue;
 OPT SDLKey keyGeoLeft, keyGeoRight, keyGeoUp, keyGeoDown, keyGeoZoomIn, keyGeoZoomOut, keyGeoSpeed1, keyGeoSpeed2, keyGeoSpeed3, keyGeoSpeed4, keyGeoSpeed5, keyGeoSpeed6,
-	keyGeoIntercept, keyGeoBases, keyGeoGraphs, keyDiplomacy, keyGeoUfopedia, keyGeoOptions, keyGeoFunding, keyGeoToggleDetail, keyGeoToggleRadar,
+	keyGeoIntercept, keyGeoBases, keyDiplomacy, keyGeoUfopedia, keyGeoOptions,
 	keyBaseSelect1, keyBaseSelect2, keyBaseSelect3, keyBaseSelect4, keyBaseSelect5, keyBaseSelect6, keyBaseSelect7, keyBaseSelect8;
 
 // Battlescape options
 OPT ScrollType battleEdgeScroll;
 OPT PathPreview battleNewPreviewPath;
-OPT int battleScrollSpeed, battleDragScrollButton, battleFireSpeed, battleXcomSpeed, battleAlienSpeed, battleExplosionHeight, battlescapeScale;
-OPT bool traceAI, sneakyAI, battleInstantGrenade, battleNotifyDeath, battleTooltips, battleHairBleach, battleAutoEnd,
-	strafe, forceFire, showMoreStatsInInventoryView, allowPsionicCapture, skipNextTurnScreen, disableAutoEquip, battleDragScrollInvert,
-	battleUFOExtenderAccuracy, battleConfirmFireMode, battleSmoothCamera, noAlienPanicMessages, alienBleeding;
+OPT int battleScrollSpeed, battleDragScrollButton, battleFireSpeed, battleXcomSpeed, battleAlienSpeed, battlescapeScale;
+OPT bool traceAI, displayWeaponNoise, sneakyAI, battleNotifyDeath, battleTooltips,
+	skipNextTurnScreen, battleDragScrollInvert,
+	battleConfirmFireMode, battleSmoothCamera, battleTargetPreview;
 OPT SDLKey keyBattleLeft, keyBattleRight, keyBattleUp, keyBattleDown, keyBattleLevelUp, keyBattleLevelDown, keyBattleCenterUnit, keyBattlePrevUnit, keyBattleNextUnit, keyBattleDeselectUnit,
 keyBattleUseLeftHand, keyBattleUseRightHand, keyBattleInventory, keyBattleMap, keyBattleOptions, keyBattleEndTurn, keyBattleAbort, keyBattleStats, keyBattleKneel,
-keyBattleReserveKneel, keyBattleReload, keyBattlePersonalLighting, keyBattleReserveNone, keyBattleReserveSnap, keyBattleReserveAimed, keyBattleReserveAuto,
+keyBattleReserveKneel, keyBattleReload, keyBattleReserveNone, keyBattleReserveSnap, keyBattleReserveAimed, keyBattleReserveAuto,
 keyBattleCenterEnemy1, keyBattleCenterEnemy2, keyBattleCenterEnemy3, keyBattleCenterEnemy4, keyBattleCenterEnemy5, keyBattleCenterEnemy6, keyBattleCenterEnemy7, keyBattleCenterEnemy8,
-keyBattleCenterEnemy9, keyBattleCenterEnemy10, keyBattleVoxelView, keyBattleZeroTUs, keyInvCreateTemplate, keyInvApplyTemplate, keyInvClear, keyInvAutoEquip;
+keyBattleCenterEnemy9, keyBattleCenterEnemy10, keyBattleVoxelView, keyBattleZeroTUs, keyInvCreateTemplate, keyInvApplyTemplate, keyInvClear;
 
 // Extra hotkeys (OXCE)
-OPT SDLKey keyGeoDailyPilotExperience, keyGeoUfoTracker, keyGeoTechTreeViewer, keyGeoGlobalResearch, keyGeoGlobalProduction, keyGeoGlobalAlienContainment,
-	keyGraphsZoomIn, keyGraphsZoomOut,
-	keyToggleQuickSearch, keyInstaSave,
-	keyCraftLoadoutSave, keyCraftLoadoutLoad,
-	keyMarkAllAsSeen,
+OPT SDLKey keyCraftLoadoutSave, keyCraftLoadoutLoad,
 	keySellAll, keySellAllButOne,
 	keyTransferAll,
 	keyRemoveSoldiersFromCraft, keyRemoveSoldiersFromAllCrafts,
 	keyRemoveEquipmentFromCraft,
 	keyRemoveArmorFromCraft, keyRemoveArmorFromAllCrafts,
-	keyRemoveSoldiersFromTraining, keyAddSoldiersToTraining,
-	keyInventoryArmor, keyInventoryAvatar, keyInventoryDiaryLight, keyInventorySave, keyInventoryLoad,
-	keyInvSavePersonalEquipment, keyInvLoadPersonalEquipment, keyInvShowPersonalEquipment,
+	keyInventorySave, keyInventoryLoad,
 	keyBattleUnitUp, keyBattleUnitDown,
 	keyBattleShowLayers,
 	keyBattleUseSpecial,
@@ -63,51 +57,29 @@ OPT SDLKey keyGeoDailyPilotExperience, keyGeoUfoTracker, keyGeoTechTreeViewer, k
 	keyNightVisionToggle, keyNightVisionHold, keySelectMusicTrack;
 OPT SDLKey keyBasescapeBuildNewBase, keyBasescapeBaseInfo, keyBasescapeSoldiers, keyBasescapeCrafts,
 	keyBasescapeFacilities, keyBasescapeResearch, keyBasescapeManufacture, keyBasescapeTransfer,
-	keyBasescapePurchase, keyBasescapeSell, keyBasescapeCovertOperations, keyBasescapePrison,
+	keyBasescapeCovertOperations, keyBasescapePrison,
 	keyBasescapeAlienContainment, keyBasescapeDiplomacy, keyBasescapeIntel;
 
 // OXCE, accessible via GUI
 OPT int autosaveSlots;
 OPT int oxceGeoAutosaveFrequency;
 OPT int oxceGeoAutosaveSlots;
-OPT bool oxceLinks;
 OPT bool oxceLinksDisableTextEdit;
-OPT bool oxceFatFingerLinks;
 OPT bool oxceBattleTouchButtonsEnabled;
-OPT bool oxceQuickSearchButton;
-OPT bool oxceHighlightNewTopics;
-OPT bool oxcePediaShowClipSize;
 
-OPT int oxceInterceptTableSize;
-OPT bool oxceEnableSlackingIndicator;
 OPT int oxceInterceptGuiMaintenanceTime;
 OPT int oxceShowETAMode;
 OPT bool oxceUfoLandingAlert;
 OPT bool oxceRememberDisabledCraftWeapons;
-OPT bool oxceGeoscapeEventsInstantDelivery;
-OPT bool oxceShowBaseNameInPopups;
 
-OPT bool oxceAlternateCraftEquipmentManagement;
-OPT bool oxceBaseInfoScaleEnabled;
-OPT int oxceResearchScrollSpeed;
-OPT int oxceResearchScrollSpeedWithCtrl;
 OPT bool oxceManufactureFilterSuppliesOK;
-OPT int oxceManufactureScrollSpeed;
-OPT int oxceManufactureScrollSpeedWithCtrl;
-OPT bool oxcePersonalLayoutIncludingArmor;
-OPT bool oxceManualPromotions;
-
 OPT int oxceWoundedDefendBaseIf;
-OPT bool oxcePlayBriefingMusicDuringEquipment;
 OPT int oxceNightVisionColor;
 OPT int oxceAutoNightVisionThreshold;
-OPT int oxceShowAccuracyOnCrosshair;
+OPT bool oxceShowAccuracyOnCrosshair;
 OPT int oxceReactionFireThreshold;
-OPT bool oxceAutoSell;
-OPT bool oxceAutomaticPromotions;
 OPT bool oxceEnableOffCentreShooting;
 OPT bool oxceUniformShootingSpread;
-OPT int oxceCrashedOrLanded;
 
 // OXCE hidden, accessible only via options.cfg
 /**
@@ -132,14 +104,12 @@ OPT int oxceStartUpTextMode;
 
 OPT int oxceGeoscapeDebugLogMaxEntries;
 OPT int oxceGeoSlowdownFactor;
-OPT bool oxceGeoShowScoreInsteadOfFunds;
 OPT bool oxceGeoEnableTrainingIndicator;
 OPT bool oxceGeoSuppressRedundantHKAlert;
 OPT bool oxceGeoSuppressLandingWithoutEquipment;
 OPT bool oxceGeoGoToNearestBase;
 OPT bool oxceGeoSortCraftByDistanceToTarget;
 
-OPT int oxceBaseInfoDefenseScaleMultiplier;
 OPT bool oxceBaseSoldierTransformationShowOnlyEligible;
 OPT bool oxceBaseFilterResearchable;
 OPT bool oxceBaseManufactureFallbackButton;
@@ -151,10 +121,8 @@ OPT bool oxceDisableHitLog;
 OPT bool oxceDisableInventoryTuCost;
 OPT bool oxceDisableProductionDependencyTree;
 OPT bool oxceDisableStatsForNerds;
-OPT bool oxceDisableTechTreeViewer;
 
 // 0 = not persisted; 1 = persisted per battle; 2 = persisted per campaign
-OPT int oxceTogglePersonalLightType;
 OPT int oxceToggleNightVisionType;
 OPT int oxceToggleBrightnessType;
 
@@ -164,12 +132,27 @@ OPT bool oxceSwapDontReselectActions;
 OPT bool oxceEnableUnitResponseSounds;
 OPT int oxceHiddenMovementBackgroundChangeFrequency;
 OPT bool oxceInventoryShowUnitSlot;
-OPT bool oxceReplaceNotesLink;
-
 OPT bool oxceInventorySplitScrollButton;
-OPT bool oxceInventoryDropItemOverPaperdoll;
 
 OPT int oxceMaxEquipmentLayoutTemplates;
+
+OPT int oxceMapEditorBoundsColor;
+
+// Map Editor options, mostly for visual preferences.
+OPT bool mapEditorDragSelectPainting;
+OPT bool mapEditorRightClickDragSelect;
+OPT bool mapEditorSelectedTilesKeepFlashing;
+OPT bool mapEditorHoldAltToToggleModeSwitch;
+OPT bool mapEditorUndoRedoBecomesSelection;
+OPT bool mapEditorPastedBecomesSelection;
+OPT bool mapEditorCloseTileSelectionUIAfterClick;
+OPT int mapEditorMaxTileSelectionColumns;
+OPT int mapEditorMaxTileSelectionRows;
+OPT bool mapEditorShowOutOfPlaneNodes;
+OPT bool mapEditorShowOutOfPlaneNodeLinks;
+OPT bool mapEditorDottedOutOfPlaneNodeLinks;
+OPT bool mapEditorShowLinksOnlyForSelectedNodes;
+OPT bool mapEditorShowOutOfPlaneOffsetCursor;
 
 // Flags and other stuff that don't need OptionInfo's.
 OPT bool mute, reload, newOpenGL, newScaleFilter, newHQXFilter, newXBRZFilter, newRootWindowedMode, newFullscreen, newAllowResize, newBorderless;

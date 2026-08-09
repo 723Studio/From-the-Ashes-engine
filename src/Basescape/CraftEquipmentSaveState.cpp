@@ -20,7 +20,6 @@
 #include "CraftEquipmentState.h"
 #include "../Engine/Game.h"
 #include "../Engine/Action.h"
-#include "../Engine/Language.h"
 #include "../Mod/Mod.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Options.h"

@@ -53,9 +53,6 @@ BuildNewBaseState::BuildNewBaseState(Base *base, Globe *globe, bool first) : _ba
 	int dy = _game->getScreen()->getDY();
 	_screen = false;
 
-	_oldshowradar = Options::globeRadarLines;
-	if (!_oldshowradar)
-		Options::globeRadarLines = true;
 	// Create objects
 	_btnRotateLeft = new InteractiveSurface(12, 10, 259 + dx * 2, 176 + dy);
 	_btnRotateRight = new InteractiveSurface(12, 10, 283 + dx * 2, 176 + dy);
@@ -146,10 +143,6 @@ BuildNewBaseState::BuildNewBaseState(Base *base, Globe *globe, bool first) : _ba
  */
 BuildNewBaseState::~BuildNewBaseState()
 {
-	if (Options::globeRadarLines != _oldshowradar)
-	{
-		Options::globeRadarLines = false;
-	}
 	delete _hoverTimer;
 }
 
@@ -204,7 +197,7 @@ void BuildNewBaseState::hoverRedraw(void)
 		_globe->setNewBaseHoverPos(lon,lat);
 		_globe->setNewBaseHover(true);
 	}
-	if (Options::globeRadarLines && !(AreSame(_oldlat, lat) && AreSame(_oldlon, lon)) )
+	if (!(AreSame(_oldlat, lat) && AreSame(_oldlon, lon)))
 	{
 		_oldlat=lat;
 		_oldlon=lon;

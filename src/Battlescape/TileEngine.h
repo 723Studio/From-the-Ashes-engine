@@ -115,7 +115,6 @@ private:
 
 	RuleInventory *_inventorySlotGround;
 	constexpr static int heightFromCenter[11] = {0,-2,+2,-4,+4,-6,+6,-8,+8,-12,+12};
-	bool _personalLighting;
 	Tile *_cacheTile;
 	Tile *_cacheTileBelow;
 	Position _cacheTilePos;
@@ -224,12 +223,12 @@ public:
 	bool visible(BattleUnit *currentUnit, Position originPosition, Tile *tile);
 	/// Checks visibility of a tile.
 	bool isTileInLOS(BattleAction *action, Tile *tile, bool drawing);
-	/// Turn XCom soldier's personal lighting on or off.
-	void togglePersonalLighting();
 	/// Checks the horizontal blockage of a tile.
 	int horizontalBlockage(Tile *startTile, Tile *endTile, ItemDamageType type, bool skipObject = false);
 	/// Checks the vertical blockage of a tile.
 	int verticalBlockage(Tile *startTile, Tile *endTile, ItemDamageType type, bool skipObject = false);
+	/// Calculates minimum terrain-aware sound cost, in tenths of a tile.
+	std::vector<int> calculateSoundPropagation(const Position &origin, int soundBudget, std::vector<Tile*> *reachedTiles = nullptr);
 
 	/// Calculate success rate of psi attack.
 	int psiAttackCalculate(BattleActionAttack::ReadOnly attack, const BattleUnit *victim);

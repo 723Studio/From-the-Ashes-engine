@@ -19,7 +19,6 @@
  */
 #include "../Engine/State.h"
 #include "SoldierSortUtil.h"
-#include "../Mod/RuleSoldier.h"
 #include <vector>
 
 namespace OpenXcom

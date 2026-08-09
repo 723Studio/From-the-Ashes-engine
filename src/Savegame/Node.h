@@ -55,6 +55,9 @@ private:
 	Position _pos;
 	int _segment;
 	std::vector<int> _nodeLinks;
+	// RMP link-type bytes are preserved only for MapEditor round-trip saving.
+	// Campaign gameplay does not use them and they are intentionally not part of normal YAML save persistence.
+	std::vector<int> _linkTypes;
 	int _type;      // 19 = Unit type in Mapview 2
 	int _rank;      // 20 = Node rank in Mapview 2
 	int _flags;     // 21 = Patrol priority in Mapview 2
@@ -85,12 +88,20 @@ public:
 	int getID() const;
 	/// get the node's paths
 	std::vector<int> *getNodeLinks();
+	/// get the unit types that can use the links (used only in the map editor)
+	std::vector<int> *getLinkTypes();
 	/// Gets node's rank.
 	NodeRank getRank() const;
+	/// Sets the node's rank (used only in the map editor)
+	void setRank(int rank);
 	/// Gets node's priority.
 	int getPriority() const;
+	/// Sets the node's priority (used only in the map editor)
+	void setPriority(int priority);
 	/// Gets the node's position.
 	Position getPosition() const;
+	/// Sets the node's position (used only in the map editor)
+	void setPosition(Position pos);
 	/// Gets the node's segment.
 	int getSegment() const;
 	/// Gets the node's type.
@@ -99,12 +110,16 @@ public:
 	void setType(int type);
 	/// gets "flags" variable, which is really the patrolling desirability value
 	int getFlags() const { return _flags; }
+	/// Sets the node's "flags" variable (used only in the map editor)
+	void setFlags(int flags);
 	/// compares the _flags variables of the nodes (for the purpose of patrol decisions!)
 	bool operator<(Node &b) const { return _flags < b.getFlags(); };
 	bool isAllocated() const;
 	void allocateNode();
 	void freeNode();
 	bool isTarget() const;
+	/// Sets the node as a target or not (used only in the map editor)
+	void setReserved(int reserved);
 	void setDummy(bool dummy);
 	bool isDummy() const;
 

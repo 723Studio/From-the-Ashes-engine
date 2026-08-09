@@ -23,17 +23,20 @@
 #include <sstream>
 #include "../Engine/Action.h"
 #include "../Engine/Game.h"
-#include "../FTA/MasterMind.h"
 #include "../Mod/Mod.h"
+#include "../Mod/RuleIntelProject.h"
+#include "../Mod/RuleInterface.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Options.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextList.h"
+#include "../Menu/ErrorMessageState.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/Soldier.h"
 #include "../Savegame/IntelProject.h"
+#include "../Savegame/SavedGame.h"
 #include "../Basescape/PrisonManagementState.h"
 
 namespace OpenXcom
@@ -83,7 +86,6 @@ IntelState::IntelState(Base *base) : _base(base)
 
 	_btnPrisonCells->setText(tr("STR_MANAGE_PRISON_CELLS"));
 	_btnPrisonCells->onMouseClick((ActionHandler)&IntelState::btnPrisonClick);
-	_btnPrisonCells->onKeyboardPress((ActionHandler)&IntelState::btnPrisonClick, Options::keyToggleQuickSearch);
 
 	_btnOk->setText(tr("STR_OK"));
 	_btnOk->onMouseClick((ActionHandler)&IntelState::btnOkClick);
@@ -102,7 +104,7 @@ IntelState::IntelState(Base *base) : _base(base)
 	_txtAgents->setWordWrap(true);
 	_txtAgents->setText(tr("STR_AGENTS_ALLOCATED_UC"));
 
-	_txtProgress->setText(tr("STR_PROGRESS"));
+	_txtProgress->setText(tr("STR_RESULTS"));
 
 	_lstProjects->setColumns(3, 158, 58, 70);
 	_lstProjects->setSelectable(true);
@@ -154,10 +156,20 @@ void IntelState::btnAgentsClick(Action *action)
  */
 void IntelState::onSelectProject(Action *)
 {
-	const std::vector<IntelProject*> & baseProjects(_base->getIntelProjects());
-	IntelProject *project = baseProjects[_lstProjects->getSelectedRow()];
-
-	_game->pushState(new IntelAllocateAgentsState(_base, project));
+	const size_t row = _lstProjects->getSelectedRow();
+	if (row < _projects.size())
+	{
+		if (_projects[row]->isCurrentMilestoneBlocked(_game->getSavedGame()) ||
+			!_projects[row]->getBlockedMilestone().empty())
+		{
+			_game->pushState(new ErrorMessageState(tr("STR_INTEL_PROJECT_BLOCKED"), _palette,
+				_game->getMod()->getInterface("soldierInfo")->getElement("errorMessage")->color,
+				"BACK01.SCR",
+				_game->getMod()->getInterface("soldierInfo")->getElement("errorPalette")->color));
+			return;
+		}
+		_game->pushState(new IntelAllocateAgentsState(_base, _projects[row]));
+	}
 }
 
 /**
@@ -166,9 +178,11 @@ void IntelState::onSelectProject(Action *)
 */
 void IntelState::onProjectDetails(Action* action)
 {
-	const std::vector<IntelProject*>& baseProjects(_base->getIntelProjects());
-	auto selectedTopic = baseProjects[_lstProjects->getSelectedRow()]->getRules();
-	_game->pushState(new IntelligenceProjectDetailsState(selectedTopic));
+	const size_t row = _lstProjects->getSelectedRow();
+	if (row < _projects.size())
+	{
+		_game->pushState(new IntelligenceProjectDetailsState(_projects[row]->getRules()));
+	}
 }
 
 /**
@@ -180,15 +194,7 @@ void IntelState::init()
 	State::init();
 	fillProjectList(0);
 
-	if (Options::oxceResearchScrollSpeed > 0 || Options::oxceResearchScrollSpeedWithCtrl > 0)
-	{
-		// 175 +/- 20
-		_lstProjects->setNoScrollArea(_txtAgentsAllocated->getX() - 5, _txtAgentsAllocated->getX() + 35);
-	}
-	else
-	{
-		_lstProjects->setNoScrollArea(0, 0);
-	}
+	_lstProjects->setNoScrollArea(0, 0);
 }
 
 /**
@@ -197,29 +203,37 @@ void IntelState::init()
 void IntelState::fillProjectList(size_t scrl)
 {
 	_lstProjects->clearList();
-	for (auto p : _base->getIntelProjects())
+	_projects.clear();
+	SavedGame* save = _game->getSavedGame();
+	for (auto* p : save->getIntelProjects())
 	{
-		std::ostringstream sstr, sspr;
-		std::map<Soldier*, int> soldiers;
-		size_t n = 0;
-		for (auto s : *_base->getSoldiers())
+		if (p->isCompleted())
 		{
-			if (s->getIntelProject() == p)
-			{
-				n++;
-				int coef = 100;
-				if (s->getBestRole() != ROLE_AGENT)
-				{
-					coef = 50;
-				}
-				soldiers.emplace(std::make_pair(s, coef));
-
-			}
+			continue;
 		}
-		sstr << n;
-		std::string des = "";
-		p->getStepProgress(soldiers, _game->getMod(), _game->getMasterMind()->getLoyaltyPerformanceBonus(), des, true);
-		sspr << tr(des);
+		_projects.push_back(p);
+		std::ostringstream sstr, sspr;
+		sstr << save->getIntelProjectAgentCount(p, _base);
+
+		const size_t globalAgents = save->getIntelProjectAgentCount(p);
+		const int effort = save->getIntelProjectEffort(p, _game->getMod(), true);
+		if (globalAgents == 0 || effort <= 0)
+		{
+			sspr << tr("STR_NONE");
+		}
+		else if (p->getRules()->getEffectType() != INTEL_EFFECT_NONE)
+		{
+			double appliedEffect = save->getIntelEffect(p->getRules()->getEffectType(), _game->getMod());
+			if (p->getRules()->getEffectType() == INTEL_EFFECT_COVERT_OPERATIONS)
+			{
+				appliedEffect *= _game->getMod()->getCovertOpsIntelBonusFactor() / 100.0;
+			}
+			sspr << "+" << appliedEffect << "%";
+		}
+		else
+		{
+			sspr << tr(p->getProgressState(effort, save));
+		}
 		_lstProjects->addRow(3, tr(p->getName()).c_str(), sstr.str().c_str(), sspr.str().c_str());
 	}
 
@@ -241,7 +255,7 @@ void IntelState::fillProjectList(size_t scrl)
 	
 	_txtAgentsAvailable->setText(tr("STR_AGENTS_AVAILABLE").arg(freeAgents));
 	_txtAgentsAllocated->setText(tr("STR_AGENTS_ALLOCATED").arg(busyAgents));
-	_txtIntelSpace->setText(tr("STR_FREE_INTERROGATION_SPACE").arg(_base->getFreeInterrogationSpace()));
+	_txtIntelSpace->setText(tr("STR_INTEL_SPACE_AVAILABLE").arg(_base->getFreeIntelSpace()));
 
 	if (scrl)
 		_lstProjects->scrollTo(scrl);

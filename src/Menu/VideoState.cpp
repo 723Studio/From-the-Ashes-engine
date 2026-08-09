@@ -30,10 +30,8 @@
 #include "../Engine/Music.h"
 #include "../Engine/Sound.h"
 #include "../Mod/Mod.h"
-#include "../Mod/RuleVideo.h"
 #include "CutsceneState.h"
 #include "../Interface/Cursor.h"
-#include <algorithm>
 
 namespace OpenXcom
 {

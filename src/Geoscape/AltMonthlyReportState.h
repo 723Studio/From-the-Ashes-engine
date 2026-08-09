@@ -44,9 +44,8 @@ private:
 	Text* _txtLoyalty, * _txtMaintenance, * _txtBalance, * _txtBonus;
 	Text* _txtDesc, * _txtFailure;
 	int _gameOver;
-	int _ratingTotal, _fundingDiff, _lastMonthsRating, _loyalty, _lastMonthsLoyalty;
+	int _ratingTotal, _lastMonthsRating, _loyalty, _lastMonthsLoyalty;
 	std::string _stuffMessage, _factionMessage;
-	std::vector<std::string> _happyList, _sadList, _pactList, _cancelPactList;
 	Globe* _globe;
 	std::vector<Soldier*> _soldiersMedalled;
 public:
@@ -62,7 +61,7 @@ public:
 
 /**
 * State that concludes alpha_game
-* changes in the player's performance and funding.
+* changes in the player's performance.
 */
 class AlphaGameVersionEnds : public State
 {

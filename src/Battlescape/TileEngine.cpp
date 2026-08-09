@@ -17,6 +17,9 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <assert.h>
+#include <functional>
+#include <limits>
+#include <queue>
 #include <set>
 #include "TileEngine.h"
 #include "AIModule.h"
@@ -895,7 +898,7 @@ constexpr Position TileEngine::voxelTileCenter;
  * @param maxDarknessToSeeUnits Threshold of darkness for LoS calculation.
  */
 TileEngine::TileEngine(SavedBattleGame *save, Mod *mod)
-	: _save(save), _voxelData(mod->getVoxelData()), _inventorySlotGround(mod->getInventoryGround()), _personalLighting(true), _cacheTile(0), _cacheTileBelow(0),
+	: _save(save), _voxelData(mod->getVoxelData()), _inventorySlotGround(mod->getInventoryGround()), _cacheTile(0), _cacheTileBelow(0),
 	  _maxViewDistance(mod->getMaxViewDistance()), _maxViewDistanceSq(_maxViewDistance * _maxViewDistance),
 	  _maxVoxelViewDistance(_maxViewDistance * 16), _maxDarknessToSeeUnits(mod->getMaxDarknessToSeeUnits()),
 	  _maxStaticLightDistance(mod->getMaxStaticLightDistance()), _maxDynamicLightDistance(mod->getMaxDynamicLightDistance()),
@@ -906,22 +909,6 @@ TileEngine::TileEngine(SavedBattleGame *save, Mod *mod)
 	_lightPropagationTempNeedUpdate.resize(save->getMapSizeXYZ());
 	_cacheTilePos = invalid;
 
-	if (Options::oxceTogglePersonalLightType == 2)
-	{
-		// persisted per campaign
-		SavedGame *geosave = _save->getGeoscapeSave();
-		if (geosave)
-		{
-			_personalLighting = geosave->getTogglePersonalLight();
-		}
-	}
-	else if (Options::oxceTogglePersonalLightType == 1)
-	{
-		// persisted per battle
-		_personalLighting = _save->getTogglePersonalLight();
-	}
-
-	_save->setTogglePersonalLightTemp(_personalLighting);
 }
 
 /**
@@ -1074,20 +1061,6 @@ void TileEngine::calculateUnitLighting(MapSubset gs)
 		}
 
 		int currLight = 0;
-		// add lighting of unit
-		if (unit->getFaction() == FACTION_PLAYER)
-		{
-			currLight = std::max(currLight, _personalLighting ? unit->getArmor()->getPersonalLightFriend() : 0);
-		}
-		else if (unit->getFaction() == FACTION_HOSTILE)
-		{
-			currLight = std::max(currLight, unit->getArmor()->getPersonalLightHostile());
-		}
-		else if (unit->getFaction() == FACTION_NEUTRAL)
-		{
-			currLight = std::max(currLight, unit->getArmor()->getPersonalLightNeutral());
-		}
-
 		const BattleItem *handWeapons[] = { unit->getLeftHandWeapon(), unit->getRightHandWeapon() };
 		for (const BattleItem *w : handWeapons)
 		{
@@ -1498,10 +1471,7 @@ inline bool TileEngine::inEventVisibilitySector(const Position &toCheck) const
 bool TileEngine::calculateUnitsInFOV(BattleUnit* unit, const Position eventPos, const int eventRadius)
 {
 	size_t oldNumVisibleUnits = unit->getUnitsSpottedThisTurn().size();
-	bool useTurretDirection = false;
-	if (Options::strafe && (unit->getTurretType() > -1)) {
-		useTurretDirection = true;
-	}
+	bool useTurretDirection = unit->getTurretType() > -1;
 
 	if (unit->isOut())
 		return false;
@@ -1545,22 +1515,16 @@ bool TileEngine::calculateUnitsInFOV(BattleUnit* unit, const Position eventPos, 
 								&& bu->getOriginalFaction() == FACTION_PLAYER
 								&& _save->isStealthMission()
 								&& !unit->getUnitWarned()
-								&& !unit->isOut())
+								&& !unit->isOut()
+								&& !_save->isUndercoverActive(bu))
 							{
-								if (bu->getUndercover())
-								{
-									if (bu->tryUncover())
-									{
-										unit->setUnitWarned(true);
-									}
-								}
-								else
-								{
-									unit->setUnitWarned(true);
-								}
+								unit->setUnitWarned(true);
 							}
 
-							if ((( bu->getFaction() == FACTION_HOSTILE && unit->getFaction() == FACTION_PLAYER )
+							const bool treatedByAIHostility = unit->hasTreatedByAIHostility(bu);
+
+							if ((treatedByAIHostility
+								|| ( bu->getFaction() == FACTION_HOSTILE && unit->getFaction() == FACTION_PLAYER )
 								|| ( bu->getFaction() != FACTION_HOSTILE && unit->getFaction() == FACTION_HOSTILE ))
 								&& !unit->hasVisibleUnit(bu))
 							{
@@ -1568,7 +1532,7 @@ bool TileEngine::calculateUnitsInFOV(BattleUnit* unit, const Position eventPos, 
 								unit->addToVisibleTiles(bu->getTile());
 							}
 
-							if (unit->getFaction() != bu->getFaction())
+							if (unit->getFaction() != bu->getFaction() || treatedByAIHostility)
 							{
 								bu->setTurnsSinceSpottedByFaction(unit->getFaction(), 0);
 								bu->setTurnsLeftSpottedForSnipersByFaction(
@@ -1649,7 +1613,7 @@ void TileEngine::calculateTilesInFOV(BattleUnit *unit, const Position eventPos, 
 	bool useTurretDirection = false;
 	bool skipNarrowArcTest = false;
 	int direction;
-	if (Options::strafe && (unit->getTurretType() > -1)) {
+	if (unit->getTurretType() > -1) {
 		direction = unit->getTurretDirection();
 		useTurretDirection = true;
 	}
@@ -1784,8 +1748,12 @@ void TileEngine::calculateTilesInFOV(BattleUnit *unit, const Position eventPos, 
 */
 bool TileEngine::calculateFOV(BattleUnit *unit, bool doTileRecalc, bool doUnitRecalc)
 {
-	//Force a full FOV recheck for this unit.
-	if (doTileRecalc) calculateTilesInFOV(unit);
+	// Force a full FOV recheck for this unit.
+	if (doTileRecalc)
+	{
+		calculateTilesInFOV(unit);
+		checkForSuspiciousItems(unit);
+	}
 	return doUnitRecalc ? calculateUnitsInFOV(unit) : false;
 }
 
@@ -2026,13 +1994,13 @@ bool TileEngine::visible(BattleUnit *currentUnit, Position originPosition, Tile 
 	{
 		const auto [visibleDistanceVoxels, densityOfSmoke, densityOfFire, densityOfSmokeNearUnit, densityOfFireeNearUnit] = getTrajectoryDataHelper(this, _save, currentUnit, originVoxel, scanVoxel);
 
-		int statsDiff = (currentUnit->getBaseStats()->perception - tile->getUnit()->getBaseStats()->stealth) * _visibilityStatsMod / 100; // FtA modifer based on units stats
+		int statsDiff = (currentUnit->getBaseStats()->perception - tile->getUnit()->getBaseStats()->stealth) * _visibilityStatsMod / 100; // positive perception makes detection easier; positive target stealth makes it harder
 		// 3  - coefficient of calculation (see getTrajectoryDataHelper).
 		// 20 - maximum view distance in vanilla Xcom.
 		// 100 - % for smokeDensityFactor.
 		// 16 - for voxel scale calculation.
 		// Even if MaxViewDistance will be increased via ruleset, smoke will keep effect.
-		int visibilityQuality = visibleDistanceMaxVoxel - visibleDistanceVoxels - statsDiff - ((densityOfSmoke - densityOfSmokeNearUnit / 2) * smokeDensityFactor + (densityOfFire - densityOfFireeNearUnit / 2) * fireDensityFactor) * visibleDistanceMaxVoxel/(3 * 20 * 100 * 16);
+		int visibilityQuality = visibleDistanceMaxVoxel - visibleDistanceVoxels + statsDiff - ((densityOfSmoke - densityOfSmokeNearUnit / 2) * smokeDensityFactor + (densityOfFire - densityOfFireeNearUnit / 2) * fireDensityFactor) * visibleDistanceMaxVoxel/(3 * 20 * 100 * 16);
 		ModScript::VisibilityUnit::Output arg{ visibilityQuality, visibilityQuality, ScriptTag<BattleUnitVisibility>::getNullTag() };
 		ModScript::VisibilityUnit::Worker worker{ currentUnit, tile->getUnit(), tile, visibleDistanceVoxels, visibleDistanceMaxVoxel, visibleDistanceUnitMaxTile, densityOfSmoke, densityOfFire, densityOfSmokeNearUnit, densityOfFireeNearUnit };
 		worker.execute(currentUnit->getArmor()->getScript<ModScript::VisibilityUnit>(), arg);
@@ -2078,7 +2046,7 @@ bool TileEngine::isTileInLOS(BattleAction *action, Tile *tile, bool drawing)
 	std::vector<Position> _trajectory;
 	bool seen = false;
 
-	bool forceFire = Options::forceFire && _save->isCtrlPressed(true) && _save->getSide() == FACTION_PLAYER;
+	bool forceFire = _save->isCtrlPressed(true) && _save->getSide() == FACTION_PLAYER;
 
 	// Primary LOF check
 	if (forceFire)
@@ -2609,38 +2577,36 @@ void TileEngine::calculateFOV(Position position, int eventRadius, const bool upd
 				calculateTilesInFOV(bu, position, eventRadius);
 			}
 
+			// Keep this check even when updateTiles is false: an event may add a
+			// suspicious item to a tile that was already visible.
+			checkForSuspiciousItems(bu);
 			calculateUnitsInFOV(bu, position, eventRadius);
-			if (_save->isStealthMission() && bu->getFaction() == FACTION_HOSTILE
-				&& !bu->getUnitWarned() && !bu->isOut())
-			{
-				checkForSuspiciousItems(bu);
-			}
 		}
 	}
 }
 
 void TileEngine::checkForSuspiciousItems(BattleUnit* unit)
 {
-	auto tiles = unit->getVisibleTiles();
-	for (auto* tile : *tiles)
+	if (!_save->isStealthMission() || !unit || unit->getFaction() != FACTION_HOSTILE ||
+		unit->getUnitWarned() || unit->isOut())
 	{
-		for (auto* bi : *unit->getInventory())
+		return;
+	}
+
+	for (Tile *tile : *unit->getVisibleTiles())
+	{
+		for (BattleItem *item : *tile->getInventory())
 		{
-			if (bi->getXCOMProperty()
-				|| bi->getRules()->getBattleType() == BT_CORPSE
-				|| (bi->getFuseTimer() > -1 && bi->getRules()->getSpawnUnit()))
+			const BattleType type = item->getRules()->getBattleType();
+			const bool armedExplosive =
+				(type == BT_GRENADE || type == BT_PROXIMITYGRENADE) &&
+				item->getFuseTimer() >= 0;
+			if (type == BT_CORPSE || armedExplosive)
 			{
 				unit->setUnitWarned(true);
-			}
-			if (bi->getPreviousOwner() != nullptr)
-			{
-				if (bi->getPreviousOwner()->getOriginalFaction() == FACTION_PLAYER)
-				{
-					unit->setUnitWarned(true);
-				}
+				return;
 			}
 		}
-		
 	}
 }
 
@@ -2711,21 +2677,22 @@ std::vector<TileEngine::ReactionScore> TileEngine::getSpottingUnits(BattleUnit* 
 	std::vector<TileEngine::ReactionScore> spotters;
 	Tile *tile = unit->getTile();
 	int threshold = unit->getReactionScore();
-	// no reaction on civilian turn.
-	if (_save->getSide() != FACTION_NEUTRAL || _save->getGeoscapeSave()->isFtAGame())
-	{
-		for (auto* bu : *_save->getUnits())
+	for (auto* bu : *_save->getUnits())
 		{
+			const bool treatedByAIHostility = bu->hasTreatedByAIHostility(unit) &&
+				(unit->getFaction() == FACTION_PLAYER || !unit->isIgnoredByAI());
+
 				// not dead/unconscious
 			if (!bu->isOut() &&
 				// not dying or not about to pass out
 				!bu->isOutThresholdExceed() &&
 				// have any chances for reacting
 				bu->getReactionScore() >= threshold &&
-				// not a friend
-				bu->getFaction() != _save->getSide() &&
-				// not a civilian, or a civilian shooting at bad non-ignored guys
-				(bu->getFaction() != FACTION_NEUTRAL || (unit->getFaction() == FACTION_HOSTILE && !unit->isIgnoredByAI())) &&
+				// not a friend; treatedByAI can make units of the current technical side enemies
+				(treatedByAIHostility ||
+					(bu->getFaction() != _save->getSide() &&
+					// not a civilian, or a civilian shooting at bad non-ignored guys
+					(bu->getFaction() != FACTION_NEUTRAL || (unit->getFaction() == FACTION_HOSTILE && !unit->isIgnoredByAI())))) &&
 				// closer than 20 tiles
 				Position::distance2dSq(unit->getPosition(), bu->getPosition()) <= getMaxViewDistanceSq())
 			{
@@ -2767,7 +2734,7 @@ std::vector<TileEngine::ReactionScore> TileEngine::getSpottingUnits(BattleUnit* 
 					// can actually see the unit
 					visible(bu, tile))
 				{
-					if (bu->getFaction() == FACTION_HOSTILE && !unit->tryUncover() && !bu->getUnitWarned())
+					if (bu->getFaction() == FACTION_HOSTILE && _save->isUndercoverActive(unit) && !bu->getUnitWarned())
 					{
 						continue;
 					}
@@ -2816,7 +2783,6 @@ std::vector<TileEngine::ReactionScore> TileEngine::getSpottingUnits(BattleUnit* 
 				}
 			}
 		}
-	}
 	return spotters;
 }
 
@@ -2983,6 +2949,7 @@ bool TileEngine::tryReaction(ReactionScore *reaction, BattleUnit *target, const 
 	action.actor = reaction->unit;
 	action.weapon = reaction->weapon;
 	action.type = reaction->attackType;
+	action.reactionAttack = true;
 
 	if (!_save->canUseWeapon(action.weapon, action.actor, false, action.type))
 	{
@@ -3527,20 +3494,7 @@ void TileEngine::explode(BattleActionAttack attack, Position center, int power, 
 		power /= 2;
 	}
 
-	int exHeight = Clamp(Options::battleExplosionHeight, 0, 3);
-	int vertdec = 1000; //default flat explosion
-
-	switch (exHeight)
-	{
-	case 1:
-		vertdec = 3.0f * type->RadiusReduction;
-		break;
-	case 2:
-		vertdec = 1.0f * type->RadiusReduction;
-		break;
-	case 3:
-		vertdec = 0.5f * type->RadiusReduction;
-	}
+	int vertdec = 0.5f * type->RadiusReduction;
 
 	Tile *origin = _save->getTile(Position(centetTile));
 	Tile *dest = nullptr;
@@ -3858,6 +3812,179 @@ Tile *TileEngine::checkForTerrainExplosions()
 		}
 	}
 	return 0;
+}
+
+/**
+ * Calculates minimum weapon-sound propagation costs with Dijkstra.
+ *
+ * Costs are expressed in tenths of a tile: 10 for an orthogonal or vertical
+ * step and 14 for a diagonal step. Positive MapData armor is added directly,
+ * which is equivalent to armor / 10 tiles without losing fractional cost.
+ */
+std::vector<int> TileEngine::calculateSoundPropagation(const Position &origin, int soundBudget, std::vector<Tile*> *reachedTiles)
+{
+	const int unreachable = std::numeric_limits<int>::max();
+	std::vector<int> costs(_save->getMapSizeXYZ(), unreachable);
+	if (soundBudget < 0 || !_save->getTile(origin))
+	{
+		return costs;
+	}
+
+	auto armor = [](Tile *tile, TilePart part)
+	{
+		if (!tile || tile->isUfoDoorOpen(part))
+		{
+			return 0;
+		}
+		MapData *data = tile->getMapData(part);
+		return data ? std::max(0, data->getArmor()) : 0;
+	};
+
+	auto orthogonalPenalty = [&](Tile *startTile, Tile *endTile)
+	{
+		if (!startTile || !endTile)
+		{
+			return unreachable;
+		}
+
+		const Position delta = endTile->getPosition() - startTile->getPosition();
+		int penalty = armor(endTile, O_OBJECT);
+		if (delta == Position(0, -1, 0))
+		{
+			penalty += armor(startTile, O_NORTHWALL);
+		}
+		else if (delta == Position(1, 0, 0))
+		{
+			penalty += armor(endTile, O_WESTWALL);
+		}
+		else if (delta == Position(0, 1, 0))
+		{
+			penalty += armor(endTile, O_NORTHWALL);
+		}
+		else if (delta == Position(-1, 0, 0))
+		{
+			penalty += armor(startTile, O_WESTWALL);
+		}
+		else
+		{
+			return unreachable;
+		}
+		return penalty;
+	};
+
+	using QueueEntry = std::pair<int, int>;
+	std::priority_queue<QueueEntry, std::vector<QueueEntry>, std::greater<QueueEntry> > frontier;
+	const int originIndex = _save->getTileIndex(origin);
+	costs[originIndex] = 0;
+	frontier.push(QueueEntry(0, originIndex));
+
+	static const Position horizontalDirections[] =
+	{
+		Position(0, -1, 0), Position(1, -1, 0), Position(1, 0, 0), Position(1, 1, 0),
+		Position(0, 1, 0), Position(-1, 1, 0), Position(-1, 0, 0), Position(-1, -1, 0)
+	};
+	static const Position verticalDirections[] = { Position(0, 0, 1), Position(0, 0, -1) };
+
+	while (!frontier.empty())
+	{
+		const int currentCost = frontier.top().first;
+		const int currentIndex = frontier.top().second;
+		frontier.pop();
+		if (currentCost != costs[currentIndex])
+		{
+			continue;
+		}
+
+		Tile *currentTile = _save->getTile(currentIndex);
+		if (reachedTiles)
+		{
+			reachedTiles->push_back(currentTile);
+		}
+		const Position currentPosition = currentTile->getPosition();
+
+		for (const Position &direction : horizontalDirections)
+		{
+			Tile *nextTile = _save->getTile(currentPosition + direction);
+			if (!nextTile)
+			{
+				continue;
+			}
+
+			const bool diagonal = direction.x != 0 && direction.y != 0;
+			int penalty;
+			if (diagonal)
+			{
+				Tile *viaX = _save->getTile(currentPosition + Position(direction.x, 0, 0));
+				Tile *viaY = _save->getTile(currentPosition + Position(0, direction.y, 0));
+				int xRoute = unreachable;
+				int yRoute = unreachable;
+				if (viaX)
+				{
+					const int first = orthogonalPenalty(currentTile, viaX);
+					const int second = orthogonalPenalty(viaX, nextTile);
+					if (first != unreachable && second != unreachable)
+					{
+						xRoute = first + second;
+					}
+				}
+				if (viaY)
+				{
+					const int first = orthogonalPenalty(currentTile, viaY);
+					const int second = orthogonalPenalty(viaY, nextTile);
+					if (first != unreachable && second != unreachable)
+					{
+						yRoute = first + second;
+					}
+				}
+				penalty = std::min(xRoute, yRoute);
+			}
+			else
+			{
+				penalty = orthogonalPenalty(currentTile, nextTile);
+			}
+			if (penalty == unreachable)
+			{
+				continue;
+			}
+
+			const int baseCost = diagonal ? 14 : 10;
+			if (currentCost > soundBudget - baseCost || penalty > soundBudget - currentCost - baseCost)
+			{
+				continue;
+			}
+			const int nextCost = currentCost + baseCost + penalty;
+			const int nextIndex = _save->getTileIndex(nextTile->getPosition());
+			if (nextCost < costs[nextIndex])
+			{
+				costs[nextIndex] = nextCost;
+				frontier.push(QueueEntry(nextCost, nextIndex));
+			}
+		}
+
+		for (const Position &direction : verticalDirections)
+		{
+			Tile *nextTile = _save->getTile(currentPosition + direction);
+			if (!nextTile)
+			{
+				continue;
+			}
+			Tile *floorTile = direction.z > 0 ? nextTile : currentTile;
+			const int penalty = armor(floorTile, O_FLOOR) + armor(nextTile, O_OBJECT);
+			if (currentCost > soundBudget - 10 || penalty > soundBudget - currentCost - 10)
+			{
+				continue;
+			}
+			const int nextCost = currentCost + 10 + penalty;
+			const int nextIndex = _save->getTileIndex(nextTile->getPosition());
+			if (nextCost < costs[nextIndex])
+			{
+				costs[nextIndex] = nextCost;
+				frontier.push(QueueEntry(nextCost, nextIndex));
+			}
+		}
+	}
+
+	return costs;
 }
 
 /**
@@ -4820,33 +4947,6 @@ void TileEngine::voxelCheckFlush()
 }
 
 /**
- * Toggles personal lighting on / off.
- */
-void TileEngine::togglePersonalLighting()
-{
-	_personalLighting = !_personalLighting;
-
-	if (Options::oxceTogglePersonalLightType == 2)
-	{
-		// persisted per campaign
-		SavedGame* geosave = _save->getGeoscapeSave();
-		if (geosave)
-		{
-			geosave->setTogglePersonalLight(_personalLighting);
-		}
-	}
-	else if (Options::oxceTogglePersonalLightType == 1)
-	{
-		// persisted per battle
-		_save->setTogglePersonalLight(_personalLighting);
-	}
-
-	_save->setTogglePersonalLightTemp(_personalLighting);
-	calculateLighting(LL_UNITS);
-	recalculateFOV();
-}
-
-/**
  * Calculate strength of psi attack based on range and victim.
  * @param type Type of attack.
  * @param attacker Unit attacking.
@@ -4912,8 +5012,6 @@ bool TileEngine::psiAttack(BattleActionAttack attack, BattleUnit *victim)
 	{
 		isNaturallyPsiCapable = false;
 	}
-	bool isPsiRequired = attack.weapon_item->getRules()->isPsiRequired();
-
 	if (isDefaultExpTrainingMode)
 	{
 		if (isNaturallyPsiCapable)
@@ -4921,11 +5019,6 @@ bool TileEngine::psiAttack(BattleActionAttack attack, BattleUnit *victim)
 			attack.attacker->addPsiSkillExp();
 		}
 	}
-	if (Options::allowPsiStrengthImprovement && isPsiRequired)
-	{
-		victim->addPsiStrengthExp(); // experience for the victim, not the attacker
-	}
-
 	if (psiAttackCalculate(attack, victim) > 0)
 	{
 		if (isDefaultExpTrainingMode)
@@ -4998,20 +5091,11 @@ bool TileEngine::psiAttack(BattleActionAttack attack, BattleUnit *victim)
 			victim->recoverTimeUnits();
 			victim->allowReselect();
 			victim->abortTurn(); // resets unit status to STANDING
-			// if all units from either faction are mind controlled - auto-end the mission.
-			if (_save->getSide() == FACTION_PLAYER && Options::allowPsionicCapture)
-			{
-				_save->getBattleGame()->autoEndBattle();
-			}
 		}
 		return true;
 	}
 	else
 	{
-		if (Options::allowPsiStrengthImprovement && isPsiRequired)
-		{
-			victim->addPsiStrengthExp(); // experience for the victim, not the attacker
-		}
 		return false;
 	}
 }
@@ -5115,11 +5199,6 @@ bool TileEngine::hackAttack(BattleAction& action, BattleUnit* target)
 	target->allowReselect();
 	target->abortTurn(); // resets unit status to STANDING
 
-	// if all units from either faction are mind controlled - auto-end the mission.
-	if (_save->getSide() == FACTION_PLAYER && Options::allowPsionicCapture)
-	{
-		_save->getBattleGame()->autoEndBattle();
-	}
 	return true;
 }
 
@@ -5141,42 +5220,49 @@ bool TileEngine::hackObject(BattleAction& action, BattleObject* object)
 		return false;
 	}
 
-	const int radius = object->getRules()->getAlterationMCDRadius();
-	if (radius > 0)
+	const int alterationRadius = object->getRules()->getAlterationRadius();
+	if (alterationRadius > 0)
 	{
-		const int doorMCD = object->getRules()->getAlterationMCDNumber();
-		static const TilePart parts[8] = { O_WESTWALL,O_NORTHWALL,O_FLOOR,O_WESTWALL,O_NORTHWALL,O_OBJECT,O_OBJECT,O_OBJECT };
-		Position pos = tile->getPosition();
-		MapSubset gs = { std::make_pair(pos.x - radius, pos.x + radius + 1), std::make_pair(pos.y - radius, pos.y + radius + 1) };
+		const int targetAltMCD = object->getRules()->getTargetAltMCD();
+		const Position objectPosition = tile->getPosition();
+		const MapSubset searchArea = {
+			std::make_pair(objectPosition.x - alterationRadius, objectPosition.x + alterationRadius + 1),
+			std::make_pair(objectPosition.y - alterationRadius, objectPosition.y + alterationRadius + 1)
+		};
+		static const TilePart tileParts[] = { O_FLOOR, O_WESTWALL, O_NORTHWALL, O_OBJECT };
+		std::vector<Tile*> tilesToAlter;
 
-		Tile* tiles[9];
 		iterateTiles(
 			_save,
-			gs,
-			[&](Tile* itile)
+			searchArea,
+			[&](Tile* candidateTile)
 			{
-				tiles[0] = _save->getTile(Position(pos.x + 1, pos.y, pos.z)); //east wall
-				tiles[1] = _save->getTile(Position(pos.x, pos.y + 1, pos.z)); //south wall
-				tiles[2] = tiles[3] = tiles[4] = tiles[5] = itile;
-				tiles[6] = _save->getTile(Position(pos.x, pos.y - 1, pos.z)); //north bigwall
-				tiles[7] = _save->getTile(Position(pos.x - 1, pos.y, pos.z)); //west bigwall
-
-				for (int i = 7; i >= 0; --i)
+				if (candidateTile->getPosition().z != objectPosition.z)
 				{
-					if (!tiles[i] || !tiles[i]->getMapData(parts[i]))
+					return;
+				}
+				for (const TilePart tilePart : tileParts)
+				{
+					MapData* mapData = candidateTile->getMapData(tilePart);
+					if (mapData && mapData->getAltMCD() == targetAltMCD)
 					{
-						continue; //skip out of map and emptiness
-					}
-
-					TilePart currentPart = parts[i];
-					int altMCD = tiles[i]->getMapData(currentPart)->getAltMCD();
-					if (altMCD == doorMCD)
-					{
-						itile->switchToAltMCD(currentPart);
+						tilesToAlter.push_back(candidateTile);
+						return;
 					}
 				}
-			}
-		);
+			});
+
+		int alteredParts = 0;
+		for (Tile* tileToAlter : tilesToAlter)
+		{
+			alteredParts += tileToAlter->switchMatchingPartsToAltMCD(targetAltMCD);
+		}
+
+		if (alteredParts > 0)
+		{
+			calculateLighting(LL_AMBIENT, objectPosition, alterationRadius + 1, true);
+			calculateFOV(objectPosition, alterationRadius + 1, true, true);
+		}
 	}
 	
 	object->setWasUsed(true);
@@ -6291,7 +6377,6 @@ bool TileEngine::isPositionValidForUnit(Position &position, BattleUnit *unit, bo
 		// Extra test for large units
 		if (passedCheck && unitSize > 1)
 		{
-			_save->getPathfinding()->setUnit(unit); //TODO: remove as was required by `isBlockedDirection`
 			for (int dir = 2; dir <= 4; ++dir)
 			{
 				if (_save->getPathfinding()->isBlockedDirection(unit, _save->getTile(pos), dir))

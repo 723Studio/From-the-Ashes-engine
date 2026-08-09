@@ -64,7 +64,7 @@ private:
 	bool _craftIsDefenseless, _selfDestructPressed, _panicing;
 	int _timeout, _currentDist, _targetDist, _weaponFireInterval[RuleCraft::WeaponMax], _weaponFireCountdown[RuleCraft::WeaponMax], _panicTimeout;
 	bool _end, _endUfoHandled, _endCraftHandled, _ufoBreakingOff, _destroyUfo, _destroyCraft, _weaponEnabled[RuleCraft::WeaponMax];
-	bool _minimized, _endDogfight, _animatingHit, _waitForPoly, _waitForAltitude;
+	bool _minimized, _endDogfight, _animatingHit, _waitForPoly, _waitForAltitude, _engagementStarted;
 	std::vector<CraftWeaponProjectile*> _projectiles;
 	static const int _ufoBlobs[8][13][13];
 	static const int _projectileBlobs[4][6][3];
@@ -72,14 +72,13 @@ private:
 	size_t _interceptionsCount;
 	int _x, _y, _minimizedIconX, _minimizedIconY;
 	int _weaponNum;
-	int _pilotDodgeBonus, _craftAccelerationBonus, _pilotMissileAccuracyBonus, _pilotCannonAccuracyBonus, _crewBravery, _squadTacticBonus;
-	bool _firedAtLeastOnce, _experienceAwarded;
-	bool _delayedRecolorDone, _fta;
+	int _pilotDodgeBonus, _craftAccelerationBonus, _pilotMissileAccuracyBonus, _pilotCannonAccuracyBonus, _pilotBeamAccuracyBonus, _crewBravery;
+	int _coordinationContribution, _squadTacticBonus;
+	bool _delayedRecolorDone;
 	// craft min/max, radar min/max, damage min/max, shield min/max
 	int _colors[13];
 	// Ends the dogfight.
 	void endDogfight();
-	bool _tractorLockedOn[RuleCraft::WeaponMax];
 	void updateOceanIndicator();
 
 public:
@@ -171,6 +170,14 @@ public:
 	Ufo *getUfo() const;
 	/// Gets pointer to the craft in this dogfight.
 	Craft *getCraft() const;
+	/// Returns whether this interception has an active pilot crew.
+	bool hasPilots() const;
+	/// Returns whether this interception progressed beyond its waiting state.
+	bool hasEngagementStarted() const;
+	/// Gets this crew's contribution to the shared coordination bonus.
+	int getCoordinationContribution() const;
+	/// Updates the shared coordination bonus for this interception.
+	void setSquadTacticBonus(int bonus);
 	/// Waits until the UFO reaches a polygon.
 	void setWaitForPoly(bool wait);
 	/// Waits until the UFO reaches a polygon.
@@ -179,8 +186,6 @@ public:
 	void setWaitForAltitude(bool wait);
 	/// Waits until the UFO reaches the right altitude.
 	bool getWaitForAltitude() const;
-	/// Award experience to the pilots.
-	//void awardExperienceToPilots();
 };
 
 }

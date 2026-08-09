@@ -31,7 +31,6 @@
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextList.h"
-#include "../Interface/ArrowButton.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/Soldier.h"
 #include "../Savegame/SavedGame.h"
@@ -251,13 +250,6 @@ void CovertOperationArmorState::init()
 	State::init();
 	_base->prepareSoldierStatsWithBonuses(); // refresh stats for sorting
 	initList(_savedScrollPosition);
-
-	int row = 0;
-	for (std::vector<Soldier*>::iterator i = _base->getSoldiers()->begin(); i != _base->getSoldiers()->end(); ++i)
-	{
-		_lstSoldiers->setCellText(row, 2, tr((*i)->getArmor()->getType()));
-		row++;
-	}
 	_txtChances->setText(tr("STR_OPERATION_CHANCES_US").arg(tr(_operation->getOperationOddsString(_game->getSavedGame()->getDebugMode()))));
 }
 
@@ -463,8 +455,8 @@ void CovertOperationArmorState::lstSoldiersClick(Action* action)
 		if (action->getDetails()->button.button == SDL_BUTTON_LEFT)
 		{
 			_savedScrollPosition = _lstSoldiers->getScroll();
-			if (!allowedArmor.empty()) _game->pushState(new SoldierArmorState(_base, _lstSoldiers->getSelectedRow(), SA_GEOSCAPE));// #FINNIKTODO _game->pushState(new CovertOperationSoldierArmorState(_base, _lstSoldiers->getSelectedRow(), SA_GEOSCAPE, allowedArmor));
-			else _game->pushState(new SoldierArmorState(_base, _lstSoldiers->getSelectedRow(), SA_GEOSCAPE));
+			if (!allowedArmor.empty()) _game->pushState(new SoldierArmorState(_base, _lstSoldiers->getSelectedRow()));// #FINNIKTODO _game->pushState(new CovertOperationSoldierArmorState(_base, _lstSoldiers->getSelectedRow(), allowedArmor));
+			else _game->pushState(new SoldierArmorState(_base, _lstSoldiers->getSelectedRow()));
 		}
 		else if (action->getDetails()->button.button == SDL_BUTTON_RIGHT)
 		{
@@ -645,8 +637,8 @@ struct compareArmorName
  * @param base Pointer to the base to get info from.
  * @param soldier ID of the selected soldier.
  */
-CovertOperationSoldierArmorState::CovertOperationSoldierArmorState(Base* base, size_t soldier, SoldierArmorOrigin origin, std::vector<std::string> allowedArmor) :
-	_base(base), _soldier(soldier), _origin(origin), _allowedArmor(allowedArmor)
+CovertOperationSoldierArmorState::CovertOperationSoldierArmorState(Base* base, size_t soldier, std::vector<std::string> allowedArmor) :
+	_base(base), _soldier(soldier), _allowedArmor(allowedArmor)
 {
 	_screen = false;
 
@@ -658,15 +650,7 @@ CovertOperationSoldierArmorState::CovertOperationSoldierArmorState(Base* base, s
 	_txtQuantity = new Text(70, 9, 190, 52);
 	_lstArmor = new TextList(160, 80, 73, 68);
 
-	// Set palette
-	if (_origin == SA_BATTLESCAPE)
-	{
-		setStandardPalette("PAL_BATTLESCAPE");
-	}
-	else
-	{
-		setInterface("covertOperationSoldierArmor");
-	}
+	setInterface("covertOperationSoldierArmor");
 
 	add(_window, "window", "covertOperationSoldierArmor");
 	add(_btnCancel, "button", "covertOperationSoldierArmor");
@@ -729,11 +713,6 @@ CovertOperationSoldierArmorState::CovertOperationSoldierArmorState(Base* base, s
 	_lstArmor->onMouseClick((ActionHandler)&SoldierArmorState::lstArmorClick);
 	_lstArmor->onMouseClick((ActionHandler)&SoldierArmorState::lstArmorClickMiddle, SDL_BUTTON_MIDDLE);
 
-	// switch to battlescape theme if called from inventory
-	if (_origin == SA_BATTLESCAPE)
-	{
-		applyBattlescapeTheme("soldierArmor");
-	}
 }
 
 /**

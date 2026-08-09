@@ -45,7 +45,6 @@ private:
 	TextButton *_btnCancel;
 	Timer *_hoverTimer;
 	bool _first;
-	bool _oldshowradar;
 	double _oldlat,_oldlon;
 	int _mousex, _mousey;
 public:

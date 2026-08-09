@@ -170,9 +170,6 @@ void Armor::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScript &pa
 	reader.tryRead("weight", _weight);
 	reader.tryRead("visibilityAtDark", _visibilityAtDark);
 	reader.tryRead("visibilityAtDay", _visibilityAtDay);
-	reader.tryRead("personalLight", _personalLightFriend);
-	reader.tryRead("personalLightHostile", _personalLightHostile);
-	reader.tryRead("personalLightNeutral", _personalLightNeutral);
 	reader.tryRead("camouflageAtDay", _camouflageAtDay);
 	reader.tryRead("camouflageAtDark", _camouflageAtDark);
 	reader.tryRead("antiCamouflageAtDay", _antiCamouflageAtDay);
@@ -186,9 +183,9 @@ void Armor::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScript &pa
 	_stats.merge(reader["stats"].readVal(_stats));
 	reader.tryRead("allowedItemCategories", _allowedItemCategories);
 	reader.tryRead("forbiddenItemCategories", _forbiddenItemCategories);
-	if (_forbiddenItemCategories.empty() && mod->isFTAGame())
+	if (_forbiddenItemCategories.empty())
 	{
-		_forbiddenItemCategories.push_back("STR_ROBOT_EQUIPMENT"); // default for FTA game, less copy-paste in rulesets =)
+		_forbiddenItemCategories.push_back("STR_ROBOT_EQUIPMENT"); // default for FTA, less copy-paste in rulesets =)
 	}
 	if (const YAML::YamlNodeReader& dmg = reader["damageModifier"])
 	{
@@ -251,7 +248,6 @@ void Armor::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScript &pa
 	_battleUnitScripts.load(_type, reader, parsers.battleUnitScripts);
 
 	mod->loadUnorderedNames(_type, _unitsNames, reader["units"]);
-	mod->loadUnorderedInts(_type, _ranks, reader["ranks"]);
 	_scriptValues.load(reader, parsers.getShared());
 	mod->loadSpriteOffset(_type, _customArmorPreviewIndex, reader["customArmorPreviewIndex"], "CustomArmorPreviews");
 	loadBoolNullable(_allowsRunning, reader["allowsRunning"]);
@@ -381,7 +377,6 @@ void Armor::afterLoad(const Mod* mod)
 	}
 
 	Collections::sortVector(_units);
-	Collections::sortVector(_ranks);
 }
 
 
@@ -867,33 +862,6 @@ int Armor::getPsiCamouflage() const
 }
 
 /**
-* Gets personal light radius created by solders.
-* @return Return light radius.
-*/
-int Armor::getPersonalLightFriend() const
-{
-	return _personalLightFriend;
-}
-
-/**
-* Gets personal light radius created by alien.
-* @return Return light radius.
-*/
-int Armor::getPersonalLightHostile() const
-{
-	return _personalLightHostile;
-}
-
-/**
-* Gets personal light radius created by civilian.
-* @return Return light radius.
-*/
-int Armor::getPersonalLightNeutral() const
-{
-	return _personalLightNeutral;
-}
-
-/**
  * Gets how armor react to fear.
  * @param def Default value.
  * @return Can ignored fear?
@@ -1091,14 +1059,6 @@ bool Armor::getCanBeUsedBy(const Soldier* soldier) const
 			return false;
 		}
 	}
-	if (!_ranks.empty())
-	{
-		int rankInt = soldier->getRank();
-		if (!Collections::sortVectorHave(_ranks, rankInt))
-		{
-			return false;
-		}
-	}
 	if (_requiresAward)
 	{
 		if (!soldier->getDiary()->containsCommendation(_requiresAward))
@@ -1285,9 +1245,6 @@ void Armor::ScriptRegister(ScriptParserBase* parser)
 	ar.add<&Armor::getAntiCamouflageAtDay>("getAntiCamouflageAtDay");
 	ar.add<&Armor::getVisibilityThroughSmoke>("getHeatVision", "getVisibilityThroughSmoke");
 	ar.add<&Armor::getVisibilityThroughFire>("getVisibilityThroughFire", "getVisibilityThroughFire");
-	ar.add<&Armor::getPersonalLightFriend>("getPersonalLight");
-	ar.add<&Armor::getPersonalLightHostile>("getPersonalLightHostile");
-	ar.add<&Armor::getPersonalLightNeutral>("getPersonalLightNeutral");
 	ar.add<&Armor::getSize>("getSize");
 
 	UnitStats::addGetStatsScript<&Armor::_stats>(ar, "Stats.");

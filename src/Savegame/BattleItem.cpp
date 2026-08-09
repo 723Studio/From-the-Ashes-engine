@@ -344,7 +344,7 @@ bool BattleItem::fuseThrowEvent()
 			}
 			else if (event->defaultBehavior)
 			{
-				return _rules->getBattleType() == BT_GRENADE && (Options::battleInstantGrenade || _rules->getFuseTimerType() == BFT_INSTANT);
+				return _rules->getBattleType() == BT_GRENADE && _rules->getFuseTimerType() == BFT_INSTANT;
 			}
 		}
 		return false;
@@ -474,6 +474,34 @@ void BattleItem::spendHealingItemUse(BattleMediKitAction mediKitAction)
 bool BattleItem::isOwnerIgnored() const
 {
 	return _owner && _owner->isIgnored();
+}
+
+/**
+ * Checks if this map item is configured to spawn before the first turn.
+ */
+bool BattleItem::isPreBattleSpawnItem() const
+{
+	return !isOwnerIgnored() && _tile &&
+		(_rules->getSpawnUnit() || _rules->getSpawnItem() || !_rules->getSpawnedSoldier().empty()) &&
+		!_XCOMProperty && !isSpecialWeapon() &&
+		_rules->getBattleType() == BT_GRENADE && _fuseTimer == 0 && _fuseEnabled;
+}
+
+/**
+ * Resolves and stores the spawn-unit chance used during pre-battle map setup.
+ * @return True if the unit should spawn.
+ */
+bool BattleItem::resolvePreBattleSpawnUnitChance()
+{
+	if (!_rules->getSpawnUnit())
+	{
+		return false;
+	}
+	if (_preBattleSpawnUnitChanceResult < 0)
+	{
+		_preBattleSpawnUnitChanceResult = RNG::percent(_rules->getSpawnUnitChance()) ? 1 : 0;
+	}
+	return _preBattleSpawnUnitChanceResult == 1;
 }
 
 /**

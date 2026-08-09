@@ -52,7 +52,7 @@ public:
 	bool isHidden() const;
 	/// Get the list weight for this item category.
 	int getListOrder() const;
-	/// Gets the inventory slot order to be used for auto-equip and ctrl-click-equip.
+	/// Gets the preferred inventory slot order for automatic placement and ctrl-click equip.
 	const std::vector<std::string>& getInvOrder() const { return _invOrder; }
 
 };

@@ -26,7 +26,6 @@
 #include "../Interface/TextButton.h"
 #include "../Interface/TextList.h"
 #include "../Interface/Window.h"
-#include "../Menu/ErrorMessageState.h"
 #include "../Mod/Mod.h"
 #include "../Mod/RuleInterface.h"
 #include "../Mod/RuleSoldier.h"
@@ -86,7 +85,7 @@ PrisonerAllocateAgentsState::PrisonerAllocateAgentsState(Base *base, PrisonerInf
 	//_btnInfo->onMouseClick((ActionHandler)&PrisonerAllocateAgentsState::btnInfoClick);
 
 	_txtTitle->setBig();
-	_txtTitle->setText(_selectedPrisoner->getPrisoner()->getNameAndId(_game->getLanguage()));
+	_txtTitle->setText(_selectedPrisoner->getPrisoner()->getNameAndDesignation(_game->getLanguage()));
 	_txtTitle->setWordWrap(true);
 	_txtTitle->setVerticalAlign(ALIGN_MIDDLE);
 
@@ -320,7 +319,7 @@ void PrisonerAllocateAgentsState::lstAgentsClick(Action *action)
 	{
 		Soldier *s = _base->getSoldiers()->at(_agentsNumbers.at(row));
 		Uint8 color = _lstAgents->getColor();
-		bool isBusy = false, isFree = false, matched = false;
+		bool isBusy = false, isFree = false;
 		std::string duty = s->getCurrentDuty(_game->getLanguage(), _base->getSumRecoveryPerDay(), isBusy, isFree, INTEL);
 		auto agents = _selectedPrisoner->getAgents();
 		auto iter = std::find(std::begin(agents), std::end(agents), s);
@@ -329,7 +328,12 @@ void PrisonerAllocateAgentsState::lstAgentsClick(Action *action)
 			_selectedPrisoner->removeAgent(s);
 			color = _lstAgents->getColor();
 			_lstAgents->setCellText(row, 1, tr("STR_NONE_UC"));
-			s->setActivePrisoner(0);
+		}
+		else if (s->getActivePrisoner() == _selectedPrisoner->getPrisoner())
+		{
+			_lstAgents->setCellText(row, 1, tr("STR_ASSIGNED_UC"));
+			color = _lstAgents->getSecondaryColor();
+			_selectedPrisoner->addAgent(s);
 		}
 		else if (isBusy)
 		{

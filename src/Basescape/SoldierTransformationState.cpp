@@ -41,8 +41,6 @@
 #include "../Savegame/Soldier.h"
 #include "../Savegame/Transfer.h"
 
-#include <complex.h>
-
 namespace OpenXcom
 {
 
@@ -56,7 +54,6 @@ namespace OpenXcom
 SoldierTransformationState::SoldierTransformationState(RuleSoldierTransformation *transformationRule, Base *base, Soldier *sourceSoldier, std::vector<Soldier *> *filteredListOfSoldiers) :
 			_transformationRule(transformationRule), _base(base), _sourceSoldier(sourceSoldier), _filteredListOfSoldiers(filteredListOfSoldiers)
 {
-	_ftaUI = _game->getMod()->isFTAGame();
 
 	_window = new Window(this, 320, 200, 0, 0);
 	_btnCancel = new TextButton(148, 16, 8, 176);
@@ -182,7 +179,7 @@ SoldierTransformationState::SoldierTransformationState(RuleSoldierTransformation
 		_txtDescription->setHeight(_txtDescription->getHeight() + 24);
 	}
 
-	if (!_transformationRule->getSoldierBonusType().empty() && _ftaUI)
+	if (!_transformationRule->getSoldierBonusType().empty())
 	{
 		_txtSoldierBonus->setText(tr(_transformationRule->getSoldierBonusType()));
 		_lstBonuses->setColumns(1, 136);
@@ -336,7 +333,7 @@ void SoldierTransformationState::initTransformationData()
 	}
 
 	bool showPsiSkill = currentStats.psiSkill > 0;
-	bool showPsiStrength = showPsiSkill || (Options::psiStrengthEval && _game->getSavedGame()->isResearched(_game->getMod()->getPsiRequirements()));
+	bool showPsiStrength = showPsiSkill;
 
 	UnitStats rerollFlags = _transformationRule->getRerollStats();
 
@@ -349,28 +346,25 @@ void SoldierTransformationState::initTransformationData()
 		randomFlags += UnitStats::isRandom(_transformationRule->getPercentGainedMin(), _transformationRule->getPercentGainedMax());
 	}
 
-	if (_ftaUI)
+	if (changedStatsMin.empty() && changedStatsMax.empty() && bonusStats.empty())
 	{
-		if (changedStatsMin.empty() && changedStatsMax.empty() && bonusStats.empty())
-		{
-			_btnStats->setVisible(false);
-		}
-		else
-		{
-			_btnCancel->setWidth(70);
-		}
-
-		if (bonusRule)
-		{
-			addScriptTags(bonusRule->getScriptValuesRaw());
-		}
-		else
-		{
-			_txtSoldierBonus->setVisible(false);
-			_lstBonuses->setVisible(false);
-		}
-		return; //we don't need to render the rest info for FtA
+		_btnStats->setVisible(false);
 	}
+	else
+	{
+		_btnCancel->setWidth(70);
+	}
+
+	if (bonusRule)
+	{
+		addScriptTags(bonusRule->getScriptValuesRaw());
+	}
+	else
+	{
+		_txtSoldierBonus->setVisible(false);
+		_lstBonuses->setVisible(false);
+	}
+	return; //we don't need to render the rest info for FtA
 
 	if (_game->getMod()->isManaFeatureEnabled())
 	{
@@ -543,6 +537,13 @@ void SoldierTransformationState::btnCancelClick(Action *action)
  */
 void SoldierTransformationState::btnStartClick(Action *action)
 {
+	// Revalidate before paying: a stale or malformed selection must not consume
+	// resources before role compatibility is known.
+	if (!_sourceSoldier->isEligibleForTransformation(_transformationRule))
+	{
+		return;
+	}
+
 	// Pay upfront, no refunds
 	_game->getSavedGame()->setFunds(_game->getSavedGame()->getFunds() - _transformationRule->getCost());
 
@@ -582,22 +583,18 @@ void SoldierTransformationState::performTransformation()
 		{
 			newSoldierType = _game->getMod()->getSoldier(_transformationRule->getProducedSoldierType());
 		}
+		const int identityPool = _sourceSoldier->getRules() == newSoldierType
+			? _sourceSoldier->getNationality() : -1;
 		destinationSoldier = new Soldier(
 			newSoldierType,
 			newSoldierType->getDefaultArmor(),
-			_sourceSoldier->getNationality(), // try to preserve nationality if possible
-			newId);
+			newId,
+			identityPool); // preserve the linked pool only when both soldier types share it
 
 		// copy stuff that is not influenced by transformation ruleset
 		destinationSoldier->setGender(_sourceSoldier->getGender());
 		destinationSoldier->setLook(_sourceSoldier->getLook());
 		destinationSoldier->setLookVariant(_sourceSoldier->getLookVariant());
-
-		// preserve nationality only for soldiers of the same type
-		if (_sourceSoldier->getRules() == newSoldierType)
-		{
-			destinationSoldier->setNationality(_sourceSoldier->getNationality());
-		}
 
 		// allow easy name handling when cloning (e.g. John Doe III => John Doe IV)
 		destinationSoldier->setName(_edtSoldier->getText());

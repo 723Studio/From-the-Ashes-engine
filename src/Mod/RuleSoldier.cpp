@@ -18,6 +18,7 @@
  */
 
 #include <algorithm>
+#include <set>
 #include "RuleSoldier.h"
 #include "RuleSkill.h"
 #include "Mod.h"
@@ -40,11 +41,10 @@ namespace OpenXcom
  */
 RuleSoldier::RuleSoldier(const std::string &type, int listOrder) : _type(type), _group(0), _listOrder(listOrder), _armor(nullptr), _specWeapon(nullptr),
 	_monthlyBuyLimit(0), _costBuy(0), _costSalary(0),
-	_costSalarySquaddie(0), _costSalarySergeant(0), _costSalaryCaptain(0), _costSalaryColonel(0), _costSalaryCommander(0),
 	_standHeight(0), _kneelHeight(0), _floatHeight(0), _femaleFrequency(50), _value(20), _transferTime(0), _moraleLossWhenKilled(100), _livingSpace(1),
 	_totalSoldierNamePoolWeight(0),
 	_avatarOffsetX(67), _avatarOffsetY(48), _flagOffset(0),
-	_allowPromotion(true), _allowPiloting(true), _showTypeInInventory(false),
+	_allowPiloting(true), _showTypeInInventory(false),
 	_rankSprite(42), _rankSpriteBattlescape(20), _rankSpriteTiny(0),
 	_pilotRankSprite(42), _pilotRankSpriteBattlescape(20), _pilotRankSpriteTiny(0),
 	_agentRankSprite(42), _agentRankSpriteBattlescape(20), _agentRankSpriteTiny(0),
@@ -66,6 +66,14 @@ RuleSoldier::~RuleSoldier()
 	for (auto* statString : _statStrings)
 	{
 		delete statString;
+	}
+	for (auto *requirements : _roleExpRequirements)
+	{
+		delete requirements;
+	}
+	for (auto *strings : _roleRankStrings)
+	{
+		delete strings;
 	}
 }
 
@@ -95,7 +103,6 @@ void RuleSoldier::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScri
 	//requires
 	mod->loadUnorderedNames(_type, _requires, reader["requires"]);
 	mod->loadBaseFunction(_type, _requiresBuyBaseFunc, reader["requiresBuyBaseFunc"]);
-	reader.tryRead("requiresBuyCountry", _requiresBuyCountry);
 
 	// IMPORTANT: UnitStats contains many valid 0 values.
 	// UnitStats::merge() treats 0 as "not specified", which breaks rule inheritance for fields that
@@ -140,6 +147,11 @@ void RuleSoldier::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScri
 	}
 	if (reader["roleExpRequirements"])
 	{
+		for (auto *requirements : _roleExpRequirements)
+		{
+			delete requirements;
+		}
+		_roleExpRequirements.clear();
 		for (const auto& reqReader : reader["roleExpRequirements"].children())
 		{
 			SoldierRoleRanksRequirements *r = new SoldierRoleRanksRequirements;
@@ -149,6 +161,11 @@ void RuleSoldier::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScri
 	}
 	if (reader["roleRankStrings"])
 	{
+		for (auto *strings : _roleRankStrings)
+		{
+			delete strings;
+		}
+		_roleRankStrings.clear();
 		for (const auto& sReader : reader["roleRankStrings"].children())
 		{
 			SoldierRoleRanksStrings *s = new SoldierRoleRanksStrings;
@@ -162,16 +179,10 @@ void RuleSoldier::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScri
 	reader.tryRead("avatarOffsetX", _avatarOffsetX);
 	reader.tryRead("avatarOffsetY", _avatarOffsetY);
 	reader.tryRead("flagOffset", _flagOffset);
-	reader.tryRead("allowPromotion", _allowPromotion);
 	reader.tryRead("allowPiloting", _allowPiloting);
 	reader.tryRead("monthlyBuyLimit", _monthlyBuyLimit);
 	reader.tryRead("costBuy", _costBuy);
 	reader.tryRead("costSalary", _costSalary);
-	reader.tryRead("costSalarySquaddie", _costSalarySquaddie);
-	reader.tryRead("costSalarySergeant", _costSalarySergeant);
-	reader.tryRead("costSalaryCaptain", _costSalaryCaptain);
-	reader.tryRead("costSalaryColonel", _costSalaryColonel);
-	reader.tryRead("costSalaryCommander", _costSalaryCommander);
 	reader.tryRead("standHeight", _standHeight);
 	reader.tryRead("kneelHeight", _kneelHeight);
 	reader.tryRead("floatHeight", _floatHeight);
@@ -239,7 +250,6 @@ void RuleSoldier::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScri
 		_statStrings.push_back(statString);
 	}
 
-	mod->loadNames(_type, _rankStrings, reader["rankStrings"]);
 	mod->loadSpriteOffset(_type, _rankSprite, reader["rankSprite"], "BASEBITS.PCK");
 	mod->loadSpriteOffset(_type, _rankSpriteBattlescape, reader["rankBattleSprite"], "SMOKE.PCK");
 	mod->loadSpriteOffset(_type, _rankSpriteTiny, reader["rankTinySprite"], "TinyRanks");
@@ -277,6 +287,90 @@ void RuleSoldier::load(const YAML::YamlNodeReader& node, Mod *mod, const ModScri
  */
 void RuleSoldier::afterLoad(const Mod* mod)
 {
+	std::set<SoldierRole> requirementRoles;
+	for (const auto *roleRequirements : _roleExpRequirements)
+	{
+		if (!roleRequirements || roleRequirements->role <= ROLE_NONE || roleRequirements->role > ROLE_ENGINEER || roleRequirements->role == ROLE_ROBOT)
+		{
+			throw Exception("Soldier type '" + _type + "' has experience requirements for an invalid or non-trainable role.");
+		}
+		if (!requirementRoles.insert(roleRequirements->role).second)
+		{
+			throw Exception("Soldier type '" + _type + "' defines duplicate role experience requirements.");
+		}
+		if (roleRequirements->requirements.empty() || roleRequirements->requirements.count(1) == 0)
+		{
+			throw Exception("Soldier type '" + _type + "' must define the rank-1 qualification cost for each trainable role.");
+		}
+		int expectedRank = 1;
+		for (const auto &requirement : roleRequirements->requirements)
+		{
+			if (requirement.first != expectedRank++ || requirement.second < 0)
+			{
+				throw Exception("Soldier type '" + _type + "' has invalid or non-contiguous role experience requirements.");
+			}
+		}
+	}
+
+	std::set<SoldierRole> stringRoles;
+	for (const auto *roleStrings : _roleRankStrings)
+	{
+		if (!roleStrings || roleStrings->role <= ROLE_NONE || roleStrings->role > ROLE_ENGINEER || !stringRoles.insert(roleStrings->role).second)
+		{
+			throw Exception("Soldier type '" + _type + "' has invalid or duplicate role rank strings.");
+		}
+		int expectedRank = 1;
+		for (const auto &rankString : roleStrings->strings)
+		{
+			if (rankString.first != expectedRank++ || rankString.second.empty())
+			{
+				throw Exception("Soldier type '" + _type + "' has invalid or non-contiguous role rank strings.");
+			}
+		}
+		if (roleStrings->role == ROLE_ROBOT && (roleStrings->strings.size() != 1 || roleStrings->strings.count(1) == 0))
+		{
+			throw Exception("Soldier type '" + _type + "' may define only rank 1 for non-sapient robots.");
+		}
+	}
+
+	for (SoldierRole role : requirementRoles)
+	{
+		if (stringRoles.count(role) == 0)
+		{
+			throw Exception("Soldier type '" + _type + "' is missing rank strings for a trainable role.");
+		}
+		const auto *requirements = *std::find_if(_roleExpRequirements.begin(), _roleExpRequirements.end(),
+			[role](const SoldierRoleRanksRequirements *entry) { return entry->role == role; });
+		const auto *strings = *std::find_if(_roleRankStrings.begin(), _roleRankStrings.end(),
+			[role](const SoldierRoleRanksStrings *entry) { return entry->role == role; });
+		if (strings->strings.size() != requirements->requirements.size() + 1)
+		{
+			throw Exception("Soldier type '" + _type + "' must define one more rank string than experience thresholds for each trainable role.");
+		}
+	}
+	for (SoldierRole role : stringRoles)
+	{
+		if (role != ROLE_ROBOT && requirementRoles.count(role) == 0)
+		{
+			throw Exception("Soldier type '" + _type + "' defines rank strings without experience requirements for a trainable role.");
+		}
+	}
+	for (SoldierRole role : _roles)
+	{
+		if (role == ROLE_NONE)
+		{
+			continue;
+		}
+		if (stringRoles.count(role) == 0)
+		{
+			throw Exception("Soldier type '" + _type + "' has an initial role without rank strings.");
+		}
+		if (role != ROLE_ROBOT && requirementRoles.count(role) == 0)
+		{
+			throw Exception("Soldier type '" + _type + "' has a trainable initial role without experience requirements.");
+		}
+	}
+
 	_totalSoldierNamePoolWeight = 0;
 	for (auto* namepool : _names)
 	{
@@ -310,6 +404,18 @@ void RuleSoldier::afterLoad(const Mod* mod)
 	mod->verifySpriteOffset(_type, _rankSprite, "BASEBITS.PCK");
 	mod->verifySpriteOffset(_type, _rankSpriteBattlescape, "SMOKE.PCK");
 	mod->verifySpriteOffset(_type, _rankSpriteTiny, "TinyRanks");
+	mod->verifySpriteOffset(_type, _pilotRankSprite, "BASEBITS.PCK");
+	mod->verifySpriteOffset(_type, _pilotRankSpriteBattlescape, "SMOKE.PCK");
+	mod->verifySpriteOffset(_type, _pilotRankSpriteTiny, "TinyRanks");
+	mod->verifySpriteOffset(_type, _agentRankSprite, "BASEBITS.PCK");
+	mod->verifySpriteOffset(_type, _agentRankSpriteBattlescape, "SMOKE.PCK");
+	mod->verifySpriteOffset(_type, _agentRankSpriteTiny, "TinyRanks");
+	mod->verifySpriteOffset(_type, _scientistRankSprite, "BASEBITS.PCK");
+	mod->verifySpriteOffset(_type, _scientistRankSpriteBattlescape, "SMOKE.PCK");
+	mod->verifySpriteOffset(_type, _scientistRankSpriteTiny, "TinyRanks");
+	mod->verifySpriteOffset(_type, _engineerRankSprite, "BASEBITS.PCK");
+	mod->verifySpriteOffset(_type, _engineerRankSpriteBattlescape, "SMOKE.PCK");
+	mod->verifySpriteOffset(_type, _engineerRankSpriteTiny, "TinyRanks");
 	mod->verifySpriteOffset(_type, _skillIconSprite, "SPICONS.DAT");
 
 	if (!_specWeaponName.empty())
@@ -332,11 +438,24 @@ void RuleSoldier::loadRoles(const std::vector<int> &r)
 	_roles.clear();
 	for (auto i : r)
 	{
-		SoldierRole role = static_cast<SoldierRole>(i);
-		if (_roles.empty() || std::find(_roles.begin(), _roles.end(), role) == _roles.end())
+		if (i < ROLE_NONE || i > ROLE_ENGINEER)
 		{
-			_roles.push_back(role);
+			throw Exception("Soldier type '" + _type + "' contains an invalid role value.");
 		}
+		SoldierRole role = static_cast<SoldierRole>(i);
+		if (std::find(_roles.begin(), _roles.end(), role) != _roles.end())
+		{
+			throw Exception("Soldier type '" + _type + "' contains a duplicate role.");
+		}
+		_roles.push_back(role);
+	}
+	if (_roles.size() > 1 && std::find(_roles.begin(), _roles.end(), ROLE_NONE) != _roles.end())
+	{
+		throw Exception("Soldier type '" + _type + "' cannot combine ROLE_NONE with a real role.");
+	}
+	if (_roles.size() > 1 && std::find(_roles.begin(), _roles.end(), ROLE_ROBOT) != _roles.end())
+	{
+		throw Exception("Soldier type '" + _type + "' cannot combine a non-sapient ROLE_ROBOT with another role.");
 	}
 }
 
@@ -431,15 +550,6 @@ int RuleSoldier::getBuyCost() const
 }
 
 /**
-* Does salary depend on rank?
-* @return True if salary depends on rank, false otherwise.
-*/
-bool RuleSoldier::isSalaryDynamic() const
-{
-	return _costSalarySquaddie || _costSalarySergeant || _costSalaryCaptain || _costSalaryColonel || _costSalaryCommander;
-}
-
-/**
  * Gets the list of defined skills.
  * @return The list of defined skills.
  */
@@ -455,26 +565,6 @@ const std::vector<const RuleSkill*> &RuleSoldier::getSkills() const
 int RuleSoldier::getSkillIconSprite() const
 {
 	return _skillIconSprite;
-}
-
-/**
- * Gets the cost of salary for a month (for a given rank).
- * @param rank Soldier rank.
- * @return The cost.
- */
-int RuleSoldier::getSalaryCost(int rank) const
-{
-	int total = _costSalary;
-	switch (rank)
-	{
-		case 1: total += _costSalarySquaddie; break;
-		case 2: total += _costSalarySergeant; break;
-		case 3: total += _costSalaryCaptain; break;
-		case 4: total += _costSalaryColonel; break;
-		case 5: total += _costSalaryCommander; break;
-		default: break;
-	}
-	return total;
 }
 
 /**
@@ -547,15 +637,6 @@ int RuleSoldier::getAvatarOffsetY() const
 int RuleSoldier::getFlagOffset() const
 {
 	return _flagOffset;
-}
-
-/**
-* Gets the allow promotion flag.
-* @return True if promotion is allowed.
-*/
-bool RuleSoldier::getAllowPromotion() const
-{
-	return _allowPromotion;
 }
 
 /**
@@ -668,15 +749,6 @@ const std::vector<StatString *> &RuleSoldier::getStatStrings() const
 }
 
 /**
- * Gets the list of strings for this soldier's ranks
- * @return The list rank strings.
- */
-const std::vector<std::string> &RuleSoldier::getRankStrings() const
-{
-	return _rankStrings;
-}
-
-/**
  * Gets the index of the sprites to use to represent this soldier's rank in BASEBITS.PCK
  * @return The sprite index.
  */
@@ -728,7 +800,7 @@ int RuleSoldier::getRequiredExperience(SoldierRole role, int rank) const
 namespace
 {
 
-void getTypeScript(const RuleSkill* r, ScriptText& txt)
+void getTypeScript(const RuleSoldier* r, ScriptText& txt)
 {
 	if (r)
 	{
@@ -769,6 +841,8 @@ std::string RuleSoldier::getRoleString(SoldierRole role)
 {
 	switch (role)
 	{
+	case ROLE_NONE:
+		return "NONE";
 	case ROLE_SOLDIER:
 		return "SOLDIER";
 	case ROLE_ROBOT:

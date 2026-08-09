@@ -32,7 +32,7 @@ namespace OpenXcom
  * Creates a blank ruleset for a certain type of Starting Condition.
  * @param type String defining the type.
  */
-RuleStartingCondition::RuleStartingCondition(const std::string& type) : _type(type), _destroyRequiredItems(false), _requireCommanderOnboard(false)
+RuleStartingCondition::RuleStartingCondition(const std::string& type) : _type(type), _destroyRequiredItems(false)
 {
 }
 
@@ -72,7 +72,6 @@ void RuleStartingCondition::load(const YAML::YamlNodeReader& node, Mod *mod)
 	mod->loadUnorderedNamesToInt(_type, _requiredItems, reader["requiredItems"]);
 	mod->loadUnorderedNamesToNames(_type, _craftTransformationsName, reader["craftTransformations"]);
 	reader.tryRead("destroyRequiredItems", _destroyRequiredItems);
-	reader.tryRead("requireCommanderOnboard", _requireCommanderOnboard);
 
 	if (reader["environmentalConditions"] || reader["paletteTransformations"] || reader["armorTransformations"]
 		|| reader["mapBackgroundColor"] || reader["inventoryShockIndicator"] || reader["mapShockIndicator"])

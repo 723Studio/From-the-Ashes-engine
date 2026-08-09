@@ -17,6 +17,8 @@
  * You should have received a copy of the GNU General Public License
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include <cstddef>
+#include <vector>
 #include "../Engine/State.h"
 
 namespace OpenXcom
@@ -29,35 +31,47 @@ class TextButton;
 class ToggleTextButton;
 class TextList;
 class Region;
+class DiplomacyFaction;
 struct GraphButInfo;
+
+enum class GraphPage
+{
+	UfoRegions,
+	XcomRegions,
+	FactionStrength,
+	FactionReputation,
+	FactionFunds,
+	Finance
+};
 
 /**
  * Graphs screen for displaying graphs of various
- * monthly game data like activity and funding.
+ * monthly game data like activity and finances.
  */
 class GraphsState : public State
 {
 private:
 	InteractiveSurface *_bg;
 	InteractiveSurface *_btnGeoscape;
-	InteractiveSurface *_btnXcomCountry, *_btnUfoCountry;
 	InteractiveSurface *_btnXcomRegion, *_btnUfoRegion;
-	InteractiveSurface *_btnIncome, *_btnFinance;
+	InteractiveSurface *_btnFactionStrength, *_btnFactionReputation, *_btnFactionFunds;
+	InteractiveSurface *_btnFinance;
 	Text *_txtTitle, *_txtFactor;
 	TextList *_txtMonths, *_txtYears;
 	std::vector<Text *> _txtScale;
-	std::vector<ToggleTextButton *> _btnRegions, _btnCountries, _btnFinances;
-	std::vector<GraphButInfo *>  _regionToggles, _countryToggles;
+	std::vector<ToggleTextButton *> _btnRegions, _btnFactions, _btnFinances;
+	std::vector<GraphButInfo *> _regionToggles, _factionToggles;
+	std::vector<DiplomacyFaction *> _graphFactions;
 	std::vector<bool> _financeToggles;
-	ToggleTextButton *_btnRegionTotal, *_btnCountryTotal;
-	std::vector<Surface *> _alienRegionLines, _alienCountryLines;
-	std::vector<Surface *> _xcomRegionLines, _xcomCountryLines;
-	std::vector<Surface *> _financeLines, _incomeLines;
-	bool _alien, _income, _country, _finance;
-	static const size_t GRAPH_MAX_BUTTONS=16;
+	ToggleTextButton *_btnRegionTotal;
+	std::vector<Surface *> _alienRegionLines;
+	std::vector<Surface *> _xcomRegionLines;
+	std::vector<Surface *> _factionLines, _factionSecondaryLines;
+	std::vector<Surface *> _financeLines;
+	GraphPage _page;
+	inline static constexpr size_t GRAPH_MAX_BUTTONS = 16;
 	//will be only between 0 and size()
-	size_t _butRegionsOffset, _butCountriesOffset;
-	int _zoom;
+	size_t _butRegionsOffset;
 	//scroll and repaint buttons functions
 	void scrollButtons(std::vector<GraphButInfo *> &toggles, std::vector<ToggleTextButton *> &buttons, size_t &offset, int step);
 	void updateButton(GraphButInfo *from,ToggleTextButton *to);
@@ -66,27 +80,24 @@ public:
 	GraphsState();
 	/// Cleans up the Graphs state.
 	~GraphsState();
-	/// Handler for using zoom in/out hotkeys.
-	void btnZoomInClick(Action *action);
-	void btnZoomOutClick(Action *action);
 	/// Handler for clicking the Geoscape icon.
 	void btnGeoscapeClick(Action *action);
 	/// Handler for clicking the ufo region icon.
 	void btnUfoRegionClick(Action *action);
-	/// Handler for clicking the ufo country icon.
-	void btnUfoCountryClick(Action *action);
 	/// Handler for clicking the xcom region icon.
 	void btnXcomRegionClick(Action *action);
-	/// Handler for clicking the xcom country icon.
-	void btnXcomCountryClick(Action *action);
-	/// Handler for clicking the income icon.
-	void btnIncomeClick(Action *action);
+	/// Handler for clicking the faction power and vigilance icon.
+	void btnFactionStrengthClick(Action *action);
+	/// Handler for clicking the faction reputation icon.
+	void btnFactionReputationClick(Action *action);
+	/// Handler for clicking the faction funds icon.
+	void btnFactionFundsClick(Action *action);
 	/// Handler for clicking the finance icon.
 	void btnFinanceClick(Action *action);
 	/// Handler for clicking on a region button.
 	void btnRegionListClick(Action *action);
-	/// Handler for clicking on a country button.
-	void btnCountryListClick(Action *action);
+	/// Handler for clicking on a faction button.
+	void btnFactionListClick(Action *action);
 	/// Handler for clicking  on a finances button.
 	void btnFinanceListClick(Action *action);
 	/// Mouse wheel handler for shifting up/down the buttons
@@ -99,8 +110,8 @@ public:
 	void drawLines();
 	/// Draw Region Lines.
 	void drawRegionLines();
-	/// Draw Country Lines.
-	void drawCountryLines();
+	/// Draw Faction Lines.
+	void drawFactionLines();
 	/// Draw Finances Lines.
 	void drawFinanceLines();
 	/// Scroll button lists

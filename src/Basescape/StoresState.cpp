@@ -19,13 +19,10 @@
 #include "StoresState.h"
 #include "ItemLocationsState.h"
 #include <sstream>
-#include "../Engine/CrossPlatform.h"
 #include "../Engine/Game.h"
-#include "../Engine/LocalizedText.h"
 #include "../Engine/Options.h"
 #include "../Interface/ArrowButton.h"
 #include "../Interface/Text.h"
-#include "../Interface/TextEdit.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/TextList.h"
 #include "../Interface/ToggleTextButton.h"
@@ -90,7 +87,6 @@ StoresState::StoresState(Base *base) : _base(base)
 {
 	// Create objects
 	_window = new Window(this, 320, 200, 0, 0);
-	_btnQuickSearch = new TextEdit(this, 48, 9, 10, 20);
 	_btnOk = new TextButton(148, 16, 164, 176);
 	_btnGrandTotal = new ToggleTextButton(148, 16, 8, 176);
 	_txtTitle = new Text(310, 17, 5, 8);
@@ -108,7 +104,6 @@ StoresState::StoresState(Base *base) : _base(base)
 	setInterface("storesInfo");
 
 	add(_window, "window", "storesInfo");
-	add(_btnQuickSearch, "button", "storesInfo");
 	add(_btnOk, "button", "storesInfo");
 	add(_btnGrandTotal, "button", "storesInfo");
 	add(_txtTitle, "text", "storesInfo");
@@ -166,11 +161,6 @@ StoresState::StoresState(Base *base) : _base(base)
 
 	_itemOrder = ITEM_SORT_NONE;
 
-	_btnQuickSearch->setText(""); // redraw
-	_btnQuickSearch->onEnter((ActionHandler)&StoresState::btnQuickSearchApply);
-	_btnQuickSearch->setVisible(Options::oxceQuickSearchButton);
-
-	_btnOk->onKeyboardRelease((ActionHandler)&StoresState::btnQuickSearchToggle, Options::keyToggleQuickSearch);
 }
 
 /**
@@ -190,41 +180,11 @@ void StoresState::btnOkClick(Action *)
 }
 
 /**
-* Quick search toggle.
-* @param action Pointer to an action.
-*/
-void StoresState::btnQuickSearchToggle(Action *action)
-{
-	if (_btnQuickSearch->getVisible())
-	{
-		_btnQuickSearch->setText("");
-		_btnQuickSearch->setVisible(false);
-		btnQuickSearchApply(action);
-	}
-	else
-	{
-		_btnQuickSearch->setVisible(true);
-		_btnQuickSearch->setFocus(true);
-	}
-}
-
-/**
-* Quick search.
-*/
-void StoresState::btnQuickSearchApply(Action *)
-{
-	initList();
-}
-
-/**
  * Reloads the item list.
  */
 void StoresState::initList()
 {
 	bool grandTotal = _btnGrandTotal->getPressed();
-
-	std::string searchString = _btnQuickSearch->getText();
-	Unicode::upperCase(searchString);
 
 	// clear everything
 	_itemList.clear();
@@ -232,17 +192,6 @@ void StoresState::initList()
 	// find relevant items
 	for (auto& itemType : _game->getMod()->getItemsList())
 	{
-		// quick search
-		if (!searchString.empty())
-		{
-			std::string projectName = tr(itemType);
-			Unicode::upperCase(projectName);
-			if (projectName.find(searchString) == std::string::npos)
-			{
-				continue;
-			}
-		}
-
 		int qty = 0;
 		auto* rule = _game->getMod()->getItem(itemType, true);
 		if (!grandTotal)

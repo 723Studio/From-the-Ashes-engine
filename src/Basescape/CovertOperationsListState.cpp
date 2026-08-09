@@ -17,7 +17,6 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "CovertOperationsListState.h"
-#include <sstream>
 #include "../Engine/Action.h"
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
@@ -28,11 +27,9 @@
 #include "../Interface/Text.h"
 #include "../Interface/TextList.h"
 #include "../Savegame/Base.h"
+#include "../Savegame/CovertOperation.h"
 #include "../Mod/RuleCovertOperation.h"
 #include "../Basescape/CovertOperationStartState.h"
-#include "../Basescape/CovertOperationInfoState.h"
-#include "../Engine/Logger.h"
-#include "../Interface/TextEdit.h"
 #include "../Savegame/SavedGame.h"
 #include "../Savegame/DiplomacyFaction.h"
 #include "../Mod/RuleDiplomacyFaction.h"
@@ -130,17 +127,43 @@ void CovertOperationsListState::fillOperationList()
 		{
 			if (rule->getName() == (*j)) happy = false;
 		}
-		// some story operations unlock a hidden research topic with the same ID as a completion marker
-		if (happy && save->isResearched(rule->getName(), false)) happy = false;
+		// Operation names are the persistent identity used by assigned soldiers.
+		// Do not allow a second active instance that could not be distinguished
+		// during save/load and would mix both crews during resolution.
+		if (happy)
+		{
+			for (Base* base : *save->getBases())
+			{
+				for (CovertOperation* operation : base->getCovertOperations())
+				{
+					if (operation->getOperationName() == rule->getName())
+					{
+						happy = false;
+						break;
+					}
+				}
+				if (!happy)
+				{
+					break;
+				}
+			}
+		}
+		// operations made obsolete by discovered research must not be offered
+		if (happy)
+		{
+			for (const auto& research : rule->getDisabledByResearch())
+			{
+				if (save->isResearched(research, false))
+				{
+					happy = false;
+					break;
+				}
+			}
+		}
 		//do we have required research...
 		if (happy && !rule->getRequirements().empty())
 		{
 			if (!save->isResearched(mod->getResearch(rule->getRequirements())))	happy = false;
-		}
-		//or one that can close opportunity for this operation?
-		if (happy && !rule->getCanceledBy().empty())
-		{
-			if (save->isResearched(mod->getResearch(rule->getCanceledBy()))) happy = false;
 		}
 		//lets see if our base fits requirements
 		if (happy)

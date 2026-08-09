@@ -19,7 +19,6 @@
 #include <algorithm>
 #include "NewPossibleResearchState.h"
 #include "../Engine/Game.h"
-#include "../Engine/LocalizedText.h"
 #include "../Mod/Mod.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/Window.h"
@@ -77,28 +76,11 @@ NewPossibleResearchState::NewPossibleResearchState(Base * base, const std::vecto
 	_lstPossibilities->setAlign(ALIGN_CENTER);
 	_lstPossibilities->setScrolling(true, 0);
 
-	bool foundNew = false;
 	for (const auto* rule : possibilities)
 	{
-		// Note: ignore all topics with "requires" (same reason as in NewResearchListState::fillProjectList())
-		if (rule->getRequirements().empty())
-		{
-			// Also ignore:
-			// 1. things that already popped before
-			// 2. things that never popped, but are researched already (can happen for topics that can be researched multiple times)
-			if (!_game->getSavedGame()->wasResearchPopped(rule) && !_game->getSavedGame()->isResearched(rule, false))
-			{
-				_game->getSavedGame()->addPoppedResearch(rule);
-				_lstPossibilities->addRow(1, tr(rule->getName()).c_str());
-				foundNew = true;
-			}
-		}
+		_lstPossibilities->addRow(1, tr(rule->getName()).c_str());
 	}
-
-	if (foundNew)
-	{
-		_txtTitle->setText(tr("STR_WE_CAN_NOW_RESEARCH"));
-	}
+	_txtTitle->setText(tr("STR_WE_CAN_NOW_RESEARCH"));
 }
 
 /**

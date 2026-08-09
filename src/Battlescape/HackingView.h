@@ -26,7 +26,7 @@ namespace OpenXcom
 struct Point
 {
 	Sint16 x, y;
-	Point(Sint16 x, Sint16 y) : x(x), y(y) {}
+	Point(Sint16 xValue, Sint16 yValue) : x(xValue), y(yValue) {}
 };
 
 enum class NodeState
@@ -104,7 +104,7 @@ public:
 	void revealFirewall(HackingNode* node);
 	int getGridHeight() const { return std::size(_nodeArray); }
 	int getGridWidth() const { return std::size(_nodeArray[0]); }
-	HackingNode* const getNode(int row, int col) const { return _nodeArray[row][col]; }
+	HackingNode* getNode(int row, int col) const { return _nodeArray[row][col]; }
 	
 };
 

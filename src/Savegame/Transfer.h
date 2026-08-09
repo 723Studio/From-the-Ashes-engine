@@ -32,7 +32,15 @@ enum class TransferSortDirection : int
 	BY_TOTAL_COST
 };
 
-enum TransferType { TRANSFER_ITEM, TRANSFER_CRAFT, TRANSFER_SOLDIER, TRANSFER_SCIENTIST, TRANSFER_ENGINEER, TRANSFER_PRISONER };
+enum TransferType
+{
+	TRANSFER_ITEM,
+	TRANSFER_CRAFT,
+	TRANSFER_SOLDIER,
+	TRANSFER_PRISONER,
+	TRANSFER_CONTAINED_ALIEN,
+	TRANSFER_CONTAINED_MONSTER
+};
 
 struct TransferRow
 {
@@ -51,6 +59,8 @@ struct TransferRow
 class Soldier;
 class Craft;
 class BasePrisoner;
+class BaseContainedAlien;
+class BaseContainedMonster;
 class Language;
 class Base;
 class Mod;
@@ -69,8 +79,10 @@ private:
 	Soldier *_soldier;
 	Craft *_craft;
 	BasePrisoner *_prisoner;
+	BaseContainedAlien *_containedAlien;
+	BaseContainedMonster *_containedMonster;
 	const RuleItem* _itemId;
-	int _itemQty, _scientists, _engineers;
+	int _itemQty;
 	bool _delivered;
 public:
 	/// Creates a new transfer.
@@ -86,7 +98,11 @@ public:
 	/// Sets the craft of the transfer.
 	void setPrisoner(BasePrisoner* prisoner) { _prisoner = prisoner; }
 	/// Gets the prisoner of the transfer.
-	BasePrisoner* getPrisoner() { return _prisoner; }
+	BasePrisoner* getPrisoner() const { return _prisoner; }
+	void setContainedAlien(BaseContainedAlien* alien) { _containedAlien = alien; }
+	BaseContainedAlien* getContainedAlien() const { return _containedAlien; }
+	void setContainedMonster(BaseContainedMonster* monster) { _containedMonster = monster; }
+	BaseContainedMonster* getContainedMonster() const { return _containedMonster; }
 	/// Sets the prisoner of the transfer.
 	void setCraft(Craft* craft);
 	/// Gets the craft of the transfer.
@@ -95,10 +111,6 @@ public:
 	const RuleItem* getItems() const;
 	/// Sets the items of the transfer.
 	void setItems(const RuleItem* rule, int qty = 1);
-	/// Sets the scientists of the transfer.
-	void setScientists(int scientists);
-	/// Sets the engineers of the transfer.
-	void setEngineers(int engineers);
 	/// Gets the name of the transfer.
 	std::string getName(Language *lang) const;
 	/// Gets the hours remaining of the transfer.
@@ -107,6 +119,10 @@ public:
 	int getQuantity() const;
 	/// Gets the type of the transfer.
 	TransferType getType() const;
+	/// Returns whether the payload has already been handed to the destination base.
+	bool isDelivered() const { return _delivered; }
+	/// Hands the payload to the destination immediately.
+	void deliver(Base *base);
 	/// Advances the transfer.
 	void advance(Base *base);
 	/// Get a pointer to the soldier being transferred.

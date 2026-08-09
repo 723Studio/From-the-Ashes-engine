@@ -24,6 +24,8 @@
 
 namespace OpenXcom
 {
+class Mod;
+
 enum BattleObjectType : int
 {
 	BATTLE_OBJECT_HACKING_TERMINAL = 0,
@@ -38,12 +40,16 @@ class RuleObject
 private:
 	std::string _type;
 	int _hackingDefence, _samplingDefence;
-	int _alterationMCDNumber, _alterationMCDRadius;
+	int _targetAltMCD, _alterationRadius;
 	bool _isMissionObjective;
 	BattleObjectType _useType;
 	std::vector<std::string> _spawnedEvents;
 	std::string _spawnedItem;
 	std::vector<std::pair<size_t, WeightedOptions*> > _eventWeights;
+
+	void loadInternal(const YAML::YamlNodeReader& reader);
+	void validate(const Mod* mod) const;
+
 public:
 	/// Creates a blank RuleObject.
 	RuleObject(const std::string& name);
@@ -51,25 +57,27 @@ public:
 	~RuleObject();
 	/// Loads the RuleObject definition from YAML.
 	void load(const YAML::YamlNodeReader& reader);
+	/// Finalizes and validates the fully merged RuleObject.
+	void afterLoad(const Mod* mod);
 	/// Gets the RuleObject's name.
 	const std::string& getName() const { return _type; }
 	/// Gets the RuleObject's type.
 	BattleObjectType getUseType() const { return _useType; }
 	/// Gets the RuleObject's hacking defence.
 	int getHackingDefence() const { return _hackingDefence; }
-	/// Gets the RuleObject's hacking defence.
+	/// Gets the RuleObject's sampling defence.
 	int getSamplingDefence() const { return _samplingDefence; }
-	/// Gets the MCD number for a tile to be altered (to ALT_MCD) once hacking performed.
-	int getAlterationMCDNumber() const { return _alterationMCDNumber; }
-	/// Gets the radius where hacking MCD alteration will check tiles.
-	int getAlterationMCDRadius() const { return _alterationMCDRadius; }
+	/// Gets the altMCD value used to select terrain parts after successful hacking.
+	int getTargetAltMCD() const { return _targetAltMCD; }
+	/// Gets the XY radius searched for matching terrain parts.
+	int getAlterationRadius() const { return _alterationRadius; }
 	/// Gets if the BattleObject is a mission objective.
 	bool isMissionObjective() const { return _isMissionObjective; }
-	/// Gets the list of spawned event to choose once succesful BattleObject iteration.
-	std::vector<std::string> getSpawnedEvents() const { return _spawnedEvents; }
+	/// Gets all fixed events spawned after a successful interaction.
+	const std::vector<std::string>& getSpawnedEvents() const { return _spawnedEvents; }
 	/// Generates an event based on the month.
 	std::string getWeightedEvent(const size_t monthsPassed) const;
-	/// Gets the item name to spawn succesful BattleObject iteration.
-	std::string getSpawnedItem() const { return _spawnedItem; }
+	/// Gets the item spawned after a successful interaction.
+	const std::string& getSpawnedItem() const { return _spawnedItem; }
 };
 }

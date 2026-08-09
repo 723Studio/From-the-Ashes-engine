@@ -26,7 +26,6 @@
 #include "../Interface/ArrowButton.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextButton.h"
-#include "../Interface/TextEdit.h"
 #include "../Interface/TextList.h"
 #include "../Interface/Window.h"
 #include "../Mod/Mod.h"
@@ -58,7 +57,6 @@ SoldierTransformState::SoldierTransformState(Base* base, size_t soldier) : _base
 
 	// Create objects
 	_window = new Window(this, 192, 160, 64, 20, POPUP_BOTH);
-	_btnQuickSearch = new TextEdit(this, 48, 9, 80, 43);
 	_btnCancel = new TextButton(140, 16, 90, 156);
 	_txtTitle = new Text(182, 16, 69, 28);
 	_txtType = new Text(90, 9, 80, 52);
@@ -69,7 +67,6 @@ SoldierTransformState::SoldierTransformState(Base* base, size_t soldier) : _base
 	setInterface("soldierTransform");
 
 	add(_window, "window", "soldierTransform");
-	add(_btnQuickSearch, "button", "soldierTransform");
 	add(_btnCancel, "button", "soldierTransform");
 	add(_txtTitle, "text", "soldierTransform");
 	add(_txtType, "text", "soldierTransform");
@@ -109,12 +106,6 @@ SoldierTransformState::SoldierTransformState(Base* base, size_t soldier) : _base
 
 		_transformations.push_back(TransformationItem(trRule->getName(), tr(trRule->getName())));
 	}
-
-	_btnQuickSearch->setText(""); // redraw
-	_btnQuickSearch->onEnter((ActionHandler)&SoldierTransformState::btnQuickSearchApply);
-	_btnQuickSearch->setVisible(Options::oxceQuickSearchButton);
-
-	_btnCancel->onKeyboardRelease((ActionHandler)&SoldierTransformState::btnQuickSearchToggle, Options::keyToggleQuickSearch);
 
 	_transformationOrder = TRANSFORM_SORT_NONE;
 	sortList();
@@ -177,9 +168,6 @@ void SoldierTransformState::sortList()
  */
 void SoldierTransformState::updateList()
 {
-	std::string searchString = _btnQuickSearch->getText();
-	Unicode::upperCase(searchString);
-
 	_lstTransformations->clearList();
 	_indices.clear();
 
@@ -187,17 +175,6 @@ void SoldierTransformState::updateList()
 	for (const auto& TransformationItem : _transformations)
 	{
 		++index;
-
-		// quick search
-		if (!searchString.empty())
-		{
-			std::string trType = TransformationItem.name;
-			Unicode::upperCase(trType);
-			if (trType.find(searchString) == std::string::npos)
-			{
-				continue;
-			}
-		}
 
 		_lstTransformations->addRow(1, TransformationItem.name.c_str());
 		_indices.push_back(index);
@@ -211,34 +188,6 @@ void SoldierTransformState::updateList()
 void SoldierTransformState::btnCancelClick(Action *)
 {
 	_game->popState();
-}
-
-/**
- * Quick search toggle.
- * @param action Pointer to an action.
- */
-void SoldierTransformState::btnQuickSearchToggle(Action* action)
-{
-	if (_btnQuickSearch->getVisible())
-	{
-		_btnQuickSearch->setText("");
-		_btnQuickSearch->setVisible(false);
-		btnQuickSearchApply(action);
-	}
-	else
-	{
-		_btnQuickSearch->setVisible(true);
-		_btnQuickSearch->setFocus(true);
-	}
-}
-
-/**
- * Quick search.
- * @param action Pointer to an action.
- */
-void SoldierTransformState::btnQuickSearchApply(Action*)
-{
-	updateList();
 }
 
 /**

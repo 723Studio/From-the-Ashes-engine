@@ -27,7 +27,6 @@ class Window;
 class Text;
 class Craft;
 class Base;
-struct BriefingData;
 
 /**
  * Briefing screen which displays info
@@ -44,7 +43,7 @@ private:
 	bool _disableCutsceneAndMusic;
 public:
 	/// Creates the Briefing state.
-	BriefingState(Craft *craft = 0, Base *base = 0, bool infoOnly = false, BriefingData *customBriefing = nullptr);
+	BriefingState(Craft *craft = 0, Base *base = 0, bool infoOnly = false);
 	/// Cleans up the Briefing state.
 	~BriefingState();
 	/// Initialization

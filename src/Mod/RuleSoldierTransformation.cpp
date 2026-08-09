@@ -17,6 +17,8 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "RuleSoldierTransformation.h"
+#include <algorithm>
+#include "../Engine/Exception.h"
 #include "Mod.h"
 #include "RuleSoldier.h"
 
@@ -28,11 +30,12 @@ namespace OpenXcom
  */
 RuleSoldierTransformation::RuleSoldierTransformation(const std::string &name, int listOrder) :
 	_name(name),
+	_producedSoldier(nullptr),
 	_keepSoldierArmor(false), _createsClone(false), _needsCorpseRecovered(true),
 	_allowsDeadSoldiers(false), _allowsLiveSoldiers(false), _allowsWoundedSoldiers(false),
-	_listOrder(listOrder), _cost(0), _transferTime(0), _recoveryTime(0), _transformationTime(0), _minRank(0), _includeBonusesForMinStats(false), _includeBonusesForMaxStats(false),
-	_showMinMax(false), _lowerBoundAtMinStats(true), _upperBoundAtMaxStats(false), _upperBoundAtStatCaps(false), _upperBoundType(0), _addRole(ROLE_NONE), _forbiddenRole(ROLE_NONE),
-	_reset(false), _resetRank(false)
+	_listOrder(listOrder), _cost(0), _transferTime(0), _recoveryTime(0), _transformationTime(0), _includeBonusesForMinStats(false), _includeBonusesForMaxStats(false),
+	_showMinMax(false), _lowerBoundAtMinStats(true), _upperBoundAtMaxStats(false), _upperBoundAtStatCaps(false), _upperBoundType(0), _addRole(ROLE_NONE), _hasRoleToAdd(false), _forbiddenRole(ROLE_NONE),
+	_reset(false)
 {
 	_requiredMaxStats = UnitStats::scalar(9999); // set all default max stats to 9999
 }
@@ -81,7 +84,6 @@ void RuleSoldierTransformation::load(const YAML::YamlNodeReader& node, Mod* mod)
 	reader.tryRead("transferTime", _transferTime);
 	reader.tryRead("recoveryTime", _recoveryTime);
 	reader.tryRead("transformationTime", _transformationTime);
-	reader.tryRead("minRank", _minRank);
 	reader.tryRead("flatOverallStatChange", _flatOverallStatChange);
 	reader.tryRead("percentOverallStatChange", _percentOverallStatChange);
 	reader.tryRead("percentGainedStatChange", _percentGainedStatChange);
@@ -97,8 +99,27 @@ void RuleSoldierTransformation::load(const YAML::YamlNodeReader& node, Mod* mod)
 	reader.tryRead("upperBoundAtMaxStats", _upperBoundAtMaxStats);
 	reader.tryRead("upperBoundAtStatCaps", _upperBoundAtStatCaps);
 	reader.tryRead("upperBoundType", _upperBoundType);
-	reader.tryRead("forbiddenRole", reinterpret_cast<int&>(_forbiddenRole));
-	reader.tryRead("addRole", reinterpret_cast<int&>(_addRole));
+	if (reader["forbiddenRole"])
+	{
+		int role = static_cast<int>(_forbiddenRole);
+		reader.tryRead("forbiddenRole", role);
+		if (role < ROLE_NONE || role > ROLE_ENGINEER)
+		{
+			throw Exception("Soldier transformation '" + _name + "' has an invalid forbiddenRole.");
+		}
+		_forbiddenRole = static_cast<SoldierRole>(role);
+	}
+	if (reader["addRole"])
+	{
+		int role = static_cast<int>(_addRole);
+		reader.tryRead("addRole", role);
+		if (role <= ROLE_NONE || role > ROLE_ENGINEER || role == ROLE_ROBOT)
+		{
+			throw Exception("Soldier transformation '" + _name + "' must add a trainable non-robot role.");
+		}
+		_addRole = static_cast<SoldierRole>(role);
+		_hasRoleToAdd = true;
+	}
 	if (reader["roleRankRequirements"])
 	{
 		std::map<int, int> reqs;
@@ -108,8 +129,86 @@ void RuleSoldierTransformation::load(const YAML::YamlNodeReader& node, Mod* mod)
 
 	mod->loadUnorderedNames(_name, _removeTransformations, reader["removeTransformations"]);
 	reader.tryRead("reset", _reset);
-	reader.tryRead("resetRank", _resetRank);
 	reader.tryRead("soldierBonusType", _soldierBonusType);
+}
+
+namespace
+{
+
+bool soldierTypeSupportsRole(const RuleSoldier* rules, SoldierRole role)
+{
+	if (role == ROLE_NONE)
+	{
+		return true;
+	}
+	if (role == ROLE_ROBOT)
+	{
+		const auto roles = rules->getRoles();
+		return std::find(roles.begin(), roles.end(), ROLE_ROBOT) != roles.end();
+	}
+	return rules->getRequiredExperience(role, 1) >= 0;
+}
+
+bool soldierTypeIsRobot(const RuleSoldier* rules)
+{
+	const auto roles = rules->getRoles();
+	return std::find(roles.begin(), roles.end(), ROLE_ROBOT) != roles.end();
+}
+
+}
+
+void RuleSoldierTransformation::afterLoad(const Mod* mod)
+{
+	// The legacy pending-transformation record belongs to a single Soldier and
+	// cannot retain the separate source snapshot required by a clone. The old
+	// runtime path queued the delay on the source and later transformed that
+	// source instead of the clone. Reject the unsupported combination at load
+	// time rather than silently corrupting both personnel records.
+	if (_createsClone && _transformationTime > 0)
+	{
+		throw Exception("Soldier transformation '" + _name +
+			"' cannot combine createsClone with transformationTime.");
+	}
+
+	_producedSoldier = nullptr;
+	if (!Mod::isEmptyRuleName(_producedSoldierType))
+	{
+		_producedSoldier = mod->getSoldier(_producedSoldierType, true);
+	}
+
+	for (const auto& sourceTypeName : _allowedSoldierTypes)
+	{
+		const RuleSoldier* sourceType = mod->getSoldier(sourceTypeName, true);
+		const RuleSoldier* destinationType = _producedSoldier ? _producedSoldier : sourceType;
+		const bool destinationIsRobot = soldierTypeIsRobot(destinationType);
+
+		if (!_createsClone)
+		{
+			for (SoldierRole role : sourceType->getRoles())
+			{
+				if (!soldierTypeSupportsRole(destinationType, role) ||
+					(destinationIsRobot && role != ROLE_ROBOT))
+				{
+					throw Exception("Soldier transformation '" + _name + "' changes '" + sourceTypeName +
+						"' into '" + destinationType->getType() + "', which does not support preserved role " +
+						std::to_string(static_cast<int>(role)) + ".");
+				}
+			}
+		}
+
+		if (_hasRoleToAdd)
+		{
+			const auto sourceRoles = _createsClone ? destinationType->getRoles() : sourceType->getRoles();
+			if (destinationIsRobot ||
+				std::find(sourceRoles.begin(), sourceRoles.end(), ROLE_ROBOT) != sourceRoles.end() ||
+				!soldierTypeSupportsRole(destinationType, _addRole))
+			{
+				throw Exception("Soldier transformation '" + _name + "' cannot add role " +
+					std::to_string(static_cast<int>(_addRole)) + " to destination soldier type '" +
+					destinationType->getType() + "'.");
+			}
+		}
+	}
 }
 
 /**
@@ -302,15 +401,6 @@ int RuleSoldierTransformation::getRecoveryTime() const
 }
 
 /**
- * Gets the minimum rank a soldier needs to be eligible for this project
- * @return The rank requirement
- */
-int RuleSoldierTransformation::getMinRank() const
-{
-	return _minRank;
-}
-
-/**
  * Gets the flat change to a soldier's overall stats when undergoing this project
  * @return The flat overall stat changes
  */
@@ -391,15 +481,6 @@ bool RuleSoldierTransformation::getReset() const
 }
 
 /**
- * Gets whether or not this project should reset the rank of the destination soldier to rookie
- * @return Reset the rank to rookie?
- */
-bool RuleSoldierTransformation::getResetRank() const
-{
-	return _resetRank;
-}
-
-/**
  * Gets the type of soldier bonus assigned by this project
  * @return The soldier bonus type
  */
@@ -413,6 +494,11 @@ void RuleSoldierTransformation::loadRoleRequirements(const std::map<int, int>& r
 	_roleRankRequirements.clear();
 	for (auto i : r)
 	{
+		if (i.first <= ROLE_NONE || i.first > ROLE_ENGINEER || i.second < 1
+			|| (i.first == ROLE_ROBOT && i.second != 1))
+		{
+			throw Exception("Soldier transformation '" + _name + "' has an invalid roleRankRequirements entry.");
+		}
 		SoldierRole role = static_cast<SoldierRole>(i.first);
 		_roleRankRequirements.emplace(std::make_pair(role, i.second));
 	}

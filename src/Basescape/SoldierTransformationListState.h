@@ -19,7 +19,6 @@
  */
 #include "../Engine/State.h"
 #include <vector>
-#include "SoldierSortUtil.h"
 
 namespace OpenXcom
 {
@@ -28,7 +27,6 @@ class TextButton;
 class ToggleTextButton;
 class Window;
 class Text;
-class TextEdit;
 class TextList;
 class ComboBox;
 class Base;
@@ -48,7 +46,6 @@ private:
 	Window* _window;
 	Text* _txtTitle, * _txtProject, * _txtNumber, * _txtSoldierNumber;
 	ComboBox* _cbxSoldierType, * _cbxSoldierStatus;
-	TextEdit* _btnQuickSearch;
 	TextList* _lstTransformations;
 	std::vector<int> _transformationIndices;
 	std::vector<RuleSoldierTransformation*> _availableTransformations;
@@ -59,10 +56,6 @@ public:
 	~SoldierTransformationListState();
 	/// Refreshes the list of transformations.
 	void initList();
-	/// Toggles the quick search.
-	void btnQuickSearchToggle(Action* action);
-	/// Applies the quick search.
-	void btnQuickSearchApply(Action* action);
 	/// Handler for changing the soldier type combo box.
 	void cbxSoldierTypeChange(Action* action);
 	/// Handler for changing the soldier status combo box.

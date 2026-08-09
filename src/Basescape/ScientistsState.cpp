@@ -20,7 +20,6 @@
 #include "../Engine/Game.h"
 #include "../Engine/LocalizedText.h"
 #include "../Engine/Options.h"
-#include "../Engine/Screen.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextButton.h"
 #include "../Interface/TextList.h"
@@ -34,7 +33,6 @@
 #include "../Savegame/Soldier.h"
 #include "ScientistsState.h"
 #include "SoldierInfoStateFtA.h"
-#include <climits>
 
 namespace OpenXcom
 {

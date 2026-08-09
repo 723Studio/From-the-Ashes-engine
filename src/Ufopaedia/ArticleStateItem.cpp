@@ -189,7 +189,7 @@ namespace OpenXcom
 		_txtWeaponClipSize->setX(_txtWeaponClipSize->getX() + 2);
 		_txtWeaponClipSize->setColor(_textColor);
 		_txtWeaponClipSize->setValue(item->getClipSize());
-		_txtWeaponClipSize->setVisible(Options::oxcePediaShowClipSize && item->getClipSize() > 0);
+		_txtWeaponClipSize->setVisible(item->getClipSize() > 0);
 
 		int ammoSlot = defs->getAmmoSlotForPage(_state->current_page);
 		int ammoSlotPrevUsage = defs->getAmmoSlotPrevUsageForPage(_state->current_page);
@@ -427,7 +427,7 @@ namespace OpenXcom
 
 							type->drawHandSprite(_game->getMod()->getSurfaceSet("BIGOBS.PCK"), _imageAmmo[currShow]);
 							_txtAmmoClipSize[currShow]->setValue(type->getClipSize());
-							_txtAmmoClipSize[currShow]->setVisible(Options::oxcePediaShowClipSize && type->getClipSize() > 0);
+							_txtAmmoClipSize[currShow]->setVisible(type->getClipSize() > 0);
 
 							++currShow;
 							if (currShow == maxShow)

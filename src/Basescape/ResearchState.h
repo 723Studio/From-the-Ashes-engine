@@ -18,6 +18,7 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "../Engine/State.h"
+#include <vector>
 
 namespace OpenXcom
 {
@@ -26,6 +27,7 @@ class TextButton;
 class Window;
 class Text;
 class TextList;
+class ComboBox;
 class Base;
 
 /**
@@ -37,10 +39,11 @@ class ResearchState : public State
 private:
 	Base *_base;
 	TextButton *_btnNew, *_btnOk, *_btnScientists;
+	ComboBox *_cbxScreenActions;
 	Window *_window;
 	Text *_txtTitle, *_txtAvailable, *_txtAllocated, *_txtSpace, *_txtProject, *_txtScientists, *_txtProgress;
 	TextList *_lstResearch;
-	bool _ftaUi;
+	std::vector<std::string> _screenActions;
 
 public:
 	/// Creates the Research state.
@@ -51,14 +54,13 @@ public:
 	void btnOkClick(Action *action);
 	/// Handler for clicking the New Research button.
 	void btnNewClick(Action *action);
+	/// Handler for selecting a research screen action.
+	void cbxScreenActionsChange(Action *action);
 	/// Handler for clicking the Scientists button.
 	void btnScientistsClick(Action *action);
 	/// Handler for clicking the ResearchProject list.
 	void onSelectProject(Action *action);
-	void onOpenTechTreeViewer(Action *action);
 	void lstResearchMousePress(Action *action);
-	/// Handler for opening the Current Global Research UI.
-	void onCurrentGlobalResearchClick(Action *action);
 	/// Fills the ResearchProject list with Base ResearchProjects.
 	void fillProjectList(size_t scrl);
 	/// Updates the research list.

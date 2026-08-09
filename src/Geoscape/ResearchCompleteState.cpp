@@ -17,6 +17,8 @@
  * along with OpenXcom.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "ResearchCompleteState.h"
+#include <sstream>
+#include "GeoscapeState.h"
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
 #include "../Interface/TextButton.h"
@@ -33,13 +35,15 @@ namespace OpenXcom
 {
 /**
  * Initializes all the elements in the EndResearch screen.
- * @param game Pointer to the core game.
- * @param newResearch Pointer to the completed research (or 0, if the ufopedia article shouldn't popup again).
- * @param bonus Pointer to bonus unlocked research.
  * @param research Pointer to the research project.
  */
-ResearchCompleteState::ResearchCompleteState(const RuleResearch *newResearch, const RuleResearch *bonus, const RuleResearch *research, const Base* base, std::vector<Soldier*> promotedSoldiers) :
-	_promotedSoldiers(promotedSoldiers), _research(newResearch), _bonus(bonus)
+ResearchCompleteState::ResearchCompleteState(const RuleResearch* research, Base* base,
+	const PromotionBatch& promotions, std::vector<std::string> articleIds,
+	std::vector<std::string> newResearchNotifications,
+	bool containedAlienStudiesUnblocked) :
+	_promotions(promotions), _base(base), _articleIds(std::move(articleIds)),
+	_newResearchNotifications(std::move(newResearchNotifications)),
+	_containedAlienStudiesUnblocked(containedAlienStudiesUnblocked)
 {
 	_screen = false;
 
@@ -49,8 +53,11 @@ ResearchCompleteState::ResearchCompleteState(const RuleResearch *newResearch, co
 	_btnReport = new TextButton(80, 16, 176, 146);
 	_btnPromotions = new TextButton(80, 16, 176, 125);
 	_txtBase = new Text(230, 9, 45, 40);
-	_txtTitle = new Text(230, 17, 45, 70);
-	_txtResearch = new Text(230, 32, 45, 96);
+	_txtTitle = new Text(230, 17, 45,
+		_containedAlienStudiesUnblocked ? 58 : 70);
+	_txtResearch = new Text(230,
+		_containedAlienStudiesUnblocked ? 44 : 32, 45,
+		_containedAlienStudiesUnblocked ? 78 : 96);
 
 	// Set palette
 	setInterface("geoResearchComplete");
@@ -74,27 +81,44 @@ ResearchCompleteState::ResearchCompleteState(const RuleResearch *newResearch, co
 
 	_btnReport->setText(tr("STR_VIEW_REPORTS"));
 	_btnReport->onMouseClick((ActionHandler)&ResearchCompleteState::btnReportClick);
-	_btnReport->onKeyboardPress((ActionHandler)&ResearchCompleteState::btnReportClick, Options::keyOk);
+	if (!_articleIds.empty())
+	{
+		_btnReport->onKeyboardPress((ActionHandler)&ResearchCompleteState::btnReportClick, Options::keyOk);
+	}
+	else
+	{
+		_btnReport->setVisible(false);
+		_btnOk->onKeyboardPress((ActionHandler)&ResearchCompleteState::btnOkClick, Options::keyOk);
+	}
 
 	_btnPromotions->setText(tr("STR_VIEW_PROMOTIONS"));
 	_btnPromotions->onMouseClick((ActionHandler)&ResearchCompleteState::btnPromotionsClick);
-	_btnPromotions->setVisible(!promotedSoldiers.empty());
+	_btnPromotions->setVisible(!_promotions.empty());
 
 	_txtBase->setAlign(ALIGN_CENTER);
 	_txtBase->setText(base->getName());
-	_txtBase->setVisible(Options::oxceShowBaseNameInPopups);
 
 	_txtTitle->setBig();
 	_txtTitle->setAlign(ALIGN_CENTER);
 	_txtTitle->setText(tr("STR_RESEARCH_COMPLETED"));
 
 	_txtResearch->setAlign(ALIGN_CENTER);
-	_txtResearch->setBig();
+	if (!_containedAlienStudiesUnblocked)
+	{
+		_txtResearch->setBig();
+	}
 	_txtResearch->setWordWrap(true);
+	std::ostringstream researchText;
 	if (research)
 	{
-		_txtResearch->setText(tr(research->getName()));
+		researchText << tr(research->getName());
 	}
+	if (_containedAlienStudiesUnblocked)
+	{
+		if (research) researchText << "\n";
+		researchText << tr("STR_CONTAINED_ALIEN_STUDIES_CAN_CONTINUE");
+	}
+	_txtResearch->setText(researchText.str());
 }
 
 /**
@@ -103,8 +127,14 @@ ResearchCompleteState::ResearchCompleteState(const RuleResearch *newResearch, co
  */
 void ResearchCompleteState::btnOkClick(Action *)
 {
-	_game->getSavedGame()->handlePromotionsPostprocessing();
-	_game->popState();
+	Game* game = _game;
+	Base* base = _base;
+	const auto researchIds = _newResearchNotifications;
+	game->popState();
+	if (GeoscapeState* geoscape = game->getGeoscapeState())
+	{
+		geoscape->showNewResearchNotifications(base, researchIds);
+	}
 }
 
 /**
@@ -113,30 +143,15 @@ void ResearchCompleteState::btnOkClick(Action *)
  */
 void ResearchCompleteState::btnReportClick(Action *)
 {
-	_game->popState();
-	std::string name;
-	std::string bonusName;
-	if (_bonus)
+	for (auto article = _articleIds.rbegin(); article != _articleIds.rend(); ++article)
 	{
-		if (_bonus->getLookup().empty())
-			bonusName = _bonus->getName();
-		else
-			bonusName = _bonus->getLookup();
-		Ufopaedia::openArticle(_game, bonusName);
-	}
-	if (_research)
-	{
-		if (_research->getLookup().empty())
-			name = _research->getName();
-		else
-			name = _research->getLookup();
-		Ufopaedia::openArticle(_game, name);
+		Ufopaedia::openArticle(_game, *article);
 	}
 }
 
 void ResearchCompleteState::btnPromotionsClick(Action* action)
 {
-	_game->pushState(new PromotionsState); //promotion postprocessing happens only on OK button click
+	_game->pushState(new PromotionsState(_promotions));
 }
 
 }

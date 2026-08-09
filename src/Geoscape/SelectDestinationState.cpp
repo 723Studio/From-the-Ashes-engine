@@ -143,20 +143,6 @@ SelectDestinationState::SelectDestinationState(std::vector<Craft*> crafts, Globe
 		_btnCydonia->onMouseClick((ActionHandler)&SelectDestinationState::btnCydoniaClick);
 
 		// one more check...
-		for (auto& depl : _game->getMod()->getDeploymentsList())
-		{
-			AlienDeployment* deploymentRule = _game->getMod()->getDeployment(depl);
-			if (deploymentRule->isFinalDestination())
-			{
-				RuleStartingCondition* sc = _game->getMod()->getStartingCondition(deploymentRule->getStartingCondition());
-				if (sc && sc->requiresCommanderOnboard() && !_crafts.front()->isCommanderOnboard())
-				{
-					_btnCydonia->setVisible(false);
-				}
-				break;
-			}
-		}
-		// ok, ok, one more...
 		if (_crafts.front()->areBannedArmorsOnboard())
 		{
 			_btnCydonia->setVisible(false);

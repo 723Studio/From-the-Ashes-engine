@@ -30,6 +30,8 @@ namespace OpenXcom
 	class Mod;
 	class ArticleDefinition;
 	class ArticleState;
+	class RuleResearch;
+	struct ResearchDiscoveryResult;
 
 	/// definition of an article list
 	typedef std::vector<ArticleDefinition *> ArticleDefinitionList;
@@ -52,6 +54,11 @@ namespace OpenXcom
 	public:
 		/// check, if a specific article is currently available.
 		static bool isArticleAvailable(SavedGame *save, ArticleDefinition *article);
+		/// Build an ordered, deduplicated list of player-facing articles for newly discovered research.
+		static std::vector<std::string> getResearchArticleIds(SavedGame* save, const Mod* mod,
+			const std::vector<const RuleResearch*>& newlyDiscovered);
+		static std::vector<std::string> getResearchArticleIds(SavedGame* save, const Mod* mod,
+			const ResearchDiscoveryResult& discovery);
 
 		/// open Ufopaedia on a certain entry.
 		static void openArticle(Game *game, const std::string &article_id);
@@ -81,12 +88,19 @@ namespace OpenXcom
 		static bool isAwardedCommendation(SavedGame *save, ArticleDefinition *article);
 
 	protected:
+		/// Resolve every article associated with a research or lookup id.
+		static std::vector<std::string> resolveArticleIds(const ArticleDefinitionList& articles,
+			const std::string& articleId);
+		/// Build ordered, deduplicated article ids for one discovery event.
+		static std::vector<std::string> buildResearchArticleIds(SavedGame* save, const Mod* mod,
+			const std::vector<const RuleResearch*>& orderedResearch,
+			const std::vector<const RuleResearch*>& newlyDiscovered);
 
 		/// get index of the given article id in the visible list.
 		static size_t getArticleIndex(const ArticleDefinitionList& article, const std::string &article_id);
 
 		/// get list of researched articles
-		static std::shared_ptr<ArticleCommonState> createCommonArticleState(SavedGame *save, Mod *rule);
+		static std::shared_ptr<ArticleCommonState> createCommonArticleState(SavedGame *save, const Mod *rule);
 
 		/// create a new state object from article definition.
 		static ArticleState *createArticleState(std::shared_ptr<ArticleCommonState> state);

@@ -43,7 +43,6 @@
 #include "BriefingState.h"
 #include "ExtendedBattlescapeLinksState.h"
 #include "../lodepng.h"
-#include "../Geoscape/SelectMusicTrackState.h"
 #include "../Engine/Game.h"
 #include "../Engine/Options.h"
 #include "../Engine/LocalizedText.h"
@@ -110,7 +109,8 @@ BattlescapeState::BattlescapeState() :
 {
 	_save = _game->getSavedGame()->getSavedBattle();
 
-	std::fill_n(_visibleUnit, 10, (BattleUnit*)(0));
+	std::fill_n(_visibleUnit, VISIBLE_MAX, (BattleUnit*)(0));
+	std::fill_n(_visibleBattleObject, VISIBLE_MAX, (BattleObject*)(0));
 
 	const int screenWidth = Options::baseXResolution;
 	const int screenHeight = Options::baseYResolution;
@@ -125,10 +125,7 @@ BattlescapeState::BattlescapeState() :
 	_indicatorTargetPreview = _game->getMod()->getInterface("battlescape")->getElement("targetPreviewUnits")->color;
 	_indicatorBlue = _game->getMod()->getInterface("battlescape")->getElement("woundedUnits")->color;
 	_indicatorPurple = _game->getMod()->getInterface("battlescape")->getElement("passingOutUnits")->color;
-	if (_game->getMod()->isFTAGame())
-		_indicatorGray = _game->getMod()->getInterface("battlescape")->getElement("battleObjects")->color;
-	else
-		_indicatorGray = 0;
+	_indicatorGray = _game->getMod()->getInterface("battlescape")->getElement("battleObjects")->color;
 
 	_twoHandedRed = _game->getMod()->getInterface("battlescape")->getElement("twoHandedRed")->color;
 	_twoHandedGreen = _game->getMod()->getInterface("battlescape")->getElement("twoHandedGreen")->color;
@@ -217,8 +214,6 @@ BattlescapeState::BattlescapeState() :
 	_btnSpecial->setVisible(false);
 	_btnSkills = new BattlescapeButton(32, 24, screenWidth - 32, 25); // we need screenWidth, because that is independent of the black bars on the screen
 	_btnSkills->setVisible(false);
-
-	_ftaUI = _game->getMod()->isFTAGame();
 
 	{
 		int posX = (screenWidth - 32);
@@ -323,7 +318,7 @@ BattlescapeState::BattlescapeState() :
 	}
 
 	// custom OXCE links button
-	if (Options::oxceLinks && _game->getMod()->getSurface("oxceLinks", false))
+	if (_game->getMod()->getSurface("oxceLinks", false))
 	{
 		Surface* oxceLinks = _game->getMod()->getSurface("oxceLinks");
 		oxceLinks->blitNShade(_icons, 208, 0);
@@ -530,7 +525,7 @@ BattlescapeState::BattlescapeState() :
 	_btnNextStop->onMouseOut((ActionHandler)&BattlescapeState::txtTooltipOut);
 
 	_btnShowLayers->onMouseClick((ActionHandler)&BattlescapeState::btnShowLayersClick);
-	_btnShowLayers->setTooltip(Options::oxceLinks ? "STR_EXTENDED_LINKS" : "STR_MULTI_LEVEL_VIEW");
+	_btnShowLayers->setTooltip("STR_EXTENDED_LINKS");
 	_btnShowLayers->onMouseIn((ActionHandler)&BattlescapeState::txtTooltipIn);
 	_btnShowLayers->onMouseOut((ActionHandler)&BattlescapeState::txtTooltipOut);
 	_btnShowLayers->onKeyboardPress((ActionHandler)&BattlescapeState::btnShowLayersClickOrig, Options::keyBattleShowLayers);
@@ -624,8 +619,6 @@ BattlescapeState::BattlescapeState() :
 
 	// shortcuts without a specific button
 	_btnStats->onKeyboardPress((ActionHandler)&BattlescapeState::btnReloadClick, Options::keyBattleReload);
-	_btnStats->onKeyboardPress((ActionHandler)&BattlescapeState::btnSelectMusicTrackClick, Options::keySelectMusicTrack);
-	_btnStats->onKeyboardPress((ActionHandler)&BattlescapeState::btnPersonalLightingClick, Options::keyBattlePersonalLighting);
 	_btnStats->onKeyboardPress((ActionHandler)&BattlescapeState::btnNightVisionClick, Options::keyNightVisionToggle);
 	//_btnStats->onKeyboardPress((ActionHandler)&BattlescapeState::btnTouchButtonsClick, SDLK_t); // for debugging only
 
@@ -635,29 +628,16 @@ BattlescapeState::BattlescapeState() :
 		bool ignore = (enviro && enviro->ignoreAutoNightVisionUserSetting());
 		if (!ignore)
 		{
-			// turn personal lights off
-			//_save->getTileEngine()->togglePersonalLighting();
 			// turn night vision on
 			_map->enableNightVision();
 		}
 	}
 
-	/*SDLKey buttons[] = {Options::keyBattleCenterEnemy1,
-						Options::keyBattleCenterEnemy2,
-						Options::keyBattleCenterEnemy3,
-						Options::keyBattleCenterEnemy4,
-						Options::keyBattleCenterEnemy5,
-						Options::keyBattleCenterEnemy6,
-						Options::keyBattleCenterEnemy7,
-						Options::keyBattleCenterEnemy8,
-						Options::keyBattleCenterEnemy9,
-						Options::keyBattleCenterEnemy10};*/
 	for (int i = 0; i < VISIBLE_MAX; ++i)
 	{
 		std::ostringstream tooltip;
 		_btnVisibleUnit[i]->onMouseClick((ActionHandler)&BattlescapeState::btnVisibleUnitClick);
 		_btnVisibleUnit[i]->onMouseClick((ActionHandler)&BattlescapeState::btnVisibleUnitClick, SDL_BUTTON_RIGHT);
-		//_btnVisibleUnit[i]->onKeyboardPress((ActionHandler)&BattlescapeState::btnVisibleUnitClick, buttons[i]); // #FINNIKTODO - make 11-20 tiles also selectable with SHIFT + number
 		tooltip << "STR_CENTER_ON_ENEMY_" << (i+1);
 		_txtVisibleUnitTooltip[i] = tooltip.str();
 		_btnVisibleUnit[i]->setTooltip(_txtVisibleUnitTooltip[i]);
@@ -728,19 +708,6 @@ BattlescapeState::BattlescapeState() :
 	_btnReserveSnap->setGroup(&_reserve);
 	_btnReserveAimed->setGroup(&_reserve);
 	_btnReserveAuto->setGroup(&_reserve);
-
-	// Set music
-	if (!Options::oxcePlayBriefingMusicDuringEquipment)
-	{
-		if (_save->getMusic().empty())
-		{
-			_game->getMod()->playMusic("GMTACTIC");
-		}
-		else
-		{
-			_game->getMod()->playMusic(_save->getMusic());
-		}
-	}
 
 	_animTimer = new Timer(DEFAULT_ANIM_SPEED, true);
 	_animTimer->onTimer((StateHandler)&BattlescapeState::animate);
@@ -835,16 +802,13 @@ void BattlescapeState::init()
 	if (_firstInit)
 	{
 		// Set music
-		if (Options::oxcePlayBriefingMusicDuringEquipment)
+		if (_save->getMusic() == "")
 		{
-			if (_save->getMusic() == "")
-			{
-				_game->getMod()->playMusic("GMTACTIC");
-			}
-			else
-			{
-				_game->getMod()->playMusic(_save->getMusic());
-			}
+			_game->getMod()->playMusic("GMTACTIC");
+		}
+		else
+		{
+			_game->getMod()->playMusic(_save->getMusic());
 		}
 
 		if (!playableUnitSelected())
@@ -1100,9 +1064,7 @@ void BattlescapeState::mapClick(Action *action)
 	{
 		if (_battleGame->cancelCurrentAction())
 		{
-			// #FINNIKTODO: expose option
-			bool previewLoS = true;
-			if (previewLoS)
+			if (_targetPreviewActive)
 			{
 				updateSoldierInfo(false);
 			}
@@ -1435,14 +1397,7 @@ void BattlescapeState::selectPreviousPlayerUnit(bool checkReselect, bool setRese
  */
 void BattlescapeState::btnShowLayersClick(Action *)
 {
-	if (Options::oxceLinks)
-	{
-		_game->pushState(new ExtendedBattlescapeLinksState(this, _save));
-	}
-	else
-	{
-		btnShowLayersClickOrig(nullptr);
-	}
+	_game->pushState(new ExtendedBattlescapeLinksState(this, _save));
 }
 
 void BattlescapeState::btnShowLayersClickOrig(Action *)
@@ -1501,7 +1456,7 @@ void BattlescapeState::btnEndTurnClick(Action *)
 		_map->getCamera()->stopKeyScrolling();
 
 		_txtTooltip->setText("");
-		_battleGame->requestEndTurn(false);
+		_battleGame->requestEndTurn();
 	}
 }
 
@@ -1689,7 +1644,7 @@ void BattlescapeState::btnVisibleUnitClick(Action *action)
 
 	if (btnID != -1 && _game->isRightClick(action, true))
 	{
-		if (allowButtons())
+		if (allowButtons() && _visibleUnit[btnID])
 		{
 			auto* targetUnit = _visibleUnit[btnID];
 			std::vector< std::pair<BattleUnit*, int> > sortSpotters;
@@ -1719,40 +1674,101 @@ void BattlescapeState::btnVisibleUnitClick(Action *action)
 	}
 	else if (btnID != -1)
 	{
-		Position position;
-		if (_visibleBattleObject[btnID])
-		{
-			position = _visibleBattleObject[btnID]->getPosition();
-		}
-		else
-		{
-			position = _visibleUnit[btnID]->getPosition();
-			if (position == TileEngine::invalid)
-			{
-				bool found = false;
-				for (auto& unit : *_save->getUnits())
-				{
-					if (!unit->isOut())
-					{
-						for (auto& invItem : *unit->getInventory())
-						{
-							if (invItem->getUnit() && invItem->getUnit() == _visibleUnit[btnID])
-							{
-								position = unit->getPosition(); // position of a unit that has the wounded unit in the inventory
-								found = true;
-								break;
-							}
-						}
-					}
-					if (found) break;
-				}
-			}
-		}
-
-		_map->getCamera()->centerOnPosition(position);
+		centerOnVisibleTarget(btnID);
 	}
 
 	action->getDetails()->type = SDL_NOEVENT; // consume the event
+}
+
+/**
+ * Centers the camera on the target represented by a visible-unit widget.
+ * @param targetIndex Zero-based widget index.
+ * @return True if the widget contains a target and the camera was centered.
+ */
+bool BattlescapeState::centerOnVisibleTarget(int targetIndex)
+{
+	if (targetIndex < 0 || targetIndex >= VISIBLE_MAX || !_btnVisibleUnit[targetIndex]->getVisible())
+	{
+		return false;
+	}
+
+	Position position = TileEngine::invalid;
+	if (_visibleBattleObject[targetIndex])
+	{
+		position = _visibleBattleObject[targetIndex]->getPosition();
+	}
+	else if (_visibleUnit[targetIndex])
+	{
+		position = _visibleUnit[targetIndex]->getPosition();
+		if (position == TileEngine::invalid)
+		{
+			for (auto& unit : *_save->getUnits())
+			{
+				if (unit->isOut())
+				{
+					continue;
+				}
+				for (auto& invItem : *unit->getInventory())
+				{
+					if (invItem->getUnit() == _visibleUnit[targetIndex])
+					{
+						position = unit->getPosition(); // position of a unit carrying the wounded target
+						break;
+					}
+				}
+				if (position != TileEngine::invalid)
+				{
+					break;
+				}
+			}
+		}
+	}
+
+	if (position == TileEngine::invalid)
+	{
+		return false;
+	}
+
+	_map->getCamera()->centerOnPosition(position);
+	return true;
+}
+
+/**
+ * Centers the camera on targets 1-10, or targets 11-20 while Shift is held.
+ * Uses the same configurable hotkeys as the first ten visible-target widgets.
+ */
+bool BattlescapeState::handleVisibleTargetHotkey(Action* action)
+{
+	if (action->getDetails()->type != SDL_KEYDOWN || _game->isCtrlPressed(true) || _game->isAltPressed(true))
+	{
+		return false;
+	}
+
+	const SDLKey hotkeys[] =
+	{
+		Options::keyBattleCenterEnemy1,
+		Options::keyBattleCenterEnemy2,
+		Options::keyBattleCenterEnemy3,
+		Options::keyBattleCenterEnemy4,
+		Options::keyBattleCenterEnemy5,
+		Options::keyBattleCenterEnemy6,
+		Options::keyBattleCenterEnemy7,
+		Options::keyBattleCenterEnemy8,
+		Options::keyBattleCenterEnemy9,
+		Options::keyBattleCenterEnemy10
+	};
+
+	const SDLKey pressedKey = action->getDetails()->key.keysym.sym;
+	for (int i = 0; i < 10; ++i)
+	{
+		if (hotkeys[i] != SDLK_UNKNOWN && pressedKey == hotkeys[i])
+		{
+			const int targetIndex = i + (_game->isShiftPressed(true) ? 10 : 0);
+			return centerOnVisibleTarget(targetIndex);
+		}
+	}
+
+	return false;
 }
 
 
@@ -1982,28 +1998,6 @@ void BattlescapeState::btnReloadClick(Action *)
 }
 
 /**
- * Opens the jukebox.
- * @param action Pointer to an action.
- */
-void BattlescapeState::btnSelectMusicTrackClick(Action *)
-{
-	if (allowButtons())
-	{
-		_game->pushState(new SelectMusicTrackState(SMT_BATTLESCAPE));
-	}
-}
-
-/**
- * Toggles soldier's personal lighting.
- * @param action Pointer to an action.
- */
-void BattlescapeState::btnPersonalLightingClick(Action *)
-{
-	if (allowButtons())
-		_save->getTileEngine()->togglePersonalLighting();
-}
-
-/**
  * Toggles night vision (purely cosmetic).
  * @param action Pointer to an action.
  */
@@ -2171,6 +2165,7 @@ void BattlescapeState::updateSoldierInfo(bool checkFOV)
 		_btnVisibleUnit[i]->setVisible(false);
 		_numVisibleUnit[i]->setVisible(false);
 		_visibleUnit[i] = 0;
+		_visibleBattleObject[i] = 0;
 	}
 
 	bool playableUnit = _battleGame->playableUnitSelected();
@@ -2217,12 +2212,16 @@ void BattlescapeState::updateSoldierInfo(bool checkFOV)
 		Surface *customBg = _game->getMod()->getSurface("AvatarBackground", false);
 		if (customBg == 0)
 		{
-			// show rank (vanilla behaviour)
+			// Show the personnel entity's highest active role rank.
+			SoldierRole role = soldier->getBestRole();
 			SurfaceSet *texture = _game->getMod()->getSurfaceSet("SMOKE.PCK");
-			auto* frame = texture->getFrame(soldier->getRankSpriteBattlescape());
-			if (frame)
+			_rank->clear();
+			if (role != ROLE_NONE && soldier->getRoleRank(role) > 0)
 			{
-				frame->blitNShade(_rank, 0, 0);
+				if (auto* frame = texture->getFrame(soldier->getRoleRankSpriteBattlescape(role)))
+				{
+					frame->blitNShade(_rank, 0, 0);
+				}
 			}
 		}
 		else
@@ -2230,14 +2229,13 @@ void BattlescapeState::updateSoldierInfo(bool checkFOV)
 			// show tiny rank (modded)
 			SoldierRole role = soldier->getBestRole();
 			SurfaceSet *texture = _game->getMod()->getSurfaceSet("TinyRanks");
-			Surface *spr = texture->getFrame(soldier->getRankSpriteTiny());
-			if (_ftaUI)
+			_rankTiny->clear();
+			if (role != ROLE_NONE && soldier->getRoleRank(role) > 0)
 			{
-				spr = texture->getFrame(soldier->getRoleRankSpriteTiny(role));
-			}
-			if (spr)
-			{
-				spr->blitNShade(_rankTiny, 0, 0);
+				if (Surface *spr = texture->getFrame(soldier->getRoleRankSpriteTiny(role)))
+				{
+					spr->blitNShade(_rankTiny, 0, 0);
+				}
 			}
 
 			// use custom background (modded)
@@ -2516,6 +2514,12 @@ void BattlescapeState::updateUiButton(const BattleUnit *battleUnit)
  */
 void BattlescapeState::updateVisibleUnits(std::vector<BattleUnit *> *units)
 {
+	if (!Options::battleTargetPreview)
+	{
+		updateSoldierInfo(false);
+		return;
+	}
+
 	_targetPreviewActive = true;
 
 	for (int i = 0; i < VISIBLE_MAX; ++i)
@@ -2523,6 +2527,7 @@ void BattlescapeState::updateVisibleUnits(std::vector<BattleUnit *> *units)
 		_btnVisibleUnit[i]->setVisible(false);
 		_numVisibleUnit[i]->setVisible(false);
 		_visibleUnit[i] = 0;
+		_visibleBattleObject[i] = 0;
 	}
 
 	// go through all units visible
@@ -2810,6 +2815,12 @@ inline void BattlescapeState::handle(Action *action)
 	{
 		if (_game->getCursor()->getVisible() || ((action->getDetails()->type == SDL_MOUSEBUTTONDOWN || action->getDetails()->type == SDL_MOUSEBUTTONUP) && _game->isRightClick(action)))
 		{
+			if (handleVisibleTargetHotkey(action))
+			{
+				action->getDetails()->type = SDL_NOEVENT;
+				return;
+			}
+
 			State::handle(action);
 
 			if (Options::touchEnabled == false && _isMouseScrolling && !Options::battleDragScrollInvert)
@@ -3175,10 +3186,6 @@ inline void BattlescapeState::handle(Action *action)
 					if (key == Options::keyQuickSave)
 					{
 						_game->pushState(new SaveGameState(OPT_BATTLESCAPE, SAVE_QUICK, _palette));
-					}
-					else if (key == Options::keyInstaSave)
-					{
-						_game->pushState(new SaveGameState(OPT_BATTLESCAPE, SAVE_INSTA, _palette));
 					}
 					else if (key == Options::keyQuickLoad)
 					{
@@ -3606,29 +3613,10 @@ void BattlescapeState::finishBattle(bool abort, int inExitArea)
 		}
 	}
 
-	// let's count summoned player-controlled VIPs before we remove them :)
-	_battleGame->tallySummonedVIPs();
-	// this removes player-controlled VIPs (not civilian VIPs)
+	// remove summoned player units before recovery
 	_battleGame->removeSummonedPlayerUnits();
 
-	AlienDeployment *ruleDeploy = _game->getMod()->getDeployment(_save->getMissionType());
-	if (!ruleDeploy)
-	{
-		for (auto* ufo : *_game->getSavedGame()->getUfos())
-		{
-			if (ufo->isInBattlescape())
-			{
-				std::string ufoMissionName = ufo->getRules()->getType();
-				if (!_save->getAlienCustomMission().empty())
-				{
-					// fake underwater UFO
-					ufoMissionName = _save->getAlienCustomMission();
-				}
-				ruleDeploy = _game->getMod()->getDeployment(ufoMissionName);
-				break;
-			}
-		}
-	}
+	AlienDeployment *ruleDeploy = _save->getActiveDeployment();
 	std::string nextStage;
 	if (ruleDeploy)
 	{

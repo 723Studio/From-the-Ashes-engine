@@ -21,15 +21,15 @@
 #include "../Mod/Mod.h"
 #include "../Savegame/Soldier.h"
 #include "../Savegame/Craft.h"
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
 
 namespace OpenXcom
 {
 const float PROGRESS_LIMIT_UNKNOWN = 0.333f;
-const float PROGRESS_LIMIT_POOR = 0.07f;
-const float PROGRESS_LIMIT_AVERAGE = 0.13f;
-const float PROGRESS_LIMIT_GOOD = 0.25f;
 
-ResearchProject::ResearchProject(const RuleResearch * p, int c) : _project(p), _assigned(0), _spent(0), _cost(c)
+ResearchProject::ResearchProject(const RuleResearch * p, int c) : _project(p), _spent(0), _cost(c)
 {
 }
 
@@ -43,119 +43,68 @@ bool ResearchProject::step(int progress)
 	return isFinished();
 }
 
-int ResearchProject::getStepProgress(std::map<Soldier*, int>& assignedScientists, Mod* mod, int rating)
+int getScientistProjectProgress(const UnitStats& projectStats,
+	const std::map<Soldier*, int>& assignedScientists, Mod* mod, int rating,
+	bool requirePositiveProgressForExperience)
 {
-	int progress = 0;
 	double effort = 0;
-	auto projStats = _project->getStats();
 	int trainingFactor = mod->getResearchTrainingFactor();
 	double speedFactor = (double)mod->getResearchSpeedFactor() / 100;
-	for (auto s : assignedScientists)
+	std::size_t contributingScientists = 0;
+	std::map<Soldier*, UnitStats> pendingExperience;
+	for (const auto& assignment : assignedScientists)
 	{
-		Soldier* scientist = s.first;
+		Soldier* scientist = assignment.first;
 		if (scientist->getCraft() != nullptr && scientist->getCraft()->getStatus() == "STR_OUT")
 		{
 			continue;
 		}
+		++contributingScientists;
+		const bool canTrain = scientist->canGainExperience();
 
 		auto stats = scientist->getCurrentStats();
 		auto caps = scientist->getRules()->getStatCaps();
 		unsigned int statsN = 0;
 		double soldierEffort = 0, statEffort = 0;
-		if (projStats.physics > 0)
+		auto processStat = [&](UnitStats::Ptr field, bool allowMinimumTraining)
 		{
-			statEffort = stats->physics;
-			soldierEffort += statEffort / projStats.physics;
-			if (stats->physics < caps.physics && RNG::generate(0, caps.physics) > stats->physics && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				scientist->getResearchExperience()->physics++;
-			statsN++;
-		}
-		if (projStats.chemistry > 0)
-		{
-			statEffort = stats->chemistry;
-			soldierEffort += statEffort / projStats.chemistry;
-			if (stats->chemistry < caps.chemistry && RNG::generate(0, caps.chemistry) > stats->chemistry && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				scientist->getResearchExperience()->chemistry++;
-			statsN++;
-		}
-		if (projStats.biology > 0)
-		{
-			statEffort = stats->biology;
-			soldierEffort += statEffort / projStats.biology;
-			if (stats->biology < caps.biology && RNG::generate(0, caps.biology) > stats->biology && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				scientist->getResearchExperience()->biology++;
-			statsN++;
-		}
-		if (projStats.data > 0)
-		{
-			statEffort = stats->data;
-			soldierEffort += statEffort / projStats.data;
-			if (stats->data < caps.data && RNG::generate(0, caps.data) > stats->data && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				scientist->getResearchExperience()->data++;
-			statsN++;
-		}
-		if (projStats.computers > 0)
-		{
-			statEffort = stats->computers;
-			soldierEffort += statEffort / projStats.computers;
-			if (stats->computers < caps.computers && RNG::generate(0, caps.computers) > stats->computers && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				scientist->getResearchExperience()->computers++;
-			statsN++;
-		}
-		if (projStats.tactics > 0)
-		{
-			statEffort = stats->tactics;
-			soldierEffort += statEffort / projStats.tactics;
-			if (stats->tactics < caps.tactics && RNG::generate(0, caps.tactics) > stats->tactics && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				scientist->getResearchExperience()->tactics++;
-			statsN++;
-		}
-		if (projStats.materials > 0)
-		{
-			statEffort = stats->materials;
-			soldierEffort += statEffort / projStats.materials;
-			if (stats->materials < caps.materials && RNG::generate(0, caps.materials) > stats->materials && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				scientist->getResearchExperience()->materials++;
-			statsN++;
-		}
-		if (projStats.designing > 0)
-		{
-			statEffort = stats->designing;
-			soldierEffort += statEffort / projStats.designing;
-			if (stats->designing < caps.designing && RNG::generate(0, caps.designing) > stats->designing && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				scientist->getResearchExperience()->designing++;
-			statsN++;
-		}
-		if (projStats.alienTech > 0)
-		{
-			statEffort = stats->alienTech;
-			soldierEffort += statEffort / projStats.alienTech;
-			if (stats->alienTech < caps.alienTech && RNG::generate(0, caps.alienTech) > stats->alienTech && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				scientist->getResearchExperience()->alienTech++;
-			else if (stats->alienTech < scientist->getRules()->getMinStats().alienTech && RNG::percent(100 - stats->alienTech) && RNG::percent(trainingFactor / 2))
-				scientist->getResearchExperience()->alienTech++;
-			statsN++;
-		}
-		if (projStats.psionics > 0)
-		{
-			statEffort = stats->psionics;
-			soldierEffort += statEffort / projStats.psionics;
-			if (stats->psionics < caps.psionics && RNG::generate(0, caps.psionics) > stats->psionics && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				scientist->getResearchExperience()->psionics++;
-			else if (stats->psionics < scientist->getRules()->getMinStats().psionics && RNG::percent(100 - stats->psionics) && RNG::percent(trainingFactor / 2))
-				scientist->getResearchExperience()->psionics++;
-			statsN++;
-		}
-		if (projStats.xenolinguistics > 0)
-		{
-			statEffort = stats->xenolinguistics;
-			soldierEffort += statEffort / projStats.xenolinguistics;
-			if (stats->psionics < caps.xenolinguistics && RNG::generate(0, caps.xenolinguistics) > stats->xenolinguistics && RNG::percent(trainingFactor) && RNG::percent(s.second))
-				scientist->getResearchExperience()->xenolinguistics++;
-			else if (stats->xenolinguistics < scientist->getRules()->getMinStats().xenolinguistics && RNG::percent(100 - stats->xenolinguistics) && RNG::percent(trainingFactor / 2))
-				scientist->getResearchExperience()->xenolinguistics++;
-			statsN++;
-		}
+			const int requirement = projectStats.*field;
+			if (requirement <= 0)
+			{
+				return;
+			}
+			const int current = stats->*field;
+			const int cap = caps.*field;
+			statEffort = current;
+			soldierEffort += statEffort / requirement;
+			bool trained = canTrain && current < cap &&
+				RNG::generate(0, cap) > current &&
+				RNG::percent(trainingFactor) && RNG::percent(assignment.second);
+			if (!trained && allowMinimumTraining)
+			{
+				const int minimum = scientist->getRules()->getMinStats().*field;
+				trained = canTrain && current < minimum &&
+					RNG::percent(100 - current) && RNG::percent(trainingFactor / 2) &&
+					RNG::percent(assignment.second);
+			}
+			if (trained)
+			{
+				pendingExperience[scientist].*field += 1;
+			}
+			++statsN;
+		};
+
+		processStat(&UnitStats::physics, false);
+		processStat(&UnitStats::chemistry, false);
+		processStat(&UnitStats::biology, false);
+		processStat(&UnitStats::data, false);
+		processStat(&UnitStats::computers, false);
+		processStat(&UnitStats::tactics, false);
+		processStat(&UnitStats::materials, false);
+		processStat(&UnitStats::designing, false);
+		processStat(&UnitStats::alienTech, true);
+		processStat(&UnitStats::psionics, true);
+		processStat(&UnitStats::xenolinguistics, true);
 
 		double insightBonus = RNG::generate(0, stats->insight);
 		insightBonus /= 100;
@@ -167,15 +116,27 @@ int ResearchProject::getStepProgress(std::map<Soldier*, int>& assignedScientists
 	}
 
 	// If one woman can carry a baby in nine months, nine women can't do it in a month...
-	if (assignedScientists.size() > 1)
-		effort *= (100 - 19 * log(assignedScientists.size())) / 100;
+	if (contributingScientists > 1)
+		effort *= std::max(0.0, (100.0 - 19.0 * log(contributingScientists)) / 100.0);
 
 	effort *= rating; //not normalizing by 100 to fit small hourly values into integer later
 	effort *= speedFactor;
 
-	progress = static_cast<int>(effort);
+	const int progress = std::max(0, static_cast<int>(effort));
+	if (!requirePositiveProgressForExperience || progress > 0)
+	{
+		for (const auto& experience : pendingExperience)
+		{
+			*experience.first->getResearchExperience() += experience.second;
+		}
+	}
 
 	return progress;
+}
+
+int ResearchProject::getStepProgress(std::map<Soldier*, int>& assignedScientists, Mod* mod, int rating)
+{
+	return getScientistProjectProgress(_project->getStats(), assignedScientists, mod, rating);
 }
 
 /**
@@ -186,28 +147,11 @@ bool ResearchProject::isFinished()
 	return _spent >= getCost();
 }
 
-/**
- * Changes the number of scientist to the ResearchProject
- * @param nb number of scientist assigned to this ResearchProject
- */
-void ResearchProject::setAssigned (int nb)
-{
-	_assigned = nb;
-}
-
 const RuleResearch * ResearchProject::getRules() const
 {
 	return _project;
 }
 
-/**
- * Returns the number of scientist assigned to this project
- * @return Number of assigned scientist.
- */
-int ResearchProject::getAssigned() const
-{
-	return _assigned;
-}
 
 /**
  * Returns the time already spent on this project
@@ -251,7 +195,6 @@ void ResearchProject::setCost(int f)
  */
 void ResearchProject::load(const YAML::YamlNodeReader& reader)
 {
-	setAssigned(reader["assigned"].readVal(getAssigned()));
 	setSpent(reader["spent"].readVal(getSpent()));
 	setCost(reader["cost"].readVal(getCost()));
 }
@@ -264,7 +207,6 @@ void ResearchProject::save(YAML::YamlNodeWriter writer) const
 {
 	writer.setAsMap();
 	writer.write("project", getRules()->getName());
-	writer.write("assigned", getAssigned());
 	writer.write("spent", getSpent());
 	writer.write("cost", getCost());
 }
@@ -275,8 +217,8 @@ void ResearchProject::save(YAML::YamlNodeWriter writer) const
  */
 std::string ResearchProject::getResearchProgress() const
 {
-	float progress = (float)getSpent() / (float)getRules()->getCost();
-	if (getAssigned() == 0)
+	float progress = (float)getSpent() / (float)getCost();
+	if (progress <= 0.0f)
 	{
 		return "STR_NONE";
 	}
@@ -284,22 +226,20 @@ std::string ResearchProject::getResearchProgress() const
 	{
 		return "STR_UNKNOWN";
 	}
+	else if (progress <= 0.5f)
+	{
+		return "STR_POOR";
+	}
+	else if (progress <= 0.75f)
+	{
+		return "STR_AVERAGE";
+	}
+	else if (progress <= 0.9f)
+	{
+		return "STR_GOOD";
+	}
 	else
 	{
-		float rating = (float)getAssigned();
-		rating /= (float)getRules()->getCost();
-		if (rating <= PROGRESS_LIMIT_POOR)
-		{
-			return "STR_POOR";
-		}
-		else if (rating <= PROGRESS_LIMIT_AVERAGE)
-		{
-			return "STR_AVERAGE";
-		}
-		else if (rating <= PROGRESS_LIMIT_GOOD)
-		{
-			return "STR_GOOD";
-		}
 		return "STR_EXCELLENT";
 	}
 }

@@ -19,6 +19,7 @@
 
 #include "Yaml.h"
 #include "../Engine/CrossPlatform.h"
+#include <array>
 #include <string>
 #include <c4/format.hpp>
 
@@ -95,7 +96,7 @@ static ryml::Callbacks callbacksForRootWriter(const YamlRootNodeWriter* root)
 	return ryml::Callbacks(const_cast<YamlRootNodeWriter*>(root), s_allocate, s_free, RootWriter_error);
 }
 
-static const YamlRootNodeWriter* getRootWriterData(const ryml::Callbacks& callbacks)
+[[maybe_unused]] static const YamlRootNodeWriter* getRootWriterData(const ryml::Callbacks& callbacks)
 {
 	return callbacks.m_error == RootWriter_error ?  static_cast<const YamlRootNodeWriter*>(callbacks.m_user_data) : nullptr;
 }

@@ -27,6 +27,7 @@ namespace OpenXcom
 {
 
 class Mod;
+class RuleSoldier;
 enum SoldierRole : int;
 
 /**
@@ -40,13 +41,13 @@ private:
 	RuleBaseFacilityFunctions _requiresBaseFunc;
 	std::string _producedItem;
 	std::string _producedSoldierType, _producedSoldierArmor;
+	const RuleSoldier* _producedSoldier;
 	bool _keepSoldierArmor, _createsClone, _needsCorpseRecovered, _allowsDeadSoldiers, _allowsLiveSoldiers, _allowsWoundedSoldiers;
 	std::vector<std::string > _allowedSoldierTypes;
 	std::map<std::string, int> _requiredItems;
 	std::map<std::string, int> _requiredCommendations;
 	int _listOrder, _cost, _transferTime, _recoveryTime;
 	int _transformationTime;
-	int _minRank;
 	bool _includeBonusesForMinStats, _includeBonusesForMaxStats;
 	UnitStats _requiredMinStats, _requiredMaxStats, _flatOverallStatChange, _percentOverallStatChange, _percentGainedStatChange;
 	UnitStats _flatMin, _flatMax, _percentMin, _percentMax, _percentGainedMin, _percentGainedMax;
@@ -55,11 +56,11 @@ private:
 	bool _lowerBoundAtMinStats, _upperBoundAtMaxStats, _upperBoundAtStatCaps;
 	int _upperBoundType;
 	SoldierRole _addRole;
+	bool _hasRoleToAdd;
 	std::map<SoldierRole, int> _roleRankRequirements;
 	SoldierRole _forbiddenRole;
 	std::vector<std::string> _removeTransformations;
 	bool _reset;
-	bool _resetRank;
 	std::string _soldierBonusType;
 
 	void loadRoleRequirements(const std::map<int, int> &r);
@@ -68,6 +69,8 @@ public:
 	RuleSoldierTransformation(const std::string &name, int listOrder);
 	/// Loads the project data from YAML
 	void load(const YAML::YamlNodeReader& reader, Mod* mod);
+	/// Cross-links soldier types and validates role compatibility.
+	void afterLoad(const Mod* mod);
 	/// Gets the unique name id of the project
 	const std::string &getName() const;
 	/// Gets the description of the project
@@ -82,6 +85,8 @@ public:
 	const std::string &getProducedItem() const { return _producedItem; }
 	/// Gets the type of soldier produced by this project
 	const std::string &getProducedSoldierType() const;
+	/// Gets the cross-linked destination soldier type, or null when the source type is retained.
+	const RuleSoldier* getProducedSoldier() const { return _producedSoldier; }
 	/// Gets the armor that the produced soldier should be wearing
 	const std::string &getProducedSoldierArmor() const;
 	/// Gets whether or not the soldier should keep their armor after the project
@@ -122,8 +127,6 @@ public:
 	int getRecoveryTime() const;
 	/// Gets how long the transformating would be in process before applyes
 	int getTransformationTime() const { return _transformationTime; }
-	/// Gets the minimum rank a soldier needs to be eligible for this project
-	int getMinRank() const;
 	/// Gets the flat change to a soldier's overall stats when undergoing this project
 	const UnitStats &getFlatOverallStatChange() const;
 	/// Gets the percent change to a soldier's overall stats when undergoing this project
@@ -160,8 +163,10 @@ public:
 
 	/// Gets the role to add to the soldier when undergoing this project
 	SoldierRole getRoleToAdd() const { return _addRole; }
+	/// Gets whether this transformation explicitly adds a role
+	bool hasRoleToAdd() const { return _hasRoleToAdd; }
 	/// Gets the map of role rank requirements for this project
-	std::map<SoldierRole, int> getRoleRankRequirments() const { return _roleRankRequirements; }
+	const std::map<SoldierRole, int>& getRoleRankRequirements() const { return _roleRankRequirements; }
 	/// Gets the role that forbids a soldier from undergoing this project
 	SoldierRole getForbiddenRole() const { return _forbiddenRole; }
 
@@ -169,8 +174,6 @@ public:
 	const std::vector<std::string>& getRemoveTransformations() const { return _removeTransformations; }
 	/// Gets whether or not this project should reset info about all previous transformations and all previously assigned soldier bonuses
 	bool getReset() const;
-	/// Gets whether or not this project should reset the rank of the destination soldier to rookie
-	bool getResetRank() const;
 	/// Gets the type of soldier bonus assigned by this project
 	const std::string &getSoldierBonusType() const;
 };

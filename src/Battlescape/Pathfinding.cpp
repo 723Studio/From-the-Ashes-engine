@@ -1193,8 +1193,8 @@ bool Pathfinding::previewPath(bool bRemove)
 	}
 	else
 	{
-		_ctrlUsed = Options::strafe && _save->isCtrlPressed(true);
-		_altUsed = Options::strafe && _save->isAltPressed(true);
+		_ctrlUsed = _save->isCtrlPressed(true);
+		_altUsed = _save->isAltPressed(true);
 	}
 
 	refreshPath();

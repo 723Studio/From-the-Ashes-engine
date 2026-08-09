@@ -704,7 +704,8 @@ void AIModule::think(BattleAction *action)
  */
 void AIModule::setWasHitBy(BattleUnit *attacker)
 {
-	if (attacker->getFaction() != _unit->getFaction() && !getWasHitBy(attacker->getId()))
+	if ((attacker->getFaction() != _unit->getFaction() || _unit->hasTreatedByAIHostility(attacker)) &&
+		!getWasHitBy(attacker->getId()))
 		_wasHitBy.push_back(attacker->getId());
 }
 
@@ -2161,7 +2162,7 @@ int AIModule::explosiveEfficacy(Position targetPos, BattleUnit *attackingUnit, i
 	int efficacy = AIW_SCALE * desperation;
 
 	// don't go kamikaze unless we're already doomed.
-	if (abs(attackingUnit->getPosition().z - targetPos.z) <= Options::battleExplosionHeight && distance <= radius)
+	if (abs(attackingUnit->getPosition().z - targetPos.z) <= 3 && distance <= radius)
 	{
 		efficacy -= AIW_SCALE * 4;
 	}
@@ -2186,7 +2187,7 @@ int AIModule::explosiveEfficacy(Position targetPos, BattleUnit *attackingUnit, i
 			// don't count the target twice
 			bu != target &&
 			// don't count units that probably won't be affected cause they're out of range
-			abs(bu->getPosition().z - targetPos.z) <= Options::battleExplosionHeight &&
+			abs(bu->getPosition().z - targetPos.z) <= 3 &&
 			Position::distance2d(bu->getPosition(), targetPos) <= radius)
 		{
 			if (bu->getTile()->getDangerous())
@@ -2933,8 +2934,9 @@ void AIModule::meleeAttack()
 AIAttackWeight AIModule::getTargetAttackWeight(BattleUnit* target) const
 {
 	AIAttackWeight weight = AIW_IGNORED;
+	const bool treatedByAIHostility = _unit->hasTreatedByAIHostility(target);
 
-	if (target->getFaction() == _unit->getFaction())
+	if (target->getFaction() == _unit->getFaction() && !treatedByAIHostility)
 	{
 		// friendly target have negative weight, used for AoE attacks.
 		weight = target->getAITargetWeightAsFriendly(_save->getMod());
@@ -2946,6 +2948,12 @@ AIAttackWeight AIModule::getTargetAttackWeight(BattleUnit* target) const
 		// ignore units that we don't "know" about...
 		// ... unless we are a sniper and the spotters know about them
 		weight = AIW_IGNORED;
+	}
+	else if (treatedByAIHostility)
+	{
+		// treatedByAI units and every other unit are mutual primary AI targets,
+		// even when they share the same technical faction.
+		weight = target->getAITargetWeightAsHostile(_save->getMod());
 	}
 	else if (target->getFaction() == FACTION_HOSTILE || _unit->getFaction() == FACTION_HOSTILE)
 	{
@@ -2991,7 +2999,7 @@ bool AIModule::validTarget(BattleUnit *target, bool assessDanger, bool includeCi
 	if (target->isOut() ||
 		(assessDanger && target->getTile()->getDangerous()) ||
 		(target->getFaction() != FACTION_PLAYER && target->isIgnoredByAI())||
-		(target->getUndercover() && !_unit->getUnitWarned()))
+		(_save->isUndercoverActive(target) && !_unit->getUnitWarned()))
 	{
 		return false;
 	}

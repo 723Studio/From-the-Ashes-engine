@@ -46,6 +46,7 @@ struct BattleMessage
 * Definition of one custom player answer to Geoscape Event.
 */
 enum BattleScriptCommand { BSC_UNDEFINED = -1, BSC_SPAWN_ITEM, BSC_SPAWN_UNIT, BSC_SHOW_MESSAGE, BSC_ADDBLOCK};
+enum BattleScriptSpawnBlockSelection { BSBS_ALL, BSBS_DIRECTIONS, BSBS_MARKED, BSBS_MARKED_OR_DIRECTIONS, BSBS_MARKED_AND_DIRECTIONS };
 
 class MapBlock;
 class RuleTerrain;
@@ -57,12 +58,17 @@ private:
 	std::vector<int> _groups, _conditionals;
 	int _executionChances, _executions, _maxRuns, _label;
 	std::vector<std::string> _spawnBlocks;
+	BattleScriptSpawnBlockSelection _spawnBlockSelection;
+	bool _spawnBlockSelectionExplicit;
 	std::vector<std::string> _itemSet, _unitSet;
 	std::map<int, BattleMessage> _message;
 	int _startTurn, _endTurn, _unitSide, _packSize, _minLevel, _maxLevel;
-	bool _randomPackSize;
+	bool _randomPackSize, _requiresAllObjectivesDestroyed;
 	int _minDifficulty, _maxDifficulty, _minAlarmLevel, _maxAlarmLevel;
 	std::vector<int> _spawnNodeRanks;
+	std::vector<int> _spawnZLevels;
+	bool _spawnZLevelsExplicit;
+	int _minDistanceFromPlayerUnits, _maxDistanceFromMapEdge;
 	std::string _variable;
 public:
 	BattleScript();
@@ -85,6 +91,8 @@ public:
 	const std::vector<int>* getGroups() const { return &_groups; }
 	/// Gets the blocks vector for iteration.
 	std::vector<std::string> getSpawnBlocks() const { return  _spawnBlocks; }
+	/// Gets the map-block selection mode.
+	BattleScriptSpawnBlockSelection getSpawnBlockSelection() const { return _spawnBlockSelection; }
 	/// Gets the turn number that would start script execution.
 	int getStartTurn() const { return _startTurn; }
 	/// Gets the turn number that would end script execution.
@@ -103,6 +111,16 @@ public:
 	int getMinLevel() const { return _minLevel; }
 	/// Gets the max Z level for command.
 	int getMaxLevel() const { return _maxLevel; }
+	/// Gets whether an explicit Z-level list replaces the min/max range.
+	bool hasSpawnZLevels() const { return _spawnZLevelsExplicit; }
+	/// Gets the explicit Z levels allowed for spawning.
+	const std::vector<int> &getSpawnZLevels() const { return _spawnZLevels; }
+	/// Gets the minimum distance from original player units.
+	int getMinDistanceFromPlayerUnits() const { return _minDistanceFromPlayerUnits; }
+	/// Gets the maximum distance from a physical map edge.
+	int getMaxDistanceFromMapEdge() const { return _maxDistanceFromMapEdge; }
+	/// Gets whether all required tactical objectives must be completed.
+	bool requiresAllObjectivesDestroyed() const { return _requiresAllObjectivesDestroyed; }
 	/// Gets the min difficulty level for command.
 	int getMinDifficulty() const { return _minDifficulty; }
 	/// Gets the max difficulty level for command.

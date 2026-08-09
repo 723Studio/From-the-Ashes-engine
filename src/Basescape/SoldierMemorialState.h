@@ -25,7 +25,6 @@ namespace OpenXcom
 class TextButton;
 class Window;
 class Text;
-class TextEdit;
 class TextList;
 
 /**
@@ -36,7 +35,6 @@ class SoldierMemorialState : public State
 {
 private:
 	TextButton *_btnOk, *_btnStatistics;
-	TextEdit *_btnQuickSearch;
 	Window *_window;
 	Text *_txtTitle, *_txtName, *_txtRank, *_txtDate, *_txtRecruited, *_txtLost;
 	TextList *_lstSoldiers;
@@ -51,9 +49,6 @@ public:
 	void init() override;
 	/// Handler for clicking the OK button.
 	void btnOkClick(Action *action);
-	/// Handlers for Quick Search.
-	void btnQuickSearchToggle(Action *action);
-	void btnQuickSearchApply(Action *action);
 	/// Handler for clicking the Statistics button.
 	void btnStatisticsClick(Action *action);
 	/// Handler for clicking the Soldiers list.

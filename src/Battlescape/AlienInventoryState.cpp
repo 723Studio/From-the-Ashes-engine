@@ -379,13 +379,16 @@ void AlienInventoryState::calculateRangedWeapon(BattleUnit* unit, BattleItem* we
 			BattleUnit* closeQuartersTarget = _game->getSavedGame()->getSavedBattle()->selectUnit(tileToCheck);
 			// Variable for LOS check
 			int checkDirection = tileEngine->getDirectionTo(tileToCheck, unit->getPosition());
-			if (closeQuartersTarget && unit->getFaction() != closeQuartersTarget->getFaction() // Unit must exist and not be same faction
+			const bool treatedByAIHostility = closeQuartersTarget && unit->hasTreatedByAIHostility(closeQuartersTarget);
+			if (closeQuartersTarget
+				&& (treatedByAIHostility ||
+					(unit->getFaction() != closeQuartersTarget->getFaction() // Unit must exist and not be same faction
+					&& !(unit->getFaction() == FACTION_PLAYER && closeQuartersTarget->getFaction() == FACTION_NEUTRAL) // Civilians don't inhibit player
+					&& !(unit->getFaction() == FACTION_NEUTRAL && closeQuartersTarget->getFaction() == FACTION_PLAYER))) // Player doesn't inhibit civilians
 				&& closeQuartersTarget->getArmor()->getCreatesMeleeThreat() // Unit must be valid defender, 2x2 default false here
 				&& closeQuartersTarget->getTimeUnits() >= _game->getMod()->getCloseQuartersTuCostGlobal() // Unit must have enough TUs
 				&& closeQuartersTarget->getEnergy() >= _game->getMod()->getCloseQuartersEnergyCostGlobal() // Unit must have enough Energy
-				&& tileEngine->validMeleeRange(closeQuartersTarget, unit, checkDirection) // Unit must be able to see the unit attempting to fire
-				&& !(unit->getFaction() == FACTION_PLAYER && closeQuartersTarget->getFaction() == FACTION_NEUTRAL) // Civilians don't inhibit player
-				&& !(unit->getFaction() == FACTION_NEUTRAL && closeQuartersTarget->getFaction() == FACTION_PLAYER)) // Player doesn't inhibit civilians
+				&& tileEngine->validMeleeRange(closeQuartersTarget, unit, checkDirection)) // Unit must be able to see the unit attempting to fire
 			{
 				closeQuartersTargetList.push_back(closeQuartersTarget);
 			}
