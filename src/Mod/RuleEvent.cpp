@@ -106,6 +106,21 @@ void RuleEvent::load(const YAML::YamlNodeReader& node, Mod* mod)
 void RuleEvent::afterLoad(const Mod* mod)
 {
 	mod->linkRule(_research, _researchNames);
+	if (!_answers.empty())
+	{
+		if (_answers.size() < 2 || _answers.size() > 4)
+		{
+			throw Exception("Geoscape Event named: '" + _name + "' must have between 2 and 4 custom answers.");
+		}
+		int expectedIndex = 0;
+		for (const auto& answer : _answers)
+		{
+			if (answer.first != expectedIndex++)
+			{
+				throw Exception("Geoscape Event named: '" + _name + "' must number custom answers consecutively from 0.");
+			}
+		}
+	}
 }
 
 }

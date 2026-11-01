@@ -35,6 +35,10 @@ SoldierPool::SoldierPool()
  */
 SoldierPool::~SoldierPool()
 {
+	for (auto* soldier : _pool)
+	{
+		delete soldier;
+	}
 }
 
 /**

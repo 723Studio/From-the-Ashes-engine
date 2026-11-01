@@ -265,6 +265,8 @@ public:
 	void addMovingUnit(BattleUnit* unit);
 	/// Add moving unit.
 	void removeMovingUnit(BattleUnit* unit);
+	/// Removes a destroyed unit from the moving-unit cache.
+	void forgetUnit(BattleUnit *unit);
 	/// Get current moving unit.
 	BattleUnit* getMovingUnit();
 

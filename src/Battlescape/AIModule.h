@@ -79,6 +79,8 @@ public:
 	void setTargetFaction(UnitFaction f);
 	/// Resets the unsaved AI state.
 	void reset();
+	/// Discards references to a unit being removed from the battle.
+	void forgetUnit(BattleUnit *unit);
 	/// Loads the AI Module from YAML.
 	void load(const YAML::YamlNodeReader& reader);
 	/// Saves the AI Module to YAML.

@@ -162,8 +162,7 @@ void BattleItem::save(YAML::YamlNodeWriter writer, const ScriptGlobal *shared) c
 	}
 	if (_tile)
 		writer.write("position", _tile->getPosition());
-	if (_ammoQuantity || _rules->isAmmoRechargeable()) // To consider: maybe it would be better to just always write also zero?
-		writer.write("ammoqty", _ammoQuantity);
+	writer.write("ammoqty", _ammoQuantity);
 	if (_ammoItem[0])
 		writer.write("ammoItem", _ammoItem[0]->getId());
 	std::optional<YAML::YamlNodeWriter> ammoSlotWriter;

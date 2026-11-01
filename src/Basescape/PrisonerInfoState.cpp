@@ -26,6 +26,7 @@
 #include "../Interface/TextButton.h"
 #include "../Interface/TextList.h"
 #include "../Interface/Window.h"
+#include "../Menu/ErrorMessageState.h"
 #include "../Mod/Mod.h"
 #include "../Mod/RuleInterface.h"
 #include "../Mod/RulePrisoner.h"
@@ -51,6 +52,14 @@ PrisonerInfoState::PrisonerInfoState(Base* base, BasePrisoner* prisoner, const R
 	_ableContain = true;
 	_ableInterrogate = true;
 	_ableRecruit = true;
+
+	for (auto* agent : _base->getPersonnel(ROLE_AGENT))
+	{
+		if (agent->getActivePrisoner() == _prisoner)
+		{
+			_agents.insert(agent);
+		}
+	}
 
 	_window = new Window(this, 320, 156, 0, 22);
 	_txtTitle = new Text(302, 17, 9, 31);
@@ -248,6 +257,19 @@ void PrisonerInfoState::fillAgentsList(size_t scrl)
  */
 void PrisonerInfoState::btnOkClick(Action *)
 {
+	const bool requiresSpace = !_agents.empty() &&
+		(_display == PRISONER_STATE_INTERROGATION || _display == PRISONER_STATE_REQRUITING || _display == PRISONER_STATE_TORTURE);
+	const PrisonerState previousState = _prisoner->getPrisonerState();
+	const bool alreadyUsesSpace = previousState == PRISONER_STATE_INTERROGATION ||
+		previousState == PRISONER_STATE_REQRUITING || previousState == PRISONER_STATE_TORTURE;
+	if (requiresSpace && !alreadyUsesSpace && _base->getFreeInterrogationSpace() <= 0)
+	{
+		_game->pushState(new ErrorMessageState(tr("STR_NOT_ENOUGH_INTERROGATION_SPACE"), _palette,
+			_game->getMod()->getInterface("soldierInfo")->getElement("errorMessage")->color,
+			"BACK01.SCR", _game->getMod()->getInterface("soldierInfo")->getElement("errorPalette")->color));
+		return;
+	}
+
 	for (auto s : *_base->getSoldiers())
 	{
 		if (s->getActivePrisoner() == _prisoner)
@@ -312,6 +334,8 @@ void PrisonerInfoState::btnTerminateClick(Action *)
 
 	_base->removePrisoner(_prisoner);
 	_agents.clear();
+	delete _prisoner;
+	_prisoner = nullptr;
 	_game->popState();
 }
 
@@ -369,6 +393,7 @@ void PrisonerInfoState::btnContainToggle(Action* action)
 	if (_ableContain)
 	{
 		_display = PRISONER_STATE_CONTAINING;
+		setAssignedAgents();
 	}
 }
 
@@ -383,21 +408,15 @@ void PrisonerInfoState::setAssignedAgents()
 	for (auto a : _base->getPersonnel(ROLE_AGENT))
 	{
 		a->getCurrentDuty(_game->getLanguage(), recovery, isBusy, isFree);
-		if (a->getActivePrisoner() && a->getActivePrisoner() == _prisoner)
+		const bool selected = _agents.find(a) != _agents.end();
+		const bool released = a->getActivePrisoner() == _prisoner && !selected;
+		if (!selected && !isBusy && (isFree || released))
 		{
-			_agents.insert(a);
-		}
-		else if (!isBusy && isFree)
-		{
-			if (_agents.find(a) != _agents.end())
-			{
-			}
-			else
-				freeAgents++;
+			freeAgents++;
 		}
 	}
 	int addition = 0;
-	if ((_display == PRISONER_STATE_INTERROGATION || _display == PRISONER_STATE_REQRUITING || _display == PRISONER_STATE_TORTURE)
+	if (!_agents.empty() && (_display == PRISONER_STATE_INTERROGATION || _display == PRISONER_STATE_REQRUITING || _display == PRISONER_STATE_TORTURE)
 		&& (_prisoner->getPrisonerState() == PRISONER_STATE_CONTAINING || _prisoner->getPrisonerState() == PRISONER_STATE_NONE))
 	{
 		//a-ha, we are changing prisoner state!

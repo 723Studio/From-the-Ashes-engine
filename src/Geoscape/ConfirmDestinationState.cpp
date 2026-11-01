@@ -35,6 +35,7 @@
 #include "../Interface/TextButton.h"
 #include "../Interface/ToggleTextButton.h"
 #include "../Savegame/SavedGame.h"
+#include "../Savegame/SavedBattleGame.h"
 #include "../Savegame/Craft.h"
 #include "../Savegame/Target.h"
 #include "../Savegame/Waypoint.h"
@@ -56,9 +57,13 @@ namespace OpenXcom
  * @param crafts Vector for the crafts part of a wing to retarget.
  * @param target Pointer to the selected target (NULL if it's just a point on the globe).
  */
-ConfirmDestinationState::ConfirmDestinationState(std::vector<Craft*> crafts, Target *target) : _crafts(std::move(crafts)), _target(target)
+ConfirmDestinationState::ConfirmDestinationState(std::vector<Craft*> crafts, Target *target) : _crafts(std::move(crafts)), _target(target), _newWaypoint(nullptr)
 {
 	Waypoint *w = dynamic_cast<Waypoint*>(_target);
+	if (w && w->getId() == 0)
+	{
+		_newWaypoint = w;
+	}
 	_screen = false;
 
 	Base *base = dynamic_cast<Base*>(_target);
@@ -173,7 +178,7 @@ ConfirmDestinationState::ConfirmDestinationState(std::vector<Craft*> crafts, Tar
  */
 ConfirmDestinationState::~ConfirmDestinationState()
 {
-
+	delete _newWaypoint;
 }
 
 /**
@@ -194,7 +199,7 @@ std::string ConfirmDestinationState::checkStartingCondition()
 	MissionSite* m = dynamic_cast<MissionSite*>(_target);
 	AlienBase* b = dynamic_cast<AlienBase*>(_target);
 
-	AlienDeployment *ruleDeploy = 0;
+	const AlienDeployment *ruleDeploy = 0;
 	if (u != 0)
 	{
 		ruleDeploy = _game->getMod()->getDeployment(u->getRules()->getType()); // no need to check for fake underwater UFOs here
@@ -227,6 +232,7 @@ std::string ConfirmDestinationState::checkStartingCondition()
 		return "";
 	}
 
+	ruleDeploy = SavedBattleGame::resolveDeployment(_game->getMod(), ruleDeploy, _game->getSavedGame());
 	RuleStartingCondition *rule = _game->getMod()->getStartingCondition(ruleDeploy->getStartingCondition());
 	if (rule == 0)
 	{
@@ -358,6 +364,7 @@ void ConfirmDestinationState::btnOkClick(Action *)
 	{
 		w->setId(_game->getSavedGame()->getId("STR_WAY_POINT"));
 		_game->getSavedGame()->getWaypoints()->push_back(w);
+		_newWaypoint = nullptr; // The campaign now owns the waypoint.
 	}
 
 	// first selected _craft (first shift-clicked craft) is wing leader; the other crafts follow the wing leader
@@ -415,11 +422,19 @@ void ConfirmDestinationState::btnTransferClick(Action *)
 	std::string errorMessage;
 	
 	Base *targetBase = dynamic_cast<Base*>(_target);
+	int crewLivingSpace = 0;
+	for (const auto* soldier : *_crafts.front()->getBase()->getSoldiers())
+	{
+		if (soldier->getCraft() == _crafts.front())
+		{
+			crewLivingSpace += soldier->getRules()->getLivingSpace();
+		}
+	}
 	if ((targetBase->getAvailableHangars() - targetBase->getUsedHangars()) <= 0) // don't know how you'd get less than 0 available hangars, but want to handle that just in case
 	{
 		errorMessage = tr("STR_NO_FREE_HANGARS_FOR_TRANSFER");
 	}
-	else if (_crafts.front()->getNumTotalSoldiers() > targetBase->getAvailableQuarters() - targetBase->getUsedQuarters())
+	else if (crewLivingSpace > targetBase->getAvailableQuarters() - targetBase->getUsedQuarters())
 	{
 		errorMessage = tr("STR_NO_FREE_ACCOMODATION_CREW");
 	}
@@ -459,6 +474,7 @@ void ConfirmDestinationState::btnTransferClick(Action *)
 		currentBase->removeCraft(_crafts.front(), false);
 		targetBase->getCrafts()->push_back(_crafts.front());
 		_crafts.front()->setBase(targetBase, false);
+		_crafts.front()->setIsAutoPatrolling(false);
 		_crafts.front()->returnToBase();
 		_crafts.front()->setStatus("STR_OUT");
 		if (_crafts.front()->getFuel() <= _crafts.front()->getFuelLimit(targetBase))
@@ -482,11 +498,6 @@ void ConfirmDestinationState::btnTransferClick(Action *)
  */
 void ConfirmDestinationState::btnCancelClick(Action *)
 {
-	Waypoint *w = dynamic_cast<Waypoint*>(_target);
-	if (w != 0 && w->getId() == 0)
-	{
-		delete w;
-	}
 	_game->popState();
 }
 

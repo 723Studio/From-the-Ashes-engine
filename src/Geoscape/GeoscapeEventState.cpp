@@ -552,6 +552,11 @@ void GeoscapeEventState::spawnCustomEvents(int playerChoice)
 	{
 		_game->getSavedGame()->spawnEvent(_game->getMod()->getEvent(eventName));
 	}
+	const std::string& weightedEvent = _customAnswers[playerChoice].weightedEvents.choose();
+	if (!weightedEvent.empty())
+	{
+		_game->getSavedGame()->spawnEvent(_game->getMod()->getEvent(weightedEvent));
+	}
 }
 
 GeoscapeEventState::~GeoscapeEventState()

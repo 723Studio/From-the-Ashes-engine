@@ -172,6 +172,7 @@ bool AlienStrategy::removeMission(const std::string &region, const std::string &
 		found->second->set(mission, 0);
 		if (found->second->empty())
 		{
+			delete found->second;
 			_regionMissions.erase(found);
 			_regionChances.set(region, 0);
 		}

@@ -472,6 +472,9 @@ void AllocateTrainingState::lstSoldiersClick(Action *action)
 				soldier->setActivePrisoner(0);
 				soldier->setProductionProject(0);
 				soldier->setResearchProject(0);
+				soldier->setIntelProject(nullptr);
+				soldier->setActiveContainedAlien(nullptr);
+				soldier->setActiveContainedMonster(nullptr);
 				soldier->setReturnToTrainingWhenHealed(false);
 			}
 		}

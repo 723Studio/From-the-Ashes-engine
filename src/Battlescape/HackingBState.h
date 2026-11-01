@@ -25,6 +25,7 @@ namespace OpenXcom
 class BattlescapeGame;
 class BattleUnit;
 class BattleItem;
+class BattleObject;
 class Tile;
 class Game;
 
@@ -38,10 +39,12 @@ private:
 	BattleUnit* _unit;
 	BattleItem* _item;
 	Tile* _targetTile;
+	BattleUnit* _targetUnit;
+	BattleObject* _targetObject;
 	bool _initialized;
 public:
 	/// Creates a new Hacking battle state.
-	HackingBState(BattlescapeGame* parent, BattleAction action, Game* game);
+	HackingBState(BattlescapeGame* parent, BattleAction action, Game* game, BattleUnit* targetUnit, BattleObject* targetObject);
 	/// Cleans up the Hacking battle state.
 	~HackingBState();
 	/// Initializes the state.

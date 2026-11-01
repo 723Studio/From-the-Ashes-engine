@@ -898,6 +898,10 @@ bool ProjectileFlyBState::validThrowRange(BattleAction *action, Position origin,
 	{
 		return true;
 	}
+	if (action->actor->getBaseStats()->strength <= 0)
+	{
+		return false;
+	}
 	int xdiff = action->target.x - action->actor->getPosition().x;
 	int ydiff = action->target.y - action->actor->getPosition().y;
 	int realDistanceSq = (xdiff * xdiff) + (ydiff * ydiff);
@@ -933,6 +937,10 @@ bool ProjectileFlyBState::validThrowRange(BattleAction *action, Position origin,
  */
 int ProjectileFlyBState::getMaxThrowDistance(int weight, int strength, int level)
 {
+	if (strength <= 0)
+	{
+		return 0;
+	}
 	double curZ = level + 0.5;
 	double dz = 1.0;
 	int dist = 0;

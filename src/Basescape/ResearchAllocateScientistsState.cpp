@@ -304,6 +304,12 @@ void ResearchAllocateScientistsState::initList(size_t scrl)
 			color = _lstScientists->getSecondaryColor();
 			_lstScientists->setCellText(row, 1, tr("STR_ASSIGNED_UC"));
 		}
+		else if ((*s)->getResearchProject() &&
+			(*s)->getResearchProject()->getRules() == _planningProject->getResearchRules() && !isBusy)
+		{
+			_lstScientists->setCellText(row, 1, tr("STR_NONE_UC"));
+			color = (*s)->getCraft() ? _otherCraftColor : _lstScientists->getColor();
+		}
 		else if (isBusy || !isFree)
 		{
 			color = _otherCraftColor;
@@ -326,6 +332,8 @@ void ResearchAllocateScientistsState::init()
 {
 	State::init();
 	_base->prepareSoldierStatsWithBonuses(); // refresh stats for sorting
+	_planningProject->setAssignedScientists();
+	_freeSpace = _planningProject->getWorkspace();
 	initList(0);
 }
 
@@ -356,35 +364,23 @@ void ResearchAllocateScientistsState::lstScientistsClick(Action *action)
 		if (matched)
 		{
 			_planningProject->removeScientist(s);
-			if (s->getResearchProject())
+			const bool assignedHere = s->getResearchProject() &&
+				s->getResearchProject()->getRules() == _planningProject->getResearchRules();
+			_lstScientists->setCellText(row, 1, assignedHere ? std::string(tr("STR_NONE_UC")) : duty);
+			if (!s->getResearchProject() || assignedHere)
 			{
-				if (s->getResearchProject()->getRules() == _planningProject->getResearchRules())
-				{
-					s->setResearchProject(0);
-					color = _lstScientists->getColor();
-					_lstScientists->setCellText(row, 1, tr("STR_NONE_UC"));
-					_freeSpace++;
-				}
-				else
-				{
-					color = _otherCraftColor;
-					_lstScientists->setCellText(row, 1, duty);
-				}
-			}
-			else
-			{
-				_lstScientists->setCellText(row, 1, duty);
 				_freeSpace++;
-				if (isBusy || !isFree || s->getCraft())
-				{
-					color = _otherCraftColor;
-				}
+			}
+			if (isBusy || (!isFree && !assignedHere) || s->getCraft())
+			{
+				color = _otherCraftColor;
 			}
 		}
 		else if (s->hasFullHealth() && !isBusy)
 		{
-			bool noProject = s->getResearchProject() == 0;
-			if (noProject && _freeSpace <= 0)
+			const bool consumesLabSpace = !s->getResearchProject() ||
+				s->getResearchProject()->getRules() == _planningProject->getResearchRules();
+			if (consumesLabSpace && _freeSpace <= 0)
 			{
 				_game->pushState(new ErrorMessageState(tr("STR_NOT_ENOUGH_LABSPACE"),
 					_palette,
@@ -397,7 +393,7 @@ void ResearchAllocateScientistsState::lstScientistsClick(Action *action)
 				_lstScientists->setCellText(row, 1, tr("STR_ASSIGNED_UC"));
 				color = _lstScientists->getSecondaryColor();
 				_planningProject->addScientist(s);
-				if (noProject)
+				if (consumesLabSpace)
 				{
 					_freeSpace--;
 				}

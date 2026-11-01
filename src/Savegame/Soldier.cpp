@@ -402,8 +402,9 @@ void Soldier::load(const YAML::YamlNodeReader& reader, const Mod *mod, SavedGame
 	reader.tryRead("isRookieAgent", _isRookieAgent);
 	reader.tryRead("isRookiePilot", _isRookiePilot);
 
-	// re-roll mana stats when upgrading saves
-	if (_currentStats.mana == 0 && _rules->getMaxStats().mana > 0)
+	// Only migrate saves that predate mana, not an explicitly saved zero or a template.
+	if (!soldierTemplate && !reader["currentStats"]["mana"] && !reader["initialStats"]["mana"]
+		&& _currentStats.mana == 0 && _rules->getMaxStats().mana > 0)
 	{
 		int reroll = RNG::generate(_rules->getMinStats().mana, _rules->getMaxStats().mana);
 		_currentStats.mana = reroll;
@@ -477,12 +478,13 @@ void Soldier::load(const YAML::YamlNodeReader& reader, const Mod *mod, SavedGame
 	}
 	if (reader["death"])
 	{
+		delete _death;
 		_death = new SoldierDeath();
 		_death->load(reader["death"]);
 	}
 	if (reader["diary"])
 	{
-		_diary = new SoldierDiary();
+		resetDiary();
 		_diary->load(reader["diary"], mod);
 	}
 	calcStatString(mod->getStatStrings());
@@ -490,6 +492,14 @@ void Soldier::load(const YAML::YamlNodeReader& reader, const Mod *mod, SavedGame
 	reader.tryRead("previousTransformations", _previousTransformations);
 	reader.tryRead("transformationBonuses", _transformationBonuses);
 	reader.tryRead("pendingTransformations", _pendingTransformations);
+	for (const auto& pending : _pendingTransformations)
+	{
+		if (pending.second <= 0)
+		{
+			throw Exception("Soldier '" + _name + "': pending transformation '" + pending.first +
+				"' must have a positive remaining time.");
+		}
+	}
 
 	if (const auto& spawnInfo = reader["randomTransformationBonuses"])
 	{
@@ -519,6 +529,7 @@ void Soldier::load(const YAML::YamlNodeReader& reader, const Mod *mod, SavedGame
 	}
 
 	_scriptValues.load(reader, shared);
+	prepareStatsWithBonuses(mod);
 }
 
 /**
@@ -885,17 +896,13 @@ std::string Soldier::getCurrentDuty(Language *lang, const BaseSumDailyRecovery &
 		std::ostringstream ss;
 		ss << lang->getString("STR_IN_TRANSFORMATION_UC");
 		ss << ">";
-		int days = 0;
+		int64_t hours = 0;
 		isBusy = true;
-		for (auto it = _pendingTransformations.cbegin(); it != _pendingTransformations.cend();)
+		for (const auto& pending : _pendingTransformations)
 		{
-			if ((*it).second > 0)
-			{
-				days += (*it).second;
-				++it;
-			}
+			hours += std::max(0, pending.second);
 		}
-		days = (int)ceil(days / 24);
+		const int64_t days = hours / 24 + (hours % 24 != 0);
 		ss << days;
 		return ss.str();
 	}
@@ -1759,6 +1766,9 @@ void Soldier::die(SoldierDeath *death)
 	_researchProject = 0;
 	_production = 0;
 	_intelProject = 0;
+	_prisoner = 0;
+	_containedAlien = 0;
+	_containedMonster = 0;
 	_psiTraining = false;
 	_training = false;
 	_returnToTrainingWhenHealed = false;

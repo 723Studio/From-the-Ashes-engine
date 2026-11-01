@@ -171,6 +171,28 @@ bool CovertOperation::claimResultNotification()
 	return true;
 }
 
+bool CovertOperation::isReadyToComplete(const SavedGame& save) const
+{
+	if (_over || _inBattlescape || _resultNotificationClaimed)
+	{
+		return false;
+	}
+	if (_results || _hasBattlescapeResolve || _cancelled)
+	{
+		return true;
+	}
+	for (const auto& research : _rule->getDisabledByResearch())
+	{
+		if (save.isResearched(research, false))
+		{
+			return true;
+		}
+	}
+	// think() adds one hour before checking the remaining effort. The first
+	// comparison also handles already-due saves without overflowing _spent + 1.
+	return _spent >= _cost || _spent + 1 == _cost;
+}
+
 void CovertOperationResults::load(const YAML::YamlNodeReader& reader)
 {
 	reader.tryRead("operationName", _operationName);
@@ -181,6 +203,7 @@ void CovertOperationResults::load(const YAML::YamlNodeReader& reader)
 	reader.tryRead("items", _bountyItems);
 	reader.tryRead("reputation", _reputation);
 	reader.tryRead("soldierDamage", _soldierDamage);
+	reader.tryRead("soldierNames", _soldierNames);
 	reader.tryRead("specialMessage", _specialMessage);
 	reader.tryRead("newResearchNotifications", _newResearchNotifications);
 	reader.tryRead("containedAlienStudiesUnblocked", _containedAlienStudiesUnblocked);
@@ -198,11 +221,14 @@ void CovertOperationResults::load(const YAML::YamlNodeReader& reader)
 	}
 	for (const auto& statsReader : reader["soldierStats"].children())
 	{
-		std::string soldierName;
+		const int soldierId = statsReader["soldierId"].readVal<int>();
 		UnitStats stats;
-		statsReader.tryRead("name", soldierName);
 		statsReader.tryRead("stats", stats);
-		_soldierStats.emplace_back(soldierName, stats);
+		if (_soldierNames.find(soldierId) == _soldierNames.end())
+		{
+			throw Exception("Covert operation results have no display name for soldier ID " + std::to_string(soldierId));
+		}
+		_soldierStats.emplace_back(soldierId, stats);
 	}
 }
 
@@ -220,6 +246,8 @@ void CovertOperationResults::save(YAML::YamlNodeWriter writer) const
 		writer.write("reputation", _reputation);
 	if (!_soldierDamage.empty())
 		writer.write("soldierDamage", _soldierDamage);
+	if (!_soldierNames.empty())
+		writer.write("soldierNames", _soldierNames);
 	if (!_specialMessage.empty())
 		writer.write("specialMessage", _specialMessage);
 	if (!_newResearchNotifications.empty())
@@ -250,10 +278,22 @@ void CovertOperationResults::save(YAML::YamlNodeWriter writer) const
 		{
 			auto entryWriter = statsWriter.write();
 			entryWriter.setAsMap();
-			entryWriter.write("name", soldierStats.first);
+			entryWriter.write("soldierId", soldierStats.first);
 			entryWriter.write("stats", soldierStats.second);
 		}
 	}
+}
+
+void CovertOperationResults::addSoldierDamage(const Soldier* soldier, int value)
+{
+	_soldierDamage[soldier->getId()] = value;
+	_soldierNames[soldier->getId()] = soldier->getName();
+}
+
+void CovertOperationResults::addSoldierImprovement(const Soldier* soldier, const UnitStats& improvement)
+{
+	_soldierStats.emplace_back(soldier->getId(), improvement);
+	_soldierNames[soldier->getId()] = soldier->getName();
 }
 
 void CovertOperationResults::addPromotion(const RolePromotion& promotion)
@@ -735,6 +775,7 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 
 	for (auto& soldier : soldiers)
 	{
+		soldier->prepareStatsWithBonuses(engine.getMod());
 		bool dead = false;
 		int wound = 0;
 		int soldierExpRolls = expRolls;
@@ -764,7 +805,7 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 			if (damage < soldier->getCurrentStats()->health)
 			{
 				soldier->setWoundRecovery(damage);
-				_results->addSoldierDamage(soldier->getName(), damage);
+				_results->addSoldierDamage(soldier, damage);
 			}
 			else
 			{
@@ -931,7 +972,7 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 		}
 
 		UnitStats improvement = *soldier->getCurrentStats() - origStat;
-		_results->addSoldierImprovement(soldier->getName(), improvement);
+		_results->addSoldierImprovement(soldier, improvement);
 
 		if (!dead && wound != 0)
 		{
@@ -964,11 +1005,15 @@ void CovertOperation::backgroundSimulation(Game& engine, bool operationResult, b
 				int health = j->getCurrentStats()->health;
 				int genDamage = (int)RNG::generate(health * 0.5, health * 0.9);
 				j->setWoundRecovery(genDamage);
-				_results->addSoldierDamage(j->getName(), genDamage);
+				if (j->isWounded())
+				{
+					j->setReturnToTrainingWhenOperationOver(NONE);
+				}
+				_results->addSoldierDamage(j, genDamage);
 			}
 			else
 			{
-				_results->addSoldierDamage(j->getName(), -10);
+				_results->addSoldierDamage(j, -10);
 				save.killSoldier(true, j); //RIP
 			}
 			++it;
@@ -1009,7 +1054,7 @@ void CovertOperation::finishOperation()
 		soldier->setJustSaved(false);
 
 		//if soldier was not hurt we return him or her to training, if settings allows it
-		if (soldier->getHealthMissing() == 0)
+		if (!soldier->isWounded())
 		{
 			ReturnToTrainings trainings = soldier->getReturnToTrainingsWhenOperationOver();
 			if (trainings == MARTIAL_TRAINING || trainings == BOTH_TRAININGS)

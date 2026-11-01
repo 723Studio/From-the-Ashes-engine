@@ -319,9 +319,12 @@ void Craft::initFixedWeapons(const Mod* mod)
 		size_t weaponIndex = 0;
 		for (auto* current : _weapons)
 		{
-			addCraftStats(-current->getRules()->getBonusStats());
-			setShield(getShield());
-			delete current;
+			if (current)
+			{
+				addCraftStats(-current->getRules()->getBonusStats());
+				setShield(getShield());
+				delete current;
+			}
 			_weapons.at(weaponIndex) = 0;
 			weaponIndex++;
 		}
@@ -423,6 +426,10 @@ void Craft::changeRules(RuleCraft *rules)
 {
 	_rules = rules;
 	_stats = rules->getStats();
+	for (auto* weapon : _weapons)
+	{
+		delete weapon;
+	}
 	_weapons.clear();
 	for (int i = 0; i < _rules->getWeapons(); ++i)
 	{

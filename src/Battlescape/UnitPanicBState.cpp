@@ -68,6 +68,7 @@ void UnitPanicBState::think()
 			BattleAction ba;
 			ba.actor = _unit;
 			ba.weapon = _unit->getMainHandWeapon();
+			if (ba.weapon)
 			{
 				// make autoshots if possible.
 				ba.type = BA_AUTOSHOT;

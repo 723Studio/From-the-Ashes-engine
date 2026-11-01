@@ -30,7 +30,6 @@ class Timer;
 class BattleUnit;
 class BattleObject;
 class Soldier;
-class Tile;
 class TileEngine;
 class HackingNode;
 class ConsoleTextManager;
@@ -50,7 +49,6 @@ class HackingState : public State
 	Text* _numTimeUnits, * _numHealth;
 	Bar* _barTimeUnits, * _barHealth;
 	InteractiveSurface* _exitButton;
-	Tile* _targetTile;
 	BattleUnit* _targetUnit = nullptr;
 	BattleUnit* _sourceUnit = nullptr;
 	Soldier* _soldier = nullptr;
@@ -84,8 +82,7 @@ class HackingState : public State
 	void animate();
 public:
 	/// Creates the HackingState.
-	//HackingState(BattleAction* action, BattleUnit* targetUnit, TileEngine* tileEngine);
-	HackingState(BattleAction* action, Tile* targetTile, TileEngine* tileEngine);
+	HackingState(BattleAction* action, BattleUnit* targetUnit, BattleObject* targetObject, TileEngine* tileEngine);
 	~HackingState();
 	/// Handler for right-clicking anything.
 	void handle(Action* action) override;

@@ -121,6 +121,8 @@ public:
 	bool hasPendingBattlescapeResults() const { return _hasBattlescapeResolve && !_inBattlescape && !_over; }
 	/// Claims the one result notification allowed for this in-memory operation.
 	bool claimResultNotification();
+	/// Would this hourly update resolve the operation or report a pending result?
+	bool isReadyToComplete(const SavedGame& save) const;
 	/// Sets if this operation is running in battlescape
 	void setInBattlescape(bool inBattle) { _inBattlescape = inBattle; }
 	/// Handle covert operation logic.
@@ -140,9 +142,12 @@ private:
 	bool _result;
 	std::string _finishDate;
 	int _score, _funds;
-	std::map<std::string, int> _bountyItems, _reputation, _soldierDamage;
+	std::map<std::string, int> _bountyItems, _reputation;
+	// Personnel are identified by ID; names are display snapshots only.
+	std::map<int, int> _soldierDamage;
+	std::map<int, std::string> _soldierNames;
 	std::string _specialMessage;
-	std::vector<std::pair<std::string, UnitStats>> _soldierStats;
+	std::vector<std::pair<int, UnitStats>> _soldierStats;
 	PromotionBatch _promotions;
 	std::vector<std::string> _newResearchNotifications;
 	bool _containedAlienStudiesUnblocked = false;
@@ -171,15 +176,15 @@ public:
 	void addReputation(const std::string& name, int value) { _reputation[name] = value; }
 	std::map<std::string, int> getReputation() { return _reputation; }
 	/// Manipulate soldier damage information
-	void addSoldierDamage(const std::string& name, int value) { _soldierDamage[name] = value; }
-	std::map<std::string, int> getSoldierDamage() { return _soldierDamage; }
+	void addSoldierDamage(const Soldier* soldier, int value);
+	const std::map<int, int>& getSoldierDamage() const { return _soldierDamage; }
+	const std::string& getSoldierName(int soldierId) const { return _soldierNames.at(soldierId); }
 	/// Manipulate special story messages
 	void setSpecialMessage(const std::string& message) { _specialMessage = message; }
 	std::string getSpecialMessage() { return _specialMessage; }
 	/// Handlers for soldier stat improvement
-	void addSoldierImprovement(std::string soldier, UnitStats improvement)
-	{ _soldierStats.push_back(std::pair<std::string, UnitStats>(soldier, improvement)); }
-	std::vector<std::pair<std::string, UnitStats>> getSoldierImprovement() const { return _soldierStats; }
+	void addSoldierImprovement(const Soldier* soldier, const UnitStats& improvement);
+	const std::vector<std::pair<int, UnitStats>>& getSoldierImprovement() const { return _soldierStats; }
 	void addPromotion(const RolePromotion& promotion);
 	const PromotionBatch& getPromotions() const { return _promotions; }
 	void setNewResearchNotifications(std::vector<std::string> ids)

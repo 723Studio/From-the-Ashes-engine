@@ -566,6 +566,7 @@ PrisonerProcessResult BasePrisoner::think(Game &engine)
 			for (auto s : _agents)
 			{
 				int statEffort = 0;
+				s->prepareStatsWithBonuses(&mod);
 				auto stats = s->getStatsWithAllBonuses();
 
 				statEffort = stats->charisma;

@@ -150,6 +150,11 @@ void SavedBattleGame::load(const YAML::YamlNodeReader& node, Mod *mod, SavedGame
 	int mapsize_x = reader["width"].readVal(_mapsize_x);
 	int mapsize_y = reader["length"].readVal(_mapsize_y);
 	int mapsize_z = reader["height"].readVal(_mapsize_z);
+	if (mapsize_x <= 0 || mapsize_y <= 0 || mapsize_z <= 0 ||
+		mapsize_x > INT_MAX / mapsize_y || mapsize_x * mapsize_y > INT_MAX / mapsize_z)
+	{
+		throw Exception("Corrupted battle save: invalid map dimensions.");
+	}
 	initMap(mapsize_x, mapsize_y, mapsize_z);
 
 	reader.tryRead("missionType", _missionType);
@@ -203,7 +208,12 @@ void SavedBattleGame::load(const YAML::YamlNodeReader& node, Mod *mod, SavedGame
 		for (const auto& tile : reader["tiles"].children())
 		{
 			Position pos = tile["position"].readVal<Position>();
-			getTile(pos)->load(tile);
+			Tile* targetTile = getTile(pos);
+			if (!targetTile)
+			{
+				throw Exception("Corrupted battle save: tile position is outside the map.");
+			}
+			targetTile->load(tile);
 		}
 	}
 	else
@@ -220,17 +230,39 @@ void SavedBattleGame::load(const YAML::YamlNodeReader& node, Mod *mod, SavedGame
 		serKey._mapDataID = reader["tileIDSize"].readVal<char>(serKey._mapDataID);
 		serKey._mapDataSetID = reader["tileSetIDSize"].readVal<char>(serKey._mapDataSetID);
 		serKey.boolFields = reader["tileBoolFieldsSize"].readVal<char>(1); // boolean flags used to be stored in an unmentioned byte (Uint8) :|
+		auto validFieldSize = [](Uint8 size)
+		{
+			return size == 1 || size == 2 || size == 4;
+		};
+		if (!validFieldSize(serKey.index) || !validFieldSize(serKey._fire) ||
+			!validFieldSize(serKey._smoke) || !validFieldSize(serKey._mapDataID) ||
+			!validFieldSize(serKey._mapDataSetID) || !validFieldSize(serKey.boolFields))
+		{
+			throw Exception("Corrupted battle save: unsupported binary tile field size.");
+		}
+		const size_t requiredBytes = serKey.index + 4 * serKey._mapDataID +
+			4 * serKey._mapDataSetID + serKey._fire + serKey._smoke + serKey.boolFields;
+		if (serKey.totalBytes < requiredBytes || totalTiles > _tiles.size())
+		{
+			throw Exception("Corrupted battle save: invalid binary tile record size or count.");
+		}
 
 		// load binary tile data!
 		std::vector<char> binTiles = reader["binTiles"].readValBase64();
+		if (totalTiles > binTiles.size() / serKey.totalBytes)
+		{
+			throw Exception("Corrupted battle save: truncated binary tile data.");
+		}
 
 		Uint8* ptr = (Uint8*)binTiles.data();
-		Uint8* dataEnd = ptr + totalTiles * serKey.totalBytes;
 
-		while (ptr < dataEnd)
+		for (size_t i = 0; i < totalTiles; ++i)
 		{
 			int index = unserializeInt(&ptr, serKey.index);
-			assert(index >= 0 && index < _mapsize_x * _mapsize_z * _mapsize_y);
+			if (index < 0 || static_cast<size_t>(index) >= _tiles.size())
+			{
+				throw Exception("Corrupted battle save: binary tile index is outside the map.");
+			}
 			_tiles[index].loadBinary(ptr, serKey); // loadBinary's privileges to advance *r have been revoked
 			ptr += serKey.totalBytes - serKey.index; // r is now incremented strictly by totalBytes in case there are obsolete fields present in the data
 		}
@@ -279,7 +311,15 @@ void SavedBattleGame::load(const YAML::YamlNodeReader& node, Mod *mod, SavedGame
 		int id = unitReader["id"].readVal<int>();
 		BattleUnit* unit;
 		if (id < BattleUnit::MAX_SOLDIER_ID) // Unit is linked to a geoscape soldier
-			unit = new BattleUnit(mod, savedGame->getSoldier(id), _depth, nullptr); // look up the matching soldier
+		{
+			Soldier* soldier = savedGame->getSoldier(id);
+			if (!soldier)
+			{
+				throw Exception("Corrupted battle save: no strategic soldier exists for unit id " +
+					std::to_string(id) + ".");
+			}
+			unit = new BattleUnit(mod, soldier, _depth, nullptr);
+		}
 		else
 		{
 			std::string type = unitReader["genUnitType"].readVal<std::string>();
@@ -333,6 +373,7 @@ void SavedBattleGame::load(const YAML::YamlNodeReader& node, Mod *mod, SavedGame
 			int id = itemReader["id"].readVal<int>();
 			BattleItem* item = new BattleItem(mod->getItem(type), &id); //passing id as a pointer to serve as a counter is no longer used
 			item->load(itemReader, mod, this->getMod()->getScriptGlobal());
+			keyAndVector.second->push_back(item);
 
 			if (BattleUnit* owner = findUnitById(itemReader["owner"]))
 			{
@@ -350,11 +391,17 @@ void SavedBattleGame::load(const YAML::YamlNodeReader& node, Mod *mod, SavedGame
 			{
 				Position pos = itemReader["position"].readVal(Position(-1, -1, -1));
 				if (pos.x != -1)
-					getTile(pos)->addItem(item, item->getSlot());
+				{
+					Tile* targetTile = getTile(pos);
+					if (!targetTile)
+					{
+						throw Exception("Corrupted battle save: item position is outside the map.");
+					}
+					targetTile->addItem(item, item->getSlot());
+				}
 			}
 			_itemId = std::max(_itemId, item->getId());
 			itemIndex[item->getId()] = item;
-			keyAndVector.second->push_back(item);
 		}
 	}
 	_itemId++;
@@ -493,6 +540,10 @@ void SavedBattleGame::loadMapResources(Mod *mod)
 			_tiles[i].getMapData(&mdID, &mdsID, tp);
 			if (mdID != -1 && mdsID != -1)
 			{
+				if (mdsID < 0 || static_cast<size_t>(mdsID) >= _mapDataSets.size())
+				{
+					throw Exception("Corrupted battle save: tile map data set index is out of range.");
+				}
 				_tiles[i].setMapData(_mapDataSets[mdsID]->getObject(mdID), mdID, mdsID, tp);
 			}
 			else
@@ -761,7 +812,7 @@ AlienDeployment *SavedBattleGame::getLegacyDeployment() const
  * keeps map generation, objectives, scripts, stealth and debriefing on the
  * same rule even if the campaign state is later reloaded.
  */
-const AlienDeployment *SavedBattleGame::resolveDeployment(const AlienDeployment *deployment, const SavedGame *campaign) const
+const AlienDeployment *SavedBattleGame::resolveDeployment(const Mod *mod, const AlienDeployment *deployment, const SavedGame *campaign)
 {
 	std::set<std::string> visited;
 	while (deployment)
@@ -797,7 +848,7 @@ const AlienDeployment *SavedBattleGame::resolveDeployment(const AlienDeployment 
 			return deployment;
 		}
 
-		AlienDeployment *next = _rule->getDeployment(alternative);
+		AlienDeployment *next = mod->getDeployment(alternative);
 		if (!next)
 		{
 			throw Exception("Alien deployment '" + deployment->getType() +
@@ -813,7 +864,7 @@ const AlienDeployment *SavedBattleGame::resolveDeployment(const AlienDeployment 
  */
 const AlienDeployment *SavedBattleGame::selectActiveDeployment(const AlienDeployment *deployment, const SavedGame *campaign)
 {
-	const AlienDeployment *selected = resolveDeployment(deployment, campaign);
+	const AlienDeployment *selected = resolveDeployment(_rule, deployment, campaign);
 	_activeDeployment = selected ? selected->getType() : "";
 	return selected;
 }
@@ -1087,6 +1138,42 @@ void SavedBattleGame::clearUnitSelection(BattleUnit *unit)
 	{
 		_lastSelectedUnit = nullptr;
 	}
+}
+
+void SavedBattleGame::clearUnitReferences(BattleUnit *unit)
+{
+	clearUnitSelection(unit);
+	_exposedUnits.erase(std::remove(_exposedUnits.begin(), _exposedUnits.end(), unit), _exposedUnits.end());
+	_fallingUnits.remove(unit);
+	for (auto* other : _units)
+	{
+		other->removeFromVisibleUnits(unit);
+		auto& spotted = other->getUnitsSpottedThisTurn();
+		spotted.erase(std::remove(spotted.begin(), spotted.end(), unit), spotted.end());
+		if (other->getPreviousOwner() == unit)
+			other->setPreviousOwner(nullptr);
+		if (other->getCharging() == unit)
+			other->setCharging(nullptr);
+		if (other->getAIModule())
+			other->getAIModule()->forgetUnit(unit);
+	}
+	// Recovery and deferred-deletion containers are not part of _items.
+	for (auto* items : { &_items, &_recoverGuaranteed, &_recoverConditional, &_deleted })
+	{
+		for (auto* item : *items)
+		{
+			if (item->getOwner() == unit)
+				item->moveToOwner(nullptr);
+			if (item->getPreviousOwner() == unit)
+				item->setPreviousOwner(nullptr);
+			if (item->getUnit() == unit)
+				item->setUnit(nullptr);
+		}
+	}
+	if (_pathfinding)
+		_pathfinding->forgetUnit(unit);
+	if (_tileEngine)
+		_tileEngine->forgetUnit(unit);
 }
 
 /**
@@ -2316,24 +2403,17 @@ BattleItem *SavedBattleGame::createTempItem(const RuleItem *rule)
  * Create new temporary unit. Unit is not added to unit list and is not initialized fully.
  * @param rules Unit config
  * @param faction Faction of unit
- * @param nextUnitId Optional next id of unit, if not given then it try get value based on last unit.
+ * @param nextUnitId Optional minimum generated-unit ID.
  * @return New temporary unit.
  */
 BattleUnit *SavedBattleGame::createTempUnit(const Unit *rules, UnitFaction faction, int nextUnitId)
 {
-	int maxId = INT_MIN;
-	for (auto& unit : *getUnits())
-	{
-		if (unit->getId() > maxId)
-		{
-			maxId = unit->getId();
-		}
-	}
+	const int unitId = std::max(getNextUnitId(), nextUnitId);
 	BattleUnit *newUnit = new BattleUnit(
 		getMod(),
 		const_cast<Unit*>(rules),
 		faction,
-		nextUnitId > 0 ? nextUnitId : maxId + 1,
+		unitId,
 		getEnviroEffects(),
 		rules->getArmor(),
 		faction == FACTION_HOSTILE ? _rule->getStatAdjustment(getGeoscapeSave()->getDifficulty()) : nullptr,
@@ -2354,6 +2434,18 @@ BattleUnit *SavedBattleGame::createTempUnit(const Unit *rules, UnitFaction facti
 	}
 
 	return newUnit;
+}
+
+int SavedBattleGame::getNextUnitId(int count) const
+{
+	if (count <= 0)
+		throw Exception("Generated-unit ID allocation requires a positive count.");
+	int maxId = BattleUnit::MAX_SOLDIER_ID - 1;
+	for (const auto* unit : _units)
+		maxId = std::max(maxId, unit->getId());
+	if (maxId > INT_MAX - count)
+		throw Exception("Generated-unit ID range exhausted.");
+	return maxId + 1;
 }
 
 /**
@@ -2857,18 +2949,19 @@ void SavedBattleGame::removeUnconsciousBodyItem(BattleUnit *bu)
 {
 	int size = bu->getArmor()->getSize();
 	size *= size;
-	// remove the unconscious body item corresponding to this unit
-	for (auto iter = getItems()->begin(); iter != getItems()->end(); )
+	// Collect first: removeItem() invalidates iterators into the item vector.
+	std::vector<BattleItem*> bodyItems;
+	for (auto* item : *getItems())
 	{
-		if ((*iter)->getUnit() == bu)
+		if (item->getUnit() == bu)
 		{
-			removeItem((*iter)); //TODO: if used on anything other that corpse it will crash as it could remove MORE than one item from `getItems()` and them go pass `!= end()`
+			bodyItems.push_back(item);
 			if (--size == 0) break;
 		}
-		else
-		{
-			++iter;
-		}
+	}
+	for (auto* item : bodyItems)
+	{
+		removeItem(item);
 	}
 }
 

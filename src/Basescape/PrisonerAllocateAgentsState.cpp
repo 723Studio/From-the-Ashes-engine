@@ -280,6 +280,10 @@ void PrisonerAllocateAgentsState::initList(size_t scrl)
 			color = _lstAgents->getSecondaryColor();
 			_lstAgents->setCellText(row, 1, tr("STR_ASSIGNED_UC"));
 		}
+		else if ((*s)->getActivePrisoner() == _selectedPrisoner->getPrisoner() && !isBusy)
+		{
+			_lstAgents->setCellText(row, 1, tr("STR_NONE_UC"));
+		}
 		else if (isBusy || !isFree)
 		{
 			color = _otherCraftColor;

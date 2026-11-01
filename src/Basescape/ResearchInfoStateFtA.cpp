@@ -27,7 +27,9 @@
 #include "../Interface/TextButton.h"
 #include "../Interface/TextList.h"
 #include "../Interface/Window.h"
+#include "../Menu/ErrorMessageState.h"
 #include "../Mod/Mod.h"
+#include "../Mod/RuleInterface.h"
 #include "../Mod/RuleResearch.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/ItemContainer.h"
@@ -45,7 +47,7 @@ namespace OpenXcom
  * @param base Pointer to the base to get info from.
  * @param rule A RuleResearch which will be used to create a new ResearchProject
  */
-ResearchInfoStateFtA::ResearchInfoStateFtA(Base *base, const RuleResearch *rule) : _base(base), _rule(rule)
+ResearchInfoStateFtA::ResearchInfoStateFtA(Base *base, const RuleResearch *rule) : _base(base), _project(nullptr), _rule(rule)
 {
 	_newProject = true;
 	buildUi();
@@ -58,9 +60,16 @@ ResearchInfoStateFtA::ResearchInfoStateFtA(Base *base, const RuleResearch *rule)
  * @param base Pointer to the base to get info from.
  * @param project A ResearchProject to modify
  */
-ResearchInfoStateFtA::ResearchInfoStateFtA(Base *base, ResearchProject *project) : _base(base), _project(project)
+ResearchInfoStateFtA::ResearchInfoStateFtA(Base *base, ResearchProject *project) : _base(base), _project(project), _rule(nullptr)
 {
 	_newProject = false;
+	for (auto* scientist : _base->getPersonnel(ROLE_SCIENTIST))
+	{
+		if (scientist->getResearchProject() == _project)
+		{
+			_scientists.insert(scientist);
+		}
+	}
 	buildUi();
 }
 
@@ -287,6 +296,10 @@ void ResearchInfoStateFtA::fillScientistsList(size_t scrl)
 		size_t i = 0;
 		for (auto stat : _researchStats)
 		{
+			if (i == stats.size() - 1)
+			{
+				break; // Six displayed research stats, with one slot reserved for Insight.
+			}
 			stats[i++] = std::to_string(GetStatValue(*s, stat.second));
 		}
 		stats[i] = std::to_string(s->getCurrentStats()->insight);
@@ -302,6 +315,15 @@ void ResearchInfoStateFtA::fillScientistsList(size_t scrl)
  */
 void ResearchInfoStateFtA::btnOkClick(Action *)
 {
+	setAssignedScientists();
+	if (_workSpace < 0)
+	{
+		_game->pushState(new ErrorMessageState(tr("STR_NOT_ENOUGH_LABSPACE"), _palette,
+			_game->getMod()->getInterface("soldierInfo")->getElement("errorMessage")->color,
+			"BACK01.SCR", _game->getMod()->getInterface("soldierInfo")->getElement("errorPalette")->color));
+		return;
+	}
+
 	if (_newProject)
 	{
 		int rng = RNG::generate(50, 150);
@@ -314,10 +336,18 @@ void ResearchInfoStateFtA::btnOkClick(Action *)
 		_base->addResearch(_project);
 		if (getResearchRules()->needItem() && getResearchRules()->destroyItem())
 		{
-			_base->getStorageItems()->removeItem(getResearchRules()->getName(), 1);
+			_base->getStorageItems()->removeItem(getResearchRules()->getNeededItem(), 1);
 		}
 	}
 
+	// Apply the preview only when the whole dialog is confirmed.
+	for (auto* scientist : *_base->getSoldiers())
+	{
+		if (scientist->getResearchProject() == _project && _scientists.find(scientist) == _scientists.end())
+		{
+			scientist->setResearchProject(nullptr);
+		}
+	}
 	for (auto s : _scientists)
 	{
 		s->clearBaseDuty();
@@ -344,10 +374,8 @@ void ResearchInfoStateFtA::btnCancelClick(Action *)
  */
 void ResearchInfoStateFtA::btnAbandonClick(Action *)
 {
-	for (auto s : _scientists)
-	{
-		s->setResearchProject(0);
-	}
+	// Base clears actual assignments to this project. Preview selections may
+	// still belong to other projects and must not be detached from them.
 	_base->removeResearch(_project);
 	_game->popState();
 }
@@ -373,29 +401,24 @@ void ResearchInfoStateFtA::setAssignedScientists()
 	for (auto s : _base->getPersonnel(ROLE_SCIENTIST))
 	{
 		s->getCurrentDuty(_game->getLanguage(), recovery, isBusy, isFree);
-		if (s->getResearchProject() && s->getResearchProject()->getRules() == this->getResearchRules())
+		const bool selected = _scientists.find(s) != _scientists.end();
+		const bool released = _project && s->getResearchProject() == _project && !selected;
+		if (!selected && !isBusy && (isFree || released))
 		{
-			_scientists.insert(s);
-		}
-		else if (!isBusy && isFree)
-		{
-			if (_scientists.find(s) != _scientists.end())
-			{ }
-			else
-				freeScientists++;
+			freeScientists++;
 		}
 	}
 	_txtAvailableScientist->setText(tr("STR_SCIENTISTS_AVAILABLE_UC").arg(freeScientists));
 
-	size_t teamSize = _scientists.size();
+	int additionalLabSpace = 0;
 	for (auto s : _scientists)
 	{
-		if (s->getResearchProject() && s->getResearchProject()->getRules() != this->getResearchRules())
+		if (!s->getResearchProject() || s->getResearchProject() == _project)
 		{
-			teamSize--;
+			++additionalLabSpace;
 		}
 	}
-	_workSpace = _base->getFreeLaboratories(_project) - teamSize;
+	_workSpace = _base->getFreeLaboratories(_project) - additionalLabSpace;
 	_txtAvailableSpace->setText(tr("STR_LABORATORY_SPACE_AVAILABLE_UC").arg(_workSpace));
 }
 

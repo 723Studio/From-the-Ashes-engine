@@ -1542,6 +1542,16 @@ void Pathfinding::setUnit(BattleUnit* unit)
 	_unit = unit;
 }
 
+void Pathfinding::forgetUnit(BattleUnit *unit)
+{
+	if (_unit == unit)
+	{
+		removePreview();
+		abortPath();
+		_unit = nullptr;
+	}
+}
+
 /**
  * Gets a reference to the current path.
  * @return the actual path.

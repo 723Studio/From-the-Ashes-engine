@@ -18,6 +18,7 @@
  */
 #include <algorithm>
 #include <assert.h>
+#include <set>
 #include <sstream>
 #include "BattlescapeGenerator.h"
 #include "MapEditor.h"
@@ -45,7 +46,6 @@
 #include "../Engine/Game.h"
 #include "../Engine/CrossPlatform.h"
 #include "../Engine/FileMap.h"
-#include "../Engine/Options.h"
 #include "../Engine/RNG.h"
 #include "../Engine/Exception.h"
 #include "../Engine/Logger.h"
@@ -90,7 +90,7 @@ BattlescapeGenerator::BattlescapeGenerator(Game *game) :
  */
 BattlescapeGenerator::~BattlescapeGenerator()
 {
-
+	delete _dummy;
 }
 
 /**
@@ -253,9 +253,25 @@ void BattlescapeGenerator::nextStage()
 	{
 		return u->getOriginalFaction() == FACTION_HOSTILE && u->getStatus() == STATUS_UNCONSCIOUS;
 	};
+	// Technical body items may be non-recoverable even when their living unit
+	// has a persistent capture profile. Soldiers need no generated-unit rules.
+	auto isRecoverableStageItem = [](const BattleItem* item)
+	{
+		const BattleUnit* unit = item->getUnit();
+		if (item->getRules()->isRecoverable() || (unit && unit->getGeoscapeSoldier()))
+		{
+			return true;
+		}
+		const Unit* rules = unit ? unit->getUnitRules() : nullptr;
+		return item->getRules()->getBattleType() == BT_CORPSE && rules &&
+			unit->getOriginalFaction() == FACTION_HOSTILE && unit->getHealth() > 0 &&
+			(unit->getStatus() == STATUS_UNCONSCIOUS ||
+				(unit->isIgnored() && unit->getStunlevel() >= unit->getHealth())) &&
+			(rules->getPrisoner() || rules->getContainedAlien() || rules->getContainedMonster());
+	};
 
 	// preventively drop all units from soldier's inventory (makes handling easier)
-	// 1. no alien/civilian living, dead or unconscious is allowed to transition
+	// 1. unconscious hostiles on the exit may transition with their body items
 	// 2. no dead xcom unit is allowed to transition
 	// 3. only living or unconscious xcom units can transition
 	for (auto* bu : *_save->getUnits())
@@ -294,6 +310,26 @@ void BattlescapeGenerator::nextStage()
 		}
 	}
 
+	// Remember eligible captives before clearing positions on the old map.
+	std::set<BattleUnit*> captivesToTransfer;
+	if (_save->isAborted())
+	{
+		for (auto* item : *_save->getItems())
+		{
+			BattleUnit* unit = item->getUnit();
+			if (item->getRules()->getBattleType() == BT_CORPSE &&
+				unit && isStunnedHostile(unit) && unit->getHealth() > 0 && isInExit(unit) &&
+				!item->getOwner() && item->getFuseTimer() == -1 && isRecoverableStageItem(item))
+			{
+				captivesToTransfer.insert(unit);
+			}
+		}
+	}
+	auto transfersCaptive = [&captivesToTransfer](BattleUnit* unit)
+	{
+		return captivesToTransfer.find(unit) != captivesToTransfer.end();
+	};
+
 	int aliensAlive = 0;
 	// send all enemy units, or those not in endpoint area (if aborted) to time out
 	for (auto* bu : *_save->getUnits())
@@ -301,12 +337,13 @@ void BattlescapeGenerator::nextStage()
 		bu->clearVisibleUnits();
 		bu->clearVisibleTiles();
 
-		 if (_save->isAborted() && isInExit(bu) && isStunnedHostile(bu))	//don't kill stunned aliens laying in the exit area
+		if (transfersCaptive(bu))
 		{
-			 continue;
+			// AI contains nodes and targets from the old map. Rebuild it below
+			// without replacing the unit or changing its unconscious state.
+			bu->setAIModule(nullptr);
 		}
-
-		if (bu->getStatus() != STATUS_DEAD                              // if they're not dead
+		else if (bu->getStatus() != STATUS_DEAD                         // if they're not dead
 			&& ((bu->getOriginalFaction() == FACTION_PLAYER               // and they're a soldier
 			&& _save->isAborted()											  // and you aborted
 			&& !isInExit(bu))                                                     // and they're not on the exit
@@ -329,7 +366,10 @@ void BattlescapeGenerator::nextStage()
 				bu->setAIModule(0);
 			}
 		}
-		bu->setFire(0);
+		if (!transfersCaptive(bu))
+		{
+			bu->setFire(0);
+		}
 		bu->setTile(nullptr, _save);
 		bu->setPosition(TileEngine::invalid, false);
 	}
@@ -409,17 +449,23 @@ void BattlescapeGenerator::nextStage()
 			std::vector<BattleItem*> *toContainer = &removeFromGame;
 			// if it's recoverable, and it's not owned by someone
 			BattleUnit *tmpUnit = bi->getUnit();
-			if (((tmpUnit && tmpUnit->getGeoscapeSoldier()) || bi->getRules()->isRecoverable()) && !bi->getOwner())
+			if (isRecoverableStageItem(bi) && !bi->getOwner())
 			{
 				// first off: don't count primed grenades on the floor
 				if (bi->getFuseTimer() == -1)
 				{
-					// protocol 1: all defenders dead, recover all items.
-					if (aliensAlive == 0 || autowin)
+					// A captive carried through the exit stays in the battle even
+					// if its technical body item has research requirements.
+					if (transfersCaptive(tmpUnit))
 					{
-						// any corpses or unconscious units get put in the skyranger, as well as any unresearched items (UPD: except stunned aliens in exit area)
+						toContainer = &takeToNextStage;
+					}
+					// protocol 1: all defenders dead, recover all items.
+					else if (aliensAlive == 0 || autowin)
+					{
+						// Bodies and unresearched items go home; transferring captives were handled above.
 						if ((tmpUnit &&
-							((tmpUnit->getOriginalFaction() != FACTION_PLAYER && !(isStunnedHostile(tmpUnit) && isInExit(tmpUnit) && _save->isAborted())) ||
+							((tmpUnit->getOriginalFaction() != FACTION_PLAYER) ||
 							tmpUnit->getStatus() == STATUS_DEAD))
 							|| !_game->getSavedGame()->isResearched(bi->getRules()->getRequirements()))
 						{
@@ -452,7 +498,7 @@ void BattlescapeGenerator::nextStage()
 								{
 									// apply similar logic (for units) as in protocol 1
 									if (tmpUnit &&
-										((tmpUnit->getOriginalFaction() != FACTION_PLAYER && !(isStunnedHostile(tmpUnit) && isInExit(tmpUnit) && _save->isAborted())) ||
+										((tmpUnit->getOriginalFaction() != FACTION_PLAYER) ||
 										tmpUnit->getStatus() == STATUS_DEAD))
 									{
 										toContainer = takeHomeConditional;
@@ -689,24 +735,6 @@ void BattlescapeGenerator::nextStage()
 				}
 			}
 		}
-		else if (bu->getStatus() == STATUS_UNCONSCIOUS) // transit stunned enemies
-		{
-			Node *node = _save->getSpawnNode(NR_XCOM, bu);
-			if (node || placeUnitNearFriend(bu))
-			{
-				if (node)
-				{
-					_save->setUnitPosition(bu, node->getPosition());
-				}
-
-				if (!_craftInventoryTile)
-				{
-					_craftInventoryTile = bu->getTile();
-				}
-
-				bu->setInventoryTile(_craftInventoryTile);
-			}
-		}
 	}
 	if (soldiersPlaced == 0)
 	{
@@ -737,8 +765,14 @@ void BattlescapeGenerator::nextStage()
 			}
 		}
 	}
+	for (auto* unit : captivesToTransfer)
+	{
+		// The body supplies the position; do not occupy a soldier spawn tile.
+		// The normal revival path will place the unit when it wakes up.
+		unit->setAIModule(new AIModule(_save, unit, nullptr));
+	}
 
-	_unitSequence = _save->getUnits()->back()->getId() + 1;
+	_unitSequence = _save->getNextUnitId();
 
 	// Let's figure out what race we're up against.
 	_alienRace = ruleDeploy->getRace();
@@ -1156,6 +1190,20 @@ void BattlescapeGenerator::deployXCOM(const RuleStartingCondition* startingCondi
 	{
 		_base = _craft->getBase();
 		_craft->resetTemporaryCustomVehicleDeploymentFlags();
+		if (_craftDeployed && _craft->hasCustomDeployment() && _craft->getRules() == _craftRules)
+		{
+			auto& customDeployment = _craft->getCustomSoldierDeployment();
+			for (auto* soldier : *_base->getSoldiers())
+			{
+				if (soldier->getCraft() == _craft && customDeployment.find(soldier->getId()) == customDeployment.end())
+				{
+					Log(LOG_WARNING) << "Custom craft deployment is missing soldier " << soldier->getId()
+						<< "; falling back to the craft's standard deployment.";
+					_craft->resetCustomDeployment();
+					break;
+				}
+			}
+		}
 	}
 	if (_covertOperation != 0)
 	{
@@ -1373,12 +1421,15 @@ void BattlescapeGenerator::deployXCOM(const RuleStartingCondition* startingCondi
 					soldier->clearEquipmentLayout();
 				}
 				BattleUnit *unit = addXCOMUnit(new BattleUnit(_game->getMod(), soldier, _save->getDepth(), _save->getStartingCondition()));
-				if (soldier->isJustSaved()) //case we've just added this soldier via covert operation's results
+				if (unit)
 				{
-					unit->setSpecialObjective(SPECOBJ_FRIENDLY_VIP);
+					if (soldier->isJustSaved()) //case we've just added this soldier via covert operation's results
+					{
+						unit->setSpecialObjective(SPECOBJ_FRIENDLY_VIP);
+					}
+					if (!_save->getSelectedUnit())
+						_save->setSelectedUnit(unit);
 				}
-				if (unit && !_save->getSelectedUnit())
-					_save->setSelectedUnit(unit);
 			}
 		}
 	}
@@ -1404,16 +1455,9 @@ void BattlescapeGenerator::deployXCOM(const RuleStartingCondition* startingCondi
 		_craftInventoryTile = firstTile;
 	}
 
-	if (_save->getUnits()->empty())
+	if (_save->getUnits()->empty() || !_save->getSelectedUnit())
 	{
-		if (!Options::debug)
-		{
-			throw Exception("Map generator encountered an error: no xcom units could be placed on the map.");
-		}
-		else
-		{
-			Log(LOG_ERROR) << "Map generator encountered an error: no xcom units could be placed on the map.";
-		}
+		throw Exception("Map generator encountered an error: no xcom units could be placed on the map.");
 	}
 
 	// maybe we should assign all units to the first tile of the skyranger before the inventory pre-equip and then reassign them to their correct tile afterwards?
@@ -1658,9 +1702,14 @@ BattleUnit *BattlescapeGenerator::addXCOMUnit(BattleUnit *unit)
 			int dir = 0;
 			if (unit->getGeoscapeSoldier())
 			{
-				auto& depl = _craft->getCustomSoldierDeployment().at(unit->getGeoscapeSoldier()->getId()); // crashes if not found
-				pos = depl.first + Position(_craftPos.x * 10, _craftPos.y * 10, _craftZ);
-				dir = depl.second;
+				auto& customDeployment = _craft->getCustomSoldierDeployment();
+				auto depl = customDeployment.find(unit->getGeoscapeSoldier()->getId());
+				if (depl == customDeployment.end())
+				{
+					throw Exception("Unit generator encountered an error: custom craft deployment is missing a soldier.");
+				}
+				pos = depl->second.first + Position(_craftPos.x * 10, _craftPos.y * 10, _craftZ);
+				dir = depl->second.second;
 				canPlace = true;
 			}
 			else
@@ -1758,19 +1807,20 @@ BattleUnit *BattlescapeGenerator::addXCOMUnit(BattleUnit *unit)
 			else
 			{
 				int tries = 100;
-				while (tries)
+				int blockCountX = static_cast<int>(_blocks.size());
+				int blockCountY = blockCountX > 0 ? static_cast<int>(_blocks.front().size()) : 0;
+				while (tries && blockCountX > 0 && blockCountY > 0)
 				{
-					int blockX = RNG::generate(1, (_mapsize_x / 10) - 1);
-					int blockY = RNG::generate(1, (_mapsize_y / 10) - 1);
+					int blockX = RNG::generate(blockCountX > 1 ? 1 : 0, blockCountX - 1);
+					int blockY = RNG::generate(blockCountY > 1 ? 1 : 0, blockCountY - 1);
 					MapBlock* block = _blocks[blockX][blockY];
-					bool checkBlock = block->getSizeX() > 0; //avoid memory-blanck positions caused by 2x2 blocks
-					if (checkBlock && (!block->isInGroup(1) && !block->isInGroup(2) && !block->isInGroup(3) && !block->isInGroup(4)))
+					if (block && block != _dummy && !block->isInGroup(1) && !block->isInGroup(2) && !block->isInGroup(3) && !block->isInGroup(4))
 					{
 						int iter = 100;
 						while (iter) // now we look for fine place inside mapblock
 						{
-							int localX = RNG::generate(0, block->getSizeX());
-							int localY = RNG::generate(0, block->getSizeY());
+							int localX = RNG::generate(0, block->getSizeX() - 1);
+							int localY = RNG::generate(0, block->getSizeY() - 1);
 							int localZ = 0;
 							//if (block->getSizeZ() > 0) localZ = RNG::generate(0, block->getSizeZ() - 1);
 							Position pos = Position(localX + (blockX * 10), localY + (blockY * 10), localZ);
@@ -2029,7 +2079,7 @@ BattleUnit *BattlescapeGenerator::addAlien(Unit *rules, int alienRank, bool outs
 		unit->getAIModule()->setStartNode(node);
 		unit->setRankInt(alienRank);
 		int dir = _save->getTileEngine()->faceWindow(node->getPosition());
-		Position craft = _game->getSavedGame()->getSavedBattle()->getUnits()->at(0)->getPosition();
+		Position craft = _save->getSelectedUnit()->getPosition();
 		if (Position::distance2d(node->getPosition(), craft) <= 20 && RNG::percent(aliensFacingCraftOdds))
 			dir = unit->directionTo(craft);
 		if (dir != -1)
@@ -2048,7 +2098,7 @@ BattleUnit *BattlescapeGenerator::addAlien(Unit *rules, int alienRank, bool outs
 		{
 			unit->setRankInt(alienRank);
 			int dir = _save->getTileEngine()->faceWindow(unit->getPosition());
-			Position craft = _game->getSavedGame()->getSavedBattle()->getUnits()->at(0)->getPosition();
+			Position craft = _save->getSelectedUnit()->getPosition();
 			if (Position::distance2d(unit->getPosition(), craft) <= 20 && RNG::percent(aliensFacingCraftOdds))
 				dir = unit->directionTo(craft);
 			if (dir != -1)
@@ -3027,6 +3077,8 @@ void BattlescapeGenerator::generateMap(const std::vector<MapScript*> *script, co
 	_save->setAmbientVolume(_terrain->getAmbientVolume());
 
 	// set up our map generation vars
+	delete _dummy;
+	_dummy = nullptr;
 	_dummy = new MapBlock("dummy");
 
 	init(true);
@@ -3572,8 +3624,6 @@ void BattlescapeGenerator::generateMap(const std::vector<MapScript*> *script, co
 			}
 		}
 	}
-
-	delete _dummy;
 
 	// special hacks to fill in empty floors on level 0
 	for (int x = 0; x < _mapsize_x; ++x)
@@ -4675,7 +4725,7 @@ bool BattlescapeGenerator::addBlock(int x, int y, MapBlock *block, RuleTerrain* 
 
 	for (int xd = 0; xd <= xSize; ++xd)
 	{
-		for (int yd = 0; yd != ySize; ++yd)
+		for (int yd = 0; yd <= ySize; ++yd)
 		{
 			if (_blocks[x + xd][y + yd])
 				return false;

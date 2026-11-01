@@ -166,7 +166,7 @@ std::string ConfirmLandingState::checkStartingCondition()
 	MissionSite* m = dynamic_cast<MissionSite*>(_craft->getDestination());
 	AlienBase* b = dynamic_cast<AlienBase*>(_craft->getDestination());
 
-	AlienDeployment *ruleDeploy = 0;
+	const AlienDeployment *ruleDeploy = 0;
 	if (u != 0)
 	{
 		std::string ufoMissionName = u->getRules()->getType();
@@ -198,6 +198,7 @@ std::string ConfirmLandingState::checkStartingCondition()
 		return "";
 	}
 
+	ruleDeploy = SavedBattleGame::resolveDeployment(_game->getMod(), ruleDeploy, _game->getSavedGame());
 	RuleStartingCondition *rule = _game->getMod()->getStartingCondition(ruleDeploy->getStartingCondition());
 	if (!rule && _missionTexture)
 	{

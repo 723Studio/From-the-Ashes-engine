@@ -20,9 +20,9 @@
 
 // FTA_PRODUCT_* identifies the standalone game delivered to players.
 #define FTA_PRODUCT_NAME "X-Com: From the Ashes"
-#define FTA_PRODUCT_VERSION_NUMBER 0,2,0,0
-#define FTA_PRODUCT_VERSION_SHORT "0.2.0"
-#define FTA_PRODUCT_VERSION_LONG "0.2.0.0"
+#define FTA_PRODUCT_VERSION_NUMBER 0,2,1,0
+#define FTA_PRODUCT_VERSION_SHORT "0.2.1"
+#define FTA_PRODUCT_VERSION_LONG "0.2.1.0"
 #define FTA_PRODUCT_MILESTONE "Alpha 2"
 #define FTA_PRODUCT_MILESTONE_ID "alpha2"
 #define FTA_PRODUCT_STAGE "alpha"

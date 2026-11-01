@@ -1953,7 +1953,8 @@ void DebriefingState::prepareDebriefing()
 					}
 				}
 			}
-			else if (oldFaction == FACTION_HOSTILE && (!aborted || bunit->isInExitArea(START_POINT)) && !_destroyBase
+			else if (oldFaction == FACTION_HOSTILE &&
+				(!aborted || bunit->isInExitArea(START_POINT) || bunit->isInExitArea(END_POINT)) && !_destroyBase
 				// mind controlled units may as well count as unconscious
 				&& faction == FACTION_PLAYER && (!bunit->isOut() || bunit->isIgnored()))
 			{
@@ -2132,7 +2133,8 @@ void DebriefingState::prepareDebriefing()
 		{
 			for (int i = 0; i < battle->getMapSizeXYZ(); ++i)
 			{
-				if (battle->getTile(i)->getFloorSpecialTileType() == START_POINT)
+				if (battle->getTile(i)->getFloorSpecialTileType() == START_POINT ||
+					battle->getTile(i)->getFloorSpecialTileType() == END_POINT)
 					recoverItems(battle->getTile(i)->getInventory(), base, craft);
 			}
 		}
@@ -2174,7 +2176,8 @@ void DebriefingState::prepareDebriefing()
 			// recover items from the craft floor
 			for (int i = 0; i < battle->getMapSizeXYZ(); ++i)
 			{
-				if (battle->getTile(i)->getFloorSpecialTileType() == START_POINT)
+				if (battle->getTile(i)->getFloorSpecialTileType() == START_POINT ||
+					battle->getTile(i)->getFloorSpecialTileType() == END_POINT)
 					recoverItems(battle->getTile(i)->getInventory(), base, craft);
 			}
 		}
@@ -2757,7 +2760,8 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base, C
 		int points = rule->getRecoveryPoints();
 		BattleUnit* recoveryUnit =
 			rule->getBattleType() == BT_CORPSE ? bi->getUnit() : nullptr;
-		const bool hasExplicitCaptureProfile = recoveryUnit &&
+		// Strategic soldiers have no generated-unit rules, even for corpse items.
+		const bool hasExplicitCaptureProfile = recoveryUnit && recoveryUnit->getUnitRules() &&
 			(recoveryUnit->getUnitRules()->getPrisoner() ||
 				recoveryUnit->getUnitRules()->getContainedAlien() ||
 				recoveryUnit->getUnitRules()->getContainedMonster());
@@ -2765,7 +2769,7 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base, C
 			recoveryUnit->getOriginalFaction() == FACTION_HOSTILE &&
 			(recoveryUnit->getStatus() == STATUS_UNCONSCIOUS ||
 				(recoveryUnit->isIgnored() && recoveryUnit->getHealth() > 0 &&
-					recoveryUnit->getHealth() < recoveryUnit->getStunlevel()));
+					recoveryUnit->getHealth() <= recoveryUnit->getStunlevel()));
 		if (rule->getName() == _game->getMod()->getAlienFuelName())
 		{
 			// special case of an item counted as a stat
@@ -2789,13 +2793,15 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base, C
 				else if (rule->getBattleType() == BT_CORPSE)
 				{
 					BattleUnit *corpseUnit = bi->getUnit();
-					AlienRace *race = _game->getMod()->getAlienRace(corpseUnit->getUnitRules()->getRace());
+					// Generated-unit recovery needs rules; soldier body handling continues below.
+					const Unit *corpseRules = corpseUnit ? corpseUnit->getUnitRules() : nullptr;
+					AlienRace *race = corpseRules ? _game->getMod()->getAlienRace(corpseRules->getRace()) : nullptr;
 					RaceType type = RACE_TYPE_ALIEN;
 					if (race)
 					{
-						type = _game->getMod()->getAlienRace(corpseUnit->getUnitRules()->getRace())->getRaceType();
+						type = race->getRaceType();
 					}
-					if (corpseUnit->getStatus() == STATUS_DEAD)
+					if (corpseRules && corpseUnit->getStatus() == STATUS_DEAD)
 					{
 						if (rule->isCorpseRecoverable())
 						{
@@ -2814,17 +2820,17 @@ void DebriefingState::recoverItems(std::vector<BattleItem*> *from, Base *base, C
 							}
 						}
 					}
-					else if (corpseUnit->getStatus() == STATUS_UNCONSCIOUS
+					else if (corpseRules && (corpseUnit->getStatus() == STATUS_UNCONSCIOUS
 					         || (corpseUnit->isIgnored()
 					             && corpseUnit->getHealth() > 0
-					             && corpseUnit->getHealth() < corpseUnit->getStunlevel()))
+					             && corpseUnit->getHealth() <= corpseUnit->getStunlevel())))
 					{
 						bool capturedCiv = corpseUnit->getOriginalFaction() == FACTION_NEUTRAL
 						                   && _missionStatistics->aborted
 						                   && _game->getMod()->getCraft(_missionStatistics->craft);
-						bool canBeContainedMonster = corpseUnit->getUnitRules()->getContainedMonster() != nullptr;
-						bool canBeContained = corpseUnit->getUnitRules()->getContainedAlien() != nullptr;
-						bool canBeImprisoned = corpseUnit->getUnitRules()->getPrisoner() || corpseUnit->getGeoscapeSoldier();
+						bool canBeContainedMonster = corpseRules->getContainedMonster() != nullptr;
+						bool canBeContained = corpseRules->getContainedAlien() != nullptr;
+						bool canBeImprisoned = corpseRules->getPrisoner() || corpseUnit->getGeoscapeSoldier();
 						if (canBeContainedMonster && corpseUnit->getOriginalFaction() == FACTION_HOSTILE)
 						{
 							recoverContainedMonster(corpseUnit, base);

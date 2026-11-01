@@ -265,6 +265,8 @@ public:
 
 	/// Sets _unit in order to abuse low-level pathfinding functions from outside the class.
 	void setUnit(BattleUnit *unit);
+	/// Discards the cached path if its unit is removed.
+	void forgetUnit(BattleUnit *unit);
 	/// Gets all reachable tiles, based on cost.
 	std::vector<int> findReachable(const BattleUnit *unit, const BattleActionCost &cost);
 	/// Gets _totalTUCost; finds out whether we can hike somewhere in this turn or not.

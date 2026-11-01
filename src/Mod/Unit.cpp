@@ -155,6 +155,16 @@ void Unit::afterLoad(const Mod* mod)
 {
 	mod->linkRule(_armor, _armorName);
 	mod->linkRule(_spawnUnit, _spawnUnitName);
+	if (_armor && _armor->getSize() == 1 && _spawnUnit)
+	{
+		// The target may not have run afterLoad() yet.
+		const Armor* targetArmor = _spawnUnit->_armor ? _spawnUnit->_armor : mod->getArmor(_spawnUnit->_armorName, true);
+		if (targetArmor && targetArmor->getSize() == 2)
+		{
+			throw Exception("Unit '" + _type + "' cannot use spawnUnit '" + _spawnUnit->getType()
+				+ "': transformation from a 1x1 unit to a 2x2 unit is not supported by the engine.");
+		}
+	}
 	mod->linkRule(_builtInWeapons, _builtInWeaponsNames);
 	mod->linkRule(_prisoner, _prisonerName);
 	mod->linkRule(_containedAlien, _containedAlienName);

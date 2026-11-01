@@ -28,6 +28,7 @@ class TextButton;
 class ToggleTextButton;
 class Craft;
 class Target;
+class Waypoint;
 
 /**
  * Window that allows the player
@@ -38,6 +39,7 @@ class ConfirmDestinationState : public State
 private:
 	std::vector<Craft*> _crafts;
 	Target *_target;
+	Waypoint *_newWaypoint;
 	Window *_window;
 	Text *_txtTarget;
 	Text *_txtETA;

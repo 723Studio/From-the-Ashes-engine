@@ -662,6 +662,9 @@ GeoscapeState::~GeoscapeState()
 	delete _dogfightStartTimer;
 	delete _dogfightTimer;
 
+	// Queued states still belong to Geoscape until think() transfers them to Game.
+	Collections::deleteAll(_popups);
+
 	for (auto* dfs : _dogfights)
 	{
 		delete dfs;
@@ -916,6 +919,10 @@ void GeoscapeState::think()
 			{
 				_pause = false;
 				_gameTimer->think(this, 0);
+				if (!_game->isState(this))
+				{
+					return;
+				}
 			}
 			_dogfightTimer->think(this, 0);
 		}
@@ -1013,7 +1020,9 @@ void GeoscapeState::timeAdvance()
 	}
 
 
-	for (int i = 0; i < timeSpan && !_pause; ++i)
+	// Finish this timestamp's triggers, but do not advance another five seconds
+	// after a handler opens a state directly instead of queuing a popup.
+	for (int i = 0; i < timeSpan && !_pause && _game->isState(this); ++i)
 	{
 		TimeTrigger trigger;
 		trigger = _game->getSavedGame()->getTime()->advance();
@@ -2237,8 +2246,11 @@ void GeoscapeState::time30Minutes()
 		}
 	);
 
-	// Decrease event countdowns and pop up if needed
-	for (auto* ge : _game->getSavedGame()->getGeoscapeEvents())
+	// Event popup construction can spawn more events. Iterate a snapshot so
+	// appending to the save's vector cannot invalidate this pass, and new events
+	// keep their full countdown until the next half-hour update.
+	const auto events = _game->getSavedGame()->getGeoscapeEvents();
+	for (auto* ge : events)
 	{
 		ge->think();
 
@@ -2653,12 +2665,40 @@ void GeoscapeState::time1Hour()
 		}
 	}
 
-	//handle covert operations logic and updates
+	// Complete at most one operation across all bases per hour. Prefer the
+	// shortest operation, retaining base/vector order when costs are equal.
+	SavedGame& save = *_game->getSavedGame();
+	CovertOperation* completingOperation = nullptr;
+	if (!save.getSavedBattle())
+	{
+		for (auto* base : *save.getBases())
+		{
+			for (auto* operation : base->getCovertOperations())
+			{
+				if (operation->isReadyToComplete(save) &&
+					(!completingOperation || operation->getCost() < completingOperation->getCost()))
+				{
+					completingOperation = operation;
+				}
+			}
+		}
+	}
 	for (std::vector<Base*>::iterator i = _game->getSavedGame()->getBases()->begin(); i != _game->getSavedGame()->getBases()->end(); ++i)
 	{
 		for (auto operation : (*i)->getCovertOperations())
 		{
+			if (operation != completingOperation && operation->isReadyToComplete(save))
+			{
+				// Skip the final update, delaying completion by one hour without
+				// rolling results, applying rewards or changing the saved cost.
+				continue;
+			}
 			const bool reportReady = operation->think(*_game, *_globe);
+			if (operation->isInBattlescape())
+			{
+				timerReset();
+				_pause = true;
+			}
 			if (reportReady && operation->claimResultNotification())
 			{
 				timerReset();
@@ -3304,7 +3344,7 @@ void GeoscapeState::time1Day()
 			}
 			if (!initiallyBlocked && !availableIntelInformed && !saveGame->getBases()->empty())
 			{
-				_game->pushState(new IntelAvailableState(project, saveGame->getSelectedBase(), this));
+				popup(new IntelAvailableState(project, saveGame->getSelectedBase(), this));
 				availableIntelInformed = true;
 			}
 		}
@@ -4606,8 +4646,11 @@ void GeoscapeState::determineAlienMissions(bool isNewMonth, const RuleEvent* eve
 			{
 				for (auto& btag : command->getAdhocMissionScriptTags())
 				{
-					if (atag == btag) matchFound = true;
-					break;
+					if (atag == btag)
+					{
+						matchFound = true;
+						break;
+					}
 				}
 				if (matchFound) break;
 			}
@@ -4806,8 +4849,11 @@ void GeoscapeState::determineAlienMissions(bool isNewMonth, const RuleEvent* eve
 		}
 	}
 
-	// after the mission scripts, it's time for the event scripts
-	eventScriptProcessor(*mod->getEventScriptList(), SCRIPT_MONTHLY);
+	// Adhoc mission generation must not run monthly event scripts again.
+	if (isNewMonth)
+	{
+		eventScriptProcessor(*mod->getEventScriptList(), SCRIPT_MONTHLY);
+	}
 
 	// Alien base upgrades happen only AFTER the first game month
 	if (isNewMonth && month > 0)

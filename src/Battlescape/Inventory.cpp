@@ -960,36 +960,27 @@ void Inventory::mouseClick(Action *action, State *state)
 						return;
 					}
 					// Check if the unit's armor rules allows to use this item category
-					Armor* armor = nullptr;
-					Soldier* soldier = _selUnit->getGeoscapeSoldier();
-					if (soldier)
+					const Armor* armor = _selUnit->getArmor();
+					if (!armor->getAllowedItemCategories().empty())
 					{
-						armor = soldier->getArmor();
-					}
+						auto firstMatch = std::find_first_of(_selItem->getRules()->getCategories().begin(), _selItem->getRules()->getCategories().end(),
+															 armor->getAllowedItemCategories().begin(), armor->getAllowedItemCategories().end());
 
-					if (armor)
-					{
-						if (!armor->getAllowedItemCategories().empty())
+						if (firstMatch == _selItem->getRules()->getCategories().end())
 						{
-							auto firstMatch = std::find_first_of(_selItem->getRules()->getCategories().begin(), _selItem->getRules()->getCategories().end(),
-																 _selUnit->getArmor()->getAllowedItemCategories().begin(), _selUnit->getArmor()->getAllowedItemCategories().end());
-
-							if (firstMatch == _selItem->getRules()->getCategories().end())
-							{
-								_warning->showMessage(_game->getLanguage()->getString("STR_CANNOT_USE_THIS_ITEM"));
-								return;
-							}
+							_warning->showMessage(_game->getLanguage()->getString("STR_CANNOT_USE_THIS_ITEM"));
+							return;
 						}
-						else if (!armor->getForbiddenItemCategoiries().empty())
-						{// Now check if the unit's armor rules forbids to use this item category
-							auto firstMatch = std::find_first_of(_selItem->getRules()->getCategories().begin(), _selItem->getRules()->getCategories().end(),
-																 _selUnit->getArmor()->getForbiddenItemCategoiries().begin(), _selUnit->getArmor()->getForbiddenItemCategoiries().end());
+					}
+					else if (!armor->getForbiddenItemCategoiries().empty())
+					{// Now check if the unit's armor rules forbids to use this item category
+						auto firstMatch = std::find_first_of(_selItem->getRules()->getCategories().begin(), _selItem->getRules()->getCategories().end(),
+															 armor->getForbiddenItemCategoiries().begin(), armor->getForbiddenItemCategoiries().end());
 
-							if (firstMatch != _selItem->getRules()->getCategories().end())
-							{
-								_warning->showMessage(_game->getLanguage()->getString("STR_CANNOT_USE_THIS_ITEM"));
-								return;
-							}
+						if (firstMatch != _selItem->getRules()->getCategories().end())
+						{
+							_warning->showMessage(_game->getLanguage()->getString("STR_CANNOT_USE_THIS_ITEM"));
+							return;
 						}
 					}
 				}
@@ -1641,7 +1632,7 @@ bool Inventory::fitItem(const RuleInventory *newSlot, BattleItem *item, std::str
 	}
 
 	// Check if we can equip this item after battle starts
-	if (!item->getRules()->canBeEquippedInBattle() && !_tu)
+	if (!item->getRules()->canBeEquippedInBattle() && _tu)
 	{
 		warning = "STR_CANNOT_PLACE_ITEM_WHILE_IN_COMBAT";
 		return false;

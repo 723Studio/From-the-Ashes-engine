@@ -1180,7 +1180,7 @@ void DogfightState::update()
 		}
 
 		// Is the craft itself a projectile?
-		if (_missileCraft && !_missileImpact && !_craft->isDestroyed())
+		if (_missileCraft && !_missileImpact && !_craft->isDestroyed() && !_ufo->isCrashed())
 		{
 			if (_currentDist <= AGGRESSIVE_DIST) // Note: hard-coded distance, ok
 			{
@@ -1834,42 +1834,44 @@ void DogfightState::update()
 							break;
 						}
 					}
-				}
-				bool survived = true;
-				bool fakeUnderwaterTexture = _state->getGlobe()->insideFakeUnderwaterTexture(_ufo->getLongitude(), _ufo->getLatitude());
-				if (!_state->getGlobe()->insideLand(_ufo->getLongitude(), _ufo->getLatitude()))
-				{
-					survived = false; // destroyed on real water
-				}
-				else if (fakeUnderwaterTexture)
-				{
-					if (RNG::percent(_ufo->getRules()->getSplashdownSurvivalChance()))
+					// Only the interceptor that shot down the UFO resolves its crash.
+					// Other dogfight windows share the same UFO and must not reroll it.
+					bool survived = true;
+					bool fakeUnderwaterTexture = _state->getGlobe()->insideFakeUnderwaterTexture(_ufo->getLongitude(), _ufo->getLatitude());
+					if (!_state->getGlobe()->insideLand(_ufo->getLongitude(), _ufo->getLatitude()))
 					{
-						setStatus("STR_UFO_SURVIVED_SPLASHDOWN");
+						survived = false; // destroyed on real water
+					}
+					else if (fakeUnderwaterTexture)
+					{
+						if (RNG::percent(_ufo->getRules()->getSplashdownSurvivalChance()))
+						{
+							setStatus("STR_UFO_SURVIVED_SPLASHDOWN");
+						}
+						else
+						{
+							survived = false; // destroyed on fake water
+							setStatus("STR_UFO_DESTROYED_BY_SPLASHDOWN");
+						}
+					}
+					if (!survived)
+					{
+						_ufo->setStatus(Ufo::DESTROYED);
+						_destroyUfo = true;
 					}
 					else
 					{
-						survived = false; // destroyed on fake water
-						setStatus("STR_UFO_DESTROYED_BY_SPLASHDOWN");
-					}
-				}
-				if (!survived)
-				{
-					_ufo->setStatus(Ufo::DESTROYED);
-					_destroyUfo = true;
-				}
-				else
-				{
-					_ufo->setSecondsRemaining(RNG::generate(24, 96)*3600);
-					_ufo->setAltitude("STR_GROUND");
-					if (_ufo->getCrashId() == 0)
-					{
-						_ufo->setCrashId(_game->getSavedGame()->getId("STR_CRASH_SITE"));
-						if (_ufo->isHunterKiller())
+						_ufo->setSecondsRemaining(RNG::generate(24, 96)*3600);
+						_ufo->setAltitude("STR_GROUND");
+						if (_ufo->getCrashId() == 0)
 						{
-							// stop being a hunter-killer
-							_ufo->resetOriginalDestination(_craft);
-							_ufo->setHunterKiller(false);
+							_ufo->setCrashId(_game->getSavedGame()->getId("STR_CRASH_SITE"));
+							if (_ufo->isHunterKiller())
+							{
+								// stop being a hunter-killer
+								_ufo->resetOriginalDestination(_craft);
+								_ufo->setHunterKiller(false);
+							}
 						}
 					}
 				}

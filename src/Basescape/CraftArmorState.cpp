@@ -470,7 +470,7 @@ void CraftArmorState::lstSoldiersClick(Action *action)
 	}
 
 	Soldier *s = _base->getSoldiers()->at(_lstSoldiers->getSelectedRow());
-	if (!(s->getCraft() && s->getCraft()->getStatus() == "STR_OUT") || s->getCovertOperation() != 0)
+	if (!(s->getCraft() && s->getCraft()->getStatus() == "STR_OUT") && s->getCovertOperation() == 0)
 	{
 		if (_game->isLeftClick(action, true))
 		{
@@ -574,7 +574,7 @@ void CraftArmorState::btnDeequipAllArmorClick(Action *action)
 	int row = 0;
 	for (auto* soldier : *_base->getSoldiers())
 	{
-		if (!(soldier->getCraft() && soldier->getCraft()->getStatus() == "STR_OUT"))
+		if (!(soldier->getCraft() && soldier->getCraft()->getStatus() == "STR_OUT") && soldier->getCovertOperation() == 0)
 		{
 			Armor *a = soldier->getRules()->getDefaultArmor();
 

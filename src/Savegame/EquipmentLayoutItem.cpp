@@ -160,6 +160,7 @@ int EquipmentLayoutItem::stackSize() const
 void EquipmentLayoutItem::load(const YAML::YamlNodeReader& reader, const Mod* mod)
 {
 	_itemType = mod->getItem(reader["itemType"].readVal<std::string>(), true);
+	_stackSize = _itemType->getStackSize();
 	_slot = mod->getInventory(reader["slot"].readVal<std::string>(), true);
 	_slotX = reader["slotX"].readVal(0);
 	_slotY = reader["slotY"].readVal(0);

@@ -92,6 +92,13 @@ void AIModule::reset()
 	_ambushTUs = 0;
 }
 
+void AIModule::forgetUnit(BattleUnit *unit)
+{
+	if (_aggroTarget == unit)
+		_aggroTarget = nullptr;
+	_wasHitBy.erase(std::remove(_wasHitBy.begin(), _wasHitBy.end(), unit->getId()), _wasHitBy.end());
+}
+
 /**
  * Loads the AI state from a YAML file.
  * @param node YAML node.
@@ -487,12 +494,14 @@ void AIModule::think(BattleAction *action)
 		{
 			if (rule->getBattleType() == BT_FIREARM)
 			{
-				if (action->weapon->getCurrentWaypoints() != 0)
+				if (action->weapon->getCurrentWaypoints() != 0 && action->weapon->getAmmoForAction(BA_LAUNCH))
 				{
 					_blaster = true;
 					_reachableWithAttack = _save->getPathfinding()->findReachable(_unit, BattleActionCost(BA_AIMEDSHOT, _unit, action->weapon));
 				}
-				else
+				else if (action->weapon->getAmmoForAction(BA_SNAPSHOT) ||
+					action->weapon->getAmmoForAction(BA_AUTOSHOT) ||
+					action->weapon->getAmmoForAction(BA_AIMEDSHOT))
 				{
 					_rifle = true;
 					_reachableWithAttack = _save->getPathfinding()->findReachable(_unit, BattleActionCost(BA_SNAPSHOT, _unit, action->weapon));
@@ -2357,6 +2366,11 @@ void AIModule::wayPointAction()
 		// cannot make a launcher attack - consider some other behaviour, like running away, or standing motionless.
 		return;
 	}
+	BattleItem* ammo = _attackAction.weapon->getAmmoForAction(BA_LAUNCH);
+	if (!ammo)
+	{
+		return;
+	}
 	_aggroTarget = 0;
 	for (auto* bu : *_save->getUnits())
 	{
@@ -2366,7 +2380,6 @@ void AIModule::wayPointAction()
 			continue;
 		}
 		_save->getPathfinding()->calculate(_unit, bu->getPosition(), BAM_MISSILE, bu, -1);
-		BattleItem* ammo = _attackAction.weapon->getAmmoForAction(BA_LAUNCH);
 		if (_save->getPathfinding()->getStartDirection() != -1 &&
 			explosiveEfficacy(bu->getPosition(), _unit, ammo->getRules()->getExplosionRadius({ BA_LAUNCH, _unit, _attackAction.weapon, ammo }), _attackAction.diff))
 		{
@@ -2424,11 +2437,13 @@ void AIModule::wayPointAction()
 			}
 			PathDirection = _save->getPathfinding()->dequeuePath();
 		}
-		_attackAction.target = _attackAction.waypoints.front();
-		if (LastWayPoint != _aggroTarget->getPosition())
+		if (_attackAction.waypoints.empty() || LastWayPoint != _aggroTarget->getPosition())
 		{
 			_attackAction.type = BA_RETHINK;
+			_attackAction.waypoints.clear();
+			return;
 		}
+		_attackAction.target = _attackAction.waypoints.front();
 	}
 }
 

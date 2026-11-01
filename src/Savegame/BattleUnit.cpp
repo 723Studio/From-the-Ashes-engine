@@ -673,6 +673,7 @@ void BattleUnit::load(const YAML::YamlNodeReader& node, const Mod *mod, const Sc
 		reader.tryRead("spawnUnitFaction", _spawnUnitFaction);
 	}
 	reader.tryRead("motionPoints", _motionPoints);
+	reader.tryRead("scannedTurn", _scannedTurn);
 	reader.tryRead("specialObjective", _specialObjective);
 	if (reader["roles"])
 	{
@@ -829,6 +830,8 @@ void BattleUnit::save(YAML::YamlNodeWriter writer, const ScriptGlobal *shared) c
 		writer.write("spawnUnitFaction", _spawnUnitFaction);
 	}
 	writer.write("motionPoints", _motionPoints);
+	if (_scannedTurn != -1)
+		writer.write("scannedTurn", _scannedTurn);
 	writer.write("specialObjective", (int)_specialObjective);
 	if (_customMarker > 0)
 		writer.write("customMarker", _customMarker);

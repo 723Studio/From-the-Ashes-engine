@@ -5686,6 +5686,13 @@ void TileEngine::removeMovingUnit(BattleUnit* unit)
 	}
 }
 
+void TileEngine::forgetUnit(BattleUnit *unit)
+{
+	_movingUnitPrev.erase(std::remove(_movingUnitPrev.begin(), _movingUnitPrev.end(), unit), _movingUnitPrev.end());
+	if (_movingUnit == unit)
+		removeMovingUnit(unit);
+}
+
 /**
  * Get current moving unit.
  */

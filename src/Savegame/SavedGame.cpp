@@ -1223,7 +1223,7 @@ GameTime *SavedGame::getTime() const
  */
 void SavedGame::setTime(const GameTime& time)
 {
-	_time = new GameTime(time);
+	*_time = time;
 }
 
 /**

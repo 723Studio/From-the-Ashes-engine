@@ -37,6 +37,7 @@
 #include "../Savegame/Region.h"
 #include "../Savegame/DiplomacyFaction.h"
 #include "../Savegame/SoldierDiary.h"
+#include "../Savegame/Transfer.h"
 #include "../Mod/Mod.h"
 #include "../Mod/RuleDiplomacyFaction.h"
 #include "../Mod/RuleInterface.h"
@@ -291,10 +292,17 @@ void AltMonthlyReportState::btnOkClick(Action*)
 		// Iterate through all your bases
 		for (std::vector<Base*>::iterator b = _game->getSavedGame()->getBases()->begin(); b != _game->getSavedGame()->getBases()->end(); ++b)
 		{
-			// Iterate through all your soldiers
-			for (std::vector<Soldier*>::iterator s = (*b)->getSoldiers()->begin(); s != (*b)->getSoldiers()->end(); ++s)
+			std::vector<Soldier*> soldiers = *(*b)->getSoldiers();
+			for (const auto* transfer : *(*b)->getTransfers())
 			{
-				Soldier* soldier = _game->getSavedGame()->getSoldier((*s)->getId());
+				// Delivered personnel are already in the base's soldier list.
+				if (!transfer->isDelivered() && transfer->getSoldier())
+				{
+					soldiers.push_back(transfer->getSoldier());
+				}
+			}
+			for (auto* soldier : soldiers)
+			{
 				// Award medals to eligible soldiers
 				soldier->getDiary()->addMonthlyService();
 				if (soldier->getDiary()->manageCommendations(_game->getMod(), _game->getSavedGame(), soldier))

@@ -580,7 +580,7 @@ void BattlescapeGame::endTurn()
 				if (!tile && unit && item->getFuseTimer() != -1 && !_allEnemiesNeutralized)
 				{
 					int explodeAnyway = rule->getExplodeInventory(getMod());
-					if (explodeAnyway >= 2 || (explodeAnyway == 1 && item->getSlot()->getType() != INV_HAND))
+					if (explodeAnyway >= 2 || (explodeAnyway == 1 && item->getSlot() && item->getSlot()->getType() != INV_HAND))
 					{
 						tile = unit->getTile();
 					}
@@ -2050,11 +2050,15 @@ void BattlescapeGame::primaryAction(Position pos)
 		else if (_currentAction.type == BA_HACK && _currentAction.weapon->getRules()->getBattleType() == BT_HACKING)
 		{
 			auto targetUnit = _save->selectUnit(pos);
-			auto battleObject = _save->getTile(pos)->getBattleObject();
+			if (targetUnit && !targetUnit->getVisible())
+			{
+				targetUnit = nullptr;
+			}
+			auto battleObject = targetUnit ? nullptr : _save->getTile(pos)->getBattleObject();
 			bool hackTargetAllowed = true;
 
 			// check if there is a battle unit that can be hacked
-			if (targetUnit && targetUnit->getVisible())
+			if (targetUnit)
 			{
 				auto targetFaction = targetUnit->getFaction();
 				hackTargetAllowed = _currentAction.weapon->getRules()->isTargetAllowed(targetFaction, _currentAction.actor->getFaction());
@@ -2113,7 +2117,7 @@ void BattlescapeGame::primaryAction(Position pos)
 				// get the sound/animation started
 				getMap()->setCursorType(CT_NORMAL);
 				_currentAction.cameraPosition = getMap()->getCamera()->getMapOffset();
-				statePushBack(new HackingBState(this, _currentAction, _parentState->getGame()));
+				statePushBack(new HackingBState(this, _currentAction, _parentState->getGame(), targetUnit, battleObject));
 			}
 			
 		}
@@ -2808,7 +2812,9 @@ void BattlescapeGame::removeSummonedPlayerUnits()
 				}
 
 				bu->setTile(nullptr, _save);
-				_save->clearUnitSelection(bu);
+				if (_currentAction.actor == bu)
+					_currentAction = BattleAction();
+				_save->clearUnitReferences(bu);
 				delete bu;
 				buIt = _save->getUnits()->erase(buIt);
 			}
@@ -2821,18 +2827,10 @@ void BattlescapeGame::removeSummonedPlayerUnits()
 
 	for (auto* unitType : resummonAsCivilians)
 	{
-		int maxId = INT_MIN;
-		for (auto& unit : *_save->getUnits())
-		{
-			if (unit->getId() > maxId)
-			{
-				maxId = unit->getId();
-			}
-		}
 		BattleUnit *newUnit = new BattleUnit(getMod(),
 			unitType,
 			FACTION_NEUTRAL,
-			maxId + 1,
+			_save->getNextUnitId(),
 			_save->getEnviroEffects(),
 			unitType->getArmor(),
 			nullptr,
@@ -3911,14 +3909,7 @@ bool OpenXcom::BattlescapeGame::scriptSpawnUnit(BattleScript* command)
 		break;
 	}
 
-	int maxId = INT_MIN;
-	for (const auto *unit : *_save->getUnits())
-	{
-		if (unit->getId() > maxId)
-		{
-			maxId = unit->getId();
-		}
-	}
+	const int firstUnitId = _save->getNextUnitId(packSize);
 
 	std::vector<std::vector<Unit*> > unitRuleOrders(packSize);
 	for (int packIndex = 0; packIndex < packSize; ++packIndex)
@@ -4043,7 +4034,7 @@ bool OpenXcom::BattlescapeGame::scriptSpawnUnit(BattleScript* command)
 					break;
 				}
 
-				BattleUnit *newUnit = createUnit(unitRule, maxId + packIndex + 1);
+				BattleUnit *newUnit = createUnit(unitRule, firstUnitId + packIndex);
 				int rulePositionBudget = std::min(positionChecksPerRule,
 					std::min(phasePositionChecks, attemptPositionBudget));
 				const int initialRulePositionBudget = rulePositionBudget;

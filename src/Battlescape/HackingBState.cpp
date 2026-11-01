@@ -35,7 +35,7 @@ namespace OpenXcom
 	/**
 	 * Sets up a HackingBState.
 	 */
-HackingBState::HackingBState(BattlescapeGame* parent, BattleAction action, Game* game) : BattleState(parent, action), _game(game), _unit(0), _item(0), _targetTile(0), _initialized(false)
+HackingBState::HackingBState(BattlescapeGame* parent, BattleAction action, Game* game, BattleUnit* targetUnit, BattleObject* targetObject) : BattleState(parent, action), _game(game), _unit(0), _item(0), _targetTile(0), _targetUnit(targetUnit), _targetObject(targetObject), _initialized(false)
 	{
 	}
 
@@ -70,6 +70,12 @@ HackingBState::HackingBState(BattlescapeGame* parent, BattleAction action, Game*
 			_parent->popState();
 			return;
 		}
+		if ((_targetUnit == nullptr) == (_targetObject == nullptr))
+		{
+			_action.result = "STR_NOT_HACKING_TARGET";
+			_parent->popState();
+			return;
+		}
 
 		_unit = _action.actor;
 
@@ -93,7 +99,7 @@ HackingBState::HackingBState(BattlescapeGame* parent, BattleAction action, Game*
 		//Position voxel = _action.target.toVoxel() + Position(8, 8, height);
 		//_parent->statePushFront(new ExplosionBState(_parent, voxel, BattleActionAttack{ _action.type, _action.actor, _action.weapon, _action.weapon }));
 		TileEngine* tileEngine = _game->getSavedGame()->getSavedBattle()->getTileEngine();
-		_game->pushState(new HackingState(&_action, _targetTile, tileEngine));
+		_game->pushState(new HackingState(&_action, _targetUnit, _targetObject, tileEngine));
 	}
 
 

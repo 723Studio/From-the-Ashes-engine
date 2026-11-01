@@ -20,6 +20,7 @@
 #include "../Engine/Game.h"
 #include "../Mod/Mod.h"
 #include "../Interface/TextButton.h"
+#include "../Interface/TextList.h"
 #include "../Interface/Window.h"
 #include "../Savegame/Target.h"
 #include "../Savegame/Base.h"
@@ -45,13 +46,14 @@ namespace OpenXcom
  * @param state Pointer to the Geoscape state.
  */
 MultipleTargetsState::MultipleTargetsState(std::vector<Target*> targets, std::vector<Craft*> crafts, GeoscapeState *state, bool useCustomSound) :
-	_targets(targets), _crafts(std::move(crafts)), _state(state), _useCustomSound(useCustomSound)
+	_targets(targets), _crafts(std::move(crafts)), _state(state), _useCustomSound(useCustomSound), _lstTargets(nullptr)
 {
 	_screen = false;
 
 	if (_targets.size() > 1)
 	{
-		int winHeight = BUTTON_HEIGHT * _targets.size() + SPACING * (_targets.size() - 1) + MARGIN * 2;
+		const bool scrollTargets = _targets.size() > 8;
+		int winHeight = scrollTargets ? 196 : BUTTON_HEIGHT * _targets.size() + SPACING * (_targets.size() - 1) + MARGIN * 2;
 		int winY = (200 - winHeight) / 2;
 		int btnY = winY + MARGIN;
 
@@ -66,19 +68,42 @@ MultipleTargetsState::MultipleTargetsState(std::vector<Target*> targets, std::ve
 		// Set up objects
 		setWindowBackground(_window, "multipleTargets");
 
-		int y = btnY;
-		for (size_t i = 0; i < _targets.size(); ++i)
+		if (scrollTargets)
 		{
-			TextButton *button = new TextButton(116, BUTTON_HEIGHT, 70, y);
-			button->setText(_targets[i]->getName(_game->getLanguage()));
-			button->onMouseClick((ActionHandler)&MultipleTargetsState::btnTargetClick);
-			add(button, "button", "multipleTargets");
+			_lstTargets = new TextList(100, 152, 70, btnY);
+			add(_lstTargets, "text", "multipleTargets");
+			_lstTargets->setColumns(1, 100);
+			_lstTargets->setSelectable(true);
+			_lstTargets->setWordWrap(true);
+			_lstTargets->setBackground(_window);
+			_lstTargets->onMouseClick((ActionHandler)&MultipleTargetsState::btnTargetClick);
+			for (auto* target : _targets)
+			{
+				_lstTargets->addRow(1, target->getName(_game->getLanguage()).c_str());
+			}
 
-			_btnTargets.push_back(button);
-
-			y += button->getHeight() + SPACING;
+			TextButton *cancel = new TextButton(116, BUTTON_HEIGHT, 70, winY + winHeight - MARGIN - BUTTON_HEIGHT);
+			add(cancel, "button", "multipleTargets");
+			cancel->setText(tr("STR_CANCEL"));
+			cancel->onMouseClick((ActionHandler)&MultipleTargetsState::btnCancelClick);
+			cancel->onKeyboardPress((ActionHandler)&MultipleTargetsState::btnCancelClick, Options::keyCancel);
 		}
-		_btnTargets[0]->onKeyboardPress((ActionHandler)&MultipleTargetsState::btnCancelClick, Options::keyCancel);
+		else
+		{
+			int y = btnY;
+			for (size_t i = 0; i < _targets.size(); ++i)
+			{
+				TextButton *button = new TextButton(116, BUTTON_HEIGHT, 70, y);
+				button->setText(_targets[i]->getName(_game->getLanguage()));
+				button->onMouseClick((ActionHandler)&MultipleTargetsState::btnTargetClick);
+				add(button, "button", "multipleTargets");
+
+				_btnTargets.push_back(button);
+
+				y += button->getHeight() + SPACING;
+			}
+			_btnTargets[0]->onKeyboardPress((ActionHandler)&MultipleTargetsState::btnCancelClick, Options::keyCancel);
+		}
 
 		centerAllSurfaces();
 	}
@@ -158,6 +183,15 @@ void MultipleTargetsState::btnCancelClick(Action *)
  */
 void MultipleTargetsState::btnTargetClick(Action *action)
 {
+	if (_lstTargets)
+	{
+		const size_t row = _lstTargets->getSelectedRow();
+		if (row < _targets.size())
+		{
+			popupTarget(_targets[row]);
+		}
+		return;
+	}
 	for (size_t i = 0; i < _btnTargets.size(); ++i)
 	{
 		if (action->getSender() == _btnTargets[i])

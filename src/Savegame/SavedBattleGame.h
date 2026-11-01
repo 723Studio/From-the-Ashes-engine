@@ -145,8 +145,6 @@ private:
 	void updateAlarm();
 	/// Gets the unresolved deployment used by legacy saves.
 	AlienDeployment *getLegacyDeployment() const;
-	/// Resolves the researched alternative-deployment chain.
-	const AlienDeployment *resolveDeployment(const AlienDeployment *deployment, const SavedGame *campaign) const;
 public:
 	/// Creates a new battle save, based on the current generic save.
 	SavedBattleGame(Mod *rule, Language *lang, bool isPreview = false);
@@ -178,6 +176,8 @@ public:
 	const std::string& getMissionCraftOrBase() const { return _strCraftOrBase; }
 	/// Resolves and stores the deployment actually used by this tactical stage.
 	const AlienDeployment *selectActiveDeployment(const AlienDeployment *deployment, const SavedGame *campaign);
+	/// Resolves the researched alternative-deployment chain without creating a battle.
+	static const AlienDeployment *resolveDeployment(const Mod *mod, const AlienDeployment *deployment, const SavedGame *campaign);
 	/// Gets the deployment actually used by this tactical stage.
 	AlienDeployment *getActiveDeployment();
 	/// Gets the base's items BEFORE the mission.
@@ -393,6 +393,8 @@ public:
 	void setUndoUnit(BattleUnit* unit) { _undoUnit = unit; }
 	/// Clear state that given unit is selected.
 	void clearUnitSelection(BattleUnit *unit);
+	/// Clears borrowed references before a tactical unit is destroyed.
+	void clearUnitReferences(BattleUnit *unit);
 	/// Selects the previous soldier.
 	BattleUnit *selectPreviousPlayerUnit(bool checkReselect = false, bool setReselect = false, bool checkInventory = false);
 	/// Selects the next soldier.
@@ -470,6 +472,8 @@ public:
 	BattleItem *createTempItem(const RuleItem *rule);
 	/// Create new temporary unit.
 	BattleUnit *createTempUnit(const Unit *rules, UnitFaction faction, int nextUnitId = -1);
+	/// First available generated-unit ID, reserving room for a contiguous batch.
+	int getNextUnitId(int count = 1) const;
 	/// Converts a unit into a unit of another type.
 	BattleUnit *convertUnit(BattleUnit *unit);
 

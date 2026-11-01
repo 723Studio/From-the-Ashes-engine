@@ -24,6 +24,7 @@ namespace OpenXcom
 {
 
 class TextButton;
+class TextList;
 class Window;
 class Craft;
 class Target;
@@ -45,6 +46,7 @@ private:
 	bool _useCustomSound;
 
 	Window *_window;
+	TextList *_lstTargets;
 	std::vector<TextButton*> _btnTargets;
 public:
 	/// Creates the Multiple Targets state.

@@ -501,9 +501,9 @@ void AllocatePsiTrainingState::lstSoldiersClick(Action *action)
 		{
 			// can't put fully psi-trained soldiers back into psi training
 		}
-		else if (s->getCovertOperation() != 0)
+		else if (!s->isInPsiTraining() && (s->getCovertOperation() != 0 || s->hasPendingTransformation()))
 		{
-			// soldier is out for covert operation
+			// Unavailable soldiers may only be removed from existing training.
 		}
 		else if (!s->isInPsiTraining())
 		{

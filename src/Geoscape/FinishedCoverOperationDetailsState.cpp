@@ -183,13 +183,12 @@ namespace OpenXcom
 		}
 
 		int rowSoldierStatus = 0;
-		std::map<std::string, int> soldierStatus = _results->getSoldierDamage();
+		const auto& soldierStatus = _results->getSoldierDamage();
 		if (!soldierStatus.empty())
 		{
 			int wounded = 0, mia = 0;
-			for (std::map<std::string, int>::const_iterator i = soldierStatus.begin(); i != soldierStatus.end(); ++i)
+			for (auto i = soldierStatus.begin(); i != soldierStatus.end(); ++i)
 			{
-				auto soldier = tr((*i).first);
 				int damage = (*i).second;
 				if (damage > 0)
 				{
@@ -282,13 +281,14 @@ namespace OpenXcom
 
 		_txtMessage->setY(_txtMessage->getY() - itemOffset - repOffset - fundOffset - scoreOffset - statusOffset);
 
-		auto soldierStats = _results->getSoldierImprovement();
+		const auto& soldierStats = _results->getSoldierImprovement();
+		const auto& soldierDamage = _results->getSoldierDamage();
 		int row = 0;
-		for (std::vector<std::pair<std::string, UnitStats>>::const_iterator i = soldierStats.begin(); i != soldierStats.end(); ++i)
+		for (auto i = soldierStats.begin(); i != soldierStats.end(); ++i)
 		{
-			auto soldierDamage = _results->getSoldierDamage();
+			const std::string& soldierName = _results->getSoldierName(i->first);
 			int damage = 0;
-			for (std::map<std::string, int>::const_iterator j = soldierDamage.begin(); j != soldierDamage.end(); ++j)
+			for (auto j = soldierDamage.begin(); j != soldierDamage.end(); ++j)
 			{
 				if ((*i).first == (*j).first)
 				{
@@ -297,7 +297,7 @@ namespace OpenXcom
 					if (damage < 0) //soldier MiA
 					{
 						_lstSoldierStats->setSmall();
-						_lstSoldierStats->addRow(3, (*i).first.c_str(), tr("STR_MIA").c_str(), "");
+						_lstSoldierStats->addRow(3, soldierName.c_str(), tr("STR_MIA").c_str(), "");
 						_lstSoldierStats->setRowColor(row, _game->getMod()->getInterface("covertOperationFinishDetails")->getElement("damaged")->color);
 						row++;
 					}
@@ -307,11 +307,11 @@ namespace OpenXcom
 			{
 				if (damage > 0)
 				{
-					_lstSoldierStats->addRow(3, (*i).first.c_str(), tr("STR_WOUNDED").c_str(), "");
+					_lstSoldierStats->addRow(3, soldierName.c_str(), tr("STR_WOUNDED").c_str(), "");
 				}
 				else
 				{
-					_lstSoldierStats->addRow(1, (*i).first.c_str());
+					_lstSoldierStats->addRow(1, soldierName.c_str());
 				}
 
 				//fill all stats that can be changed with covert operation
@@ -474,13 +474,10 @@ namespace OpenXcom
 			{
 				if (result.second < 0) 
 				{
-					auto soldiers = _game->getSavedGame()->getDeadSoldiers();
-					for (auto &soldier : *soldiers)
+					Soldier* soldier = _game->getSavedGame()->getSoldier(result.first);
+					if (soldier && soldier->getDeath())
 					{
-						if (soldier->getName() == result.first)
-						{
-							deadSoldiers.push_back(soldier);
-						}
+						deadSoldiers.push_back(soldier);
 					}
 				}
 			}

@@ -31,6 +31,7 @@
 #include "../Interface/Window.h"
 #include "../Interface/Text.h"
 #include "../Interface/TextList.h"
+#include "../Menu/ErrorMessageState.h"
 #include "../Savegame/Base.h"
 #include "../Savegame/Soldier.h"
 #include "../Savegame/SavedGame.h"
@@ -465,6 +466,14 @@ void CovertOperationArmorState::lstSoldiersClick(Action* action)
 			Armor* a = _game->getMod()->getArmor(save->getLastSelectedArmor());
 			if (a && a->getCanBeUsedBy(s))
 			{
+				Craft* craft = s->getCraft();
+				if (craft && !craft->validateArmorChange(s->getArmor()->getSize(), a->getSize()))
+				{
+					_game->pushState(new ErrorMessageState(tr("STR_NOT_ENOUGH_CRAFT_SPACE"), _palette,
+						_game->getMod()->getInterface("soldierInfo")->getElement("errorMessage")->color,
+						"BACK01.SCR", _game->getMod()->getInterface("soldierInfo")->getElement("errorPalette")->color));
+					return;
+				}
 				if (save->getMonthsPassed() != -1)
 				{
 					if (a->getStoreItem() == nullptr || _base->getStorageItems()->getItem(a->getStoreItem()) > 0)
@@ -478,14 +487,14 @@ void CovertOperationArmorState::lstSoldiersClick(Action* action)
 							_base->getStorageItems()->removeItem(a->getStoreItem());
 						}
 
-						s->setArmor(a);
+						s->setArmor(a, true);
 						s->prepareStatsWithBonuses(_game->getMod()); // refresh stats for sorting
 						_lstSoldiers->setCellText(_lstSoldiers->getSelectedRow(), 2, tr(a->getType()));
 					}
 				}
 				else
 				{
-					s->setArmor(a);
+					s->setArmor(a, true);
 					s->prepareStatsWithBonuses(_game->getMod()); // refresh stats for sorting
 					_lstSoldiers->setCellText(_lstSoldiers->getSelectedRow(), 2, tr(a->getType()));
 				}
@@ -538,7 +547,7 @@ void CovertOperationArmorState::btnDeequipAllArmorClick(Action* action)
 	int row = 0;
 	for (std::vector<Soldier *>::iterator i = _base->getSoldiers()->begin(); i != _base->getSoldiers()->end(); ++i)
 	{
-		if (!((*i)->getCraft() && (*i)->getCraft()->getStatus() == "STR_OUT"))
+		if (!((*i)->getCraft() && (*i)->getCraft()->getStatus() == "STR_OUT") && (*i)->getCovertOperation() == 0)
 		{
 			Armor *a = (*i)->getRules()->getDefaultArmor();
 

@@ -88,11 +88,11 @@ std::string toString(type t)
 /**
  * Initializes the Hacking State.
  * @param action Pointer to an action.
- * @param targetUnit Pointer to a target unit
+ * @param targetUnit Selected unit, or nullptr when hacking an object.
+ * @param targetObject Selected object, or nullptr when hacking a unit.
  * @param tileEngine Pointer to a TileEngine
  */
-//HackingState::HackingState(BattleAction* action, BattleUnit* targetUnit, TileEngine* tileEngine) : _action(action), _targetUnit(targetUnit), _tileEngine(tileEngine)
-HackingState::HackingState(BattleAction* action, Tile* targetTile, TileEngine* tileEngine) : _targetTile(targetTile), _action(action), _tileEngine(tileEngine), _result(false)
+HackingState::HackingState(BattleAction* action, BattleUnit* targetUnit, BattleObject* targetObject, TileEngine* tileEngine) : _targetUnit(targetUnit), _targetObject(targetObject), _action(action), _tileEngine(tileEngine), _result(false)
 {
 	if (Options::maximizeInfoScreens)
 	{
@@ -100,12 +100,10 @@ HackingState::HackingState(BattleAction* action, Tile* targetTile, TileEngine* t
 		Options::baseYResolution = Screen::ORIGINAL_HEIGHT;
 		_game->getScreen()->resetDisplay(false);
 	}
-	_targetUnit = _targetTile->getUnit();
-	_targetObject = _targetTile->getBattleObject();
-	if (_targetUnit == nullptr && _targetObject == nullptr)
+	if ((_targetUnit == nullptr) == (_targetObject == nullptr))
 	{
 		//oh, that's bad...
-		throw Exception("Hacking logic failed - Hacking target was not defined in targetTile!");
+		throw Exception("Hacking logic failed - exactly one hacking target must be selected!");
 	}
 	_sourceUnit = _action->weapon->getOwner();
 	if (_sourceUnit == nullptr)
@@ -301,7 +299,7 @@ void HackingState::onExitClick(Action*)
 	{
 		_targetUnit->hackingPostProcess(_result);
 	}
-	if (_targetObject)
+	else if (_targetObject)
 	{
 		_targetObject->hackingPostProcess(_result, _game);
 	}
@@ -343,7 +341,7 @@ void HackingState::onNodeClick(Action* action)
 		{
 			_tileEngine->hackAttack(*_action, _targetUnit);
 		}
-		if (_targetObject)
+		else if (_targetObject)
 		{
 			_tileEngine->hackObject(*_action, _targetObject);
 		}
